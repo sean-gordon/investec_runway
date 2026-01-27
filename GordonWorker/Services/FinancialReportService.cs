@@ -66,8 +66,14 @@ public class FinancialReportService : IFinancialReportService
         var healthReport = _actuarialService.AnalyzeHealth(fullHistory, currentBalance);
 
         // 4. Prepare Comparison Stats
-        var thisWeekSpend = thisWeek.Where(t => t.Amount < 0).Sum(t => t.Amount);
-        var lastWeekSpend = lastWeek.Where(t => t.Amount < 0).Sum(t => t.Amount);
+        // Investec returns Debits as positive numbers, so we sum them directly.
+        var thisWeekSpend = thisWeek
+            .Where(t => string.Equals(t.Category, "DEBIT", StringComparison.OrdinalIgnoreCase))
+            .Sum(t => t.Amount);
+            
+        var lastWeekSpend = lastWeek
+            .Where(t => string.Equals(t.Category, "DEBIT", StringComparison.OrdinalIgnoreCase))
+            .Sum(t => t.Amount);
 
         var stats = new
         {

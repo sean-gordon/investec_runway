@@ -16,6 +16,7 @@ public class FinancialReportService : IFinancialReportService
     private readonly IEmailService _emailService;
     private readonly IActuarialService _actuarialService;
     private readonly IOllamaService _ollamaService;
+    private readonly ISettingsService _settingsService;
     private readonly ILogger<FinancialReportService> _logger;
 
     public FinancialReportService(
@@ -23,17 +24,20 @@ public class FinancialReportService : IFinancialReportService
         IEmailService emailService,
         IActuarialService actuarialService,
         IOllamaService ollamaService,
+        ISettingsService settingsService,
         ILogger<FinancialReportService> logger)
     {
         _configuration = configuration;
         _emailService = emailService;
         _actuarialService = actuarialService;
         _ollamaService = ollamaService;
+        _settingsService = settingsService;
         _logger = logger;
     }
 
     public async Task GenerateAndSendReportAsync()
     {
+        var settings = await _settingsService.GetSettingsAsync();
         using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
         await connection.OpenAsync();
 
@@ -64,7 +68,12 @@ public class FinancialReportService : IFinancialReportService
             SpendLastWeek = Math.Abs(lastWeekSpend),
             RunwayDays = healthReport.ExpectedRunwayDays,
             Volatility = healthReport.BurnVolatility,
-            Trend = healthReport.TrendDirection
+            Trend = healthReport.TrendDirection,
+            Currency = settings.CurrencyCulture,
+            SpendThisMonth = healthReport.SpendThisMonth,
+            SpendLastMonth = healthReport.SpendLastMonth,
+            ProjectedMonthEnd = healthReport.ProjectedMonthEndSpend,
+            Probability30DaySurvival = healthReport.RunwayProbability
         };
 
         var jsonStats = JsonSerializer.Serialize(stats);
@@ -75,8 +84,8 @@ public class FinancialReportService : IFinancialReportService
         // 6. Send Email
         var subject = $"Weekly Financial Report - {DateTime.Now:dd MMM yyyy}";
         
-        // Ensure CultureInfo is set to South Africa for currency formatting
-        var culture = System.Globalization.CultureInfo.GetCultureInfo("en-ZA");
+        // Ensure CultureInfo is set from settings
+        var culture = System.Globalization.CultureInfo.GetCultureInfo(settings.CurrencyCulture);
 
         var body = $@"
 <!DOCTYPE html>
@@ -95,7 +104,7 @@ public class FinancialReportService : IFinancialReportService
         .ai-box h3 {{ margin-top: 0; color: #0369a1; font-size: 16px; text-transform: uppercase; letter-spacing: 0.5px; }}
         .ai-box ul {{ margin-bottom: 0; padding-left: 20px; }}
         .ai-box li {{ margin-bottom: 8px; }}
-        .stats-header {{ font-size: 18px; font-weight: 700; color: #111827; margin-bottom: 16px; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px; }}
+        .stats-header {{ font-size: 18px; font-weight: 700; color: #111827; margin-bottom: 16px; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px; margin-top: 32px; }}
         .stats-table {{ width: 100%; border-collapse: collapse; }}
         .stats-table th {{ text-align: left; padding: 12px 8px; color: #6b7280; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; border-bottom: 1px solid #e5e7eb; }}
         .stats-table td {{ padding: 16px 8px; border-bottom: 1px solid #f3f4f6; font-size: 15px; font-weight: 500; color: #1f2937; }}
@@ -103,6 +112,7 @@ public class FinancialReportService : IFinancialReportService
         .amount {{ font-family: monospace; font-size: 16px; color: #111827; }}
         .highlight-good {{ color: #059669; font-weight: 700; }}
         .highlight-bad {{ color: #dc2626; font-weight: 700; }}
+        .highlight-warn {{ color: #d97706; font-weight: 700; }}
         .footer {{ text-align: center; padding: 24px; color: #9ca3af; font-size: 12px; }}
     </style>
 </head>
@@ -127,8 +137,29 @@ public class FinancialReportService : IFinancialReportService
                         {aiExplanation}
                     </div>
 
-                    <!-- Stats Table -->
-                    <div class='stats-header'>Financial Vital Signs</div>
+                    <!-- Monthly Pulse -->
+                    <div class='stats-header'>Monthly Pulse (MTD)</div>
+                    <table class='stats-table'>
+                        <tr>
+                            <th>Metric</th>
+                            <th style='text-align: right;'>Value</th>
+                        </tr>
+                        <tr>
+                            <td>Spend This Month</td>
+                            <td style='text-align: right;' class='amount'>{string.Format(culture, "{0:C}", healthReport.SpendThisMonth)}</td>
+                        </tr>
+                        <tr>
+                            <td>Spend Last Month</td>
+                            <td style='text-align: right;' class='amount'>{string.Format(culture, "{0:C}", healthReport.SpendLastMonth)}</td>
+                        </tr>
+                        <tr>
+                            <td>Projected Month End</td>
+                            <td style='text-align: right;' class='amount highlight-warn'>{string.Format(culture, "{0:C}", healthReport.ProjectedMonthEndSpend)}</td>
+                        </tr>
+                    </table>
+
+                    <!-- Vital Signs -->
+                    <div class='stats-header'>Runway & Risk</div>
                     <table class='stats-table'>
                         <tr>
                             <th>Metric</th>
@@ -139,17 +170,15 @@ public class FinancialReportService : IFinancialReportService
                             <td style='text-align: right;' class='amount'>{string.Format(culture, "{0:C}", currentBalance)}</td>
                         </tr>
                         <tr>
-                            <td>Spend This Week</td>
-                            <td style='text-align: right;' class='amount'>{string.Format(culture, "{0:C}", Math.Abs(thisWeekSpend))}</td>
-                        </tr>
-                        <tr>
-                            <td>Spend Last Week</td>
-                            <td style='text-align: right;' class='amount'>{string.Format(culture, "{0:C}", Math.Abs(lastWeekSpend))}</td>
-                        </tr>
-                        <tr>
                             <td>Projected Runway</td>
                             <td style='text-align: right;' class='{(healthReport.ExpectedRunwayDays < 30 ? "highlight-bad" : "highlight-good")}'>
                                 {healthReport.ExpectedRunwayDays:F0} Days
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>30-Day Survival Probability</td>
+                            <td style='text-align: right;' class='{(healthReport.RunwayProbability < 80 ? "highlight-bad" : "highlight-good")}'>
+                                {healthReport.RunwayProbability:F1}%
                             </td>
                         </tr>
                         <tr>

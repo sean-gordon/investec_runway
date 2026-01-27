@@ -5,30 +5,37 @@
 ## Key Technologies
 
 *   **Core:** .NET 8 (C#)
-*   **Database:** TimescaleDB (PostgreSQL extension for time-series)
-*   **AI/LLM:** Ollama (hosting `deepseek-coder` or configurable model)
-*   **Frontend:** Vue.js 3 (CDN-based, zero build) + Tailwind CSS
-*   **Orchestration:** Docker Compose
+*   **Database:** TimescaleDB (PostgreSQL extension).
+    *   `transactions` table: Time-series hypertable.
+    *   `system_config` table: JSONB singleton for storing persistent app settings.
+*   **AI/LLM:** External Ollama instance (configurable URL).
+*   **Frontend:** Vue.js 3 (Global build, no bundler) + Tailwind CSS (CDN). Served as static files from `wwwroot` by the .NET app.
+*   **Orchestration:** Docker Compose.
 
 ## Architecture
 
-The system consists of three main containers managed via `docker-compose.yml`:
+The system consists of two main containers managed via `docker-compose.yml`:
 
-1.  **`timescaledb`**: Stores transaction data in a hypertable partitioned by time.
-2.  **`ollama`**: Runs the local LLM inference engine.
-3.  **`gordon-worker`**: The main application logic, which includes:
-    *   **Ingestion Worker**: Polls Investec API every 60s for new transactions (`TransactionsBackgroundService`).
-    *   **Weekly Reporter**: Checks schedule (default: Mon 9am) to generate and email a "Junior High" style summary (`WeeklyReportWorker`).
-    *   **API**: Exposes endpoints for the Chat interface (`/chat`) and Settings management (`/api/settings`).
-    *   **UI**: Serves a single-page application (`index.html`) for configuration and dashboarding.
+1.  **`timescaledb`**: Stores financial data and configuration. Not exposed externally (internal network only).
+2.  **`gordon-worker`**: The main application logic.
+    *   **Ingestion Worker**: Polls Investec API every 60s (`TransactionsBackgroundService`).
+    *   **Connectivity Worker**: Checks Investec API status every 30m (`ConnectivityWorker`).
+    *   **Weekly Reporter**: Scheduled emailing service (`WeeklyReportWorker`).
+    *   **API**: Exposes endpoints for Chat, Settings, and Status (`/api/settings`, `/chat`).
+    *   **UI**: Serves the Single Page Application (`index.html`).
 
 ### Key Services (`GordonWorker/Services`)
 
-*   **`ActuarialService`**: Implements advanced financial math, including Exponential Moving Average (EMA) for weighted burn rates, Volatility (StdDev) analysis, and Value at Risk (VaR 95%).
-*   **`OllamaService`**: Handles prompts to the LLM. It supports two main modes:
-    *   *Text-to-SQL*: Generates SQL queries from natural language for raw data retrieval.
-    *   *Analyst Persona*: Interprets complex JSON data from the Actuarial Service to provide human-readable advice.
-*   **`SettingsService`**: Persists runtime configuration (e.g., report schedule, AI persona) to `app_data/settings.json`, allowing changes without container restarts.
+*   **`ActuarialService`**: Implements advanced financial math:
+    *   **Monte Carlo Simulation**: Probability of survival (30-day).
+    *   **Linear Regression**: Month-end projection.
+    *   **Weighted Burn (EMA)**: Recent spending sensitivity.
+*   **`OllamaService`**: Handles LLM communication.
+    *   *Text-to-SQL*: Generates SQL for raw queries.
+    *   *Analyst Persona*: Interprets complex JSON stats into simple advice.
+*   **`SettingsService`**: Persists runtime configuration to the `system_config` database table. **Always use this service to retrieve settings, do not hardcode.**
+*   **`TransactionSyncService`**: Central logic for fetching and upserting transactions. Handles "Deep Sync" logic.
+*   **`FinancialReportService`**: Orchestrates data fetching, math, AI summary, and HTML email generation.
 
 # Building and Running
 
@@ -45,12 +52,6 @@ The project is designed to be run entirely via Docker.
 docker-compose up -d --build
 ```
 
-**Initialize AI Model (First Run Only):**
-The system expects a specific model to be available in the Ollama container.
-```bash
-docker exec -it investecrunwayapp-ollama-1 ollama pull deepseek-coder
-```
-
 **Accessing the Application:**
 *   **Dashboard & Settings:** `http://localhost:52944`
 *   **Chat API:** `POST http://localhost:52944/chat`
@@ -59,8 +60,10 @@ docker exec -it investecrunwayapp-ollama-1 ollama pull deepseek-coder
 
 *   **Language & Locale:** All code, comments, and logs must use **English UK**.
 *   **Formatting:** No em dashes (—) are permitted in code comments or strings; use regular dashes (-).
-*   **Database:** Use "Safe Upsert" (`ON CONFLICT DO NOTHING`) for transaction ingestion to ensure idempotency.
-*   **Frontend:** The frontend in `wwwroot` is a "no-build" implementation. Do not introduce npm build steps (Webpack/Vite) unless strictly necessary. It uses Vue 3 Global build and Tailwind CDN.
+*   **Database:** 
+    *   Use "Safe Upsert" (`ON CONFLICT DO NOTHING`) for transaction ingestion.
+    *   Store all user-configurable settings in the `system_config` table (JSONB).
+*   **Frontend:** Keep the frontend "no-build". Use Vue 3 Global build. Do not introduce npm/webpack.
 *   **Configuration:** 
-    *   Secrets (API Keys, Passwords) -> `.env` (Environment Variables).
-    *   Runtime Preferences (Schedule, Persona) -> `settings.json` (via `SettingsService`).
+    *   Secrets (API Keys) -> `.env` (Environment Variables).
+    *   Runtime Preferences (Schedule, Currency, AI URL) -> Database via `SettingsService`.

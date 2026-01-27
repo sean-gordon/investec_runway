@@ -15,3 +15,9 @@ CREATE TABLE IF NOT EXISTS transactions (
 
 -- Convert to Hypertable partitioned by transaction_date
 SELECT create_hypertable('transactions', 'transaction_date', if_not_exists => TRUE);
+
+-- Create System Config table (Singleton pattern via check constraint)
+CREATE TABLE IF NOT EXISTS system_config (
+    id INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    config JSONB NOT NULL
+);

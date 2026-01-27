@@ -1,3 +1,5 @@
+using Dapper;
+using Npgsql;
 using System.Text.Json;
 
 namespace GordonWorker.Services;
@@ -6,11 +8,11 @@ public class AppSettings
 {
     public string ReportDayOfWeek { get; set; } = "Monday";
     public int ReportHour { get; set; } = 9;
-    public decimal ActuarialAlpha { get; set; } = 0.15m; // EMA Weight
+    public decimal ActuarialAlpha { get; set; } = 0.15m;
     public int AnalysisWindowDays { get; set; } = 90;
     public string OllamaBaseUrl { get; set; } = "http://host.docker.internal:11434";
     public string OllamaModelName { get; set; } = "deepseek-coder";
-    public string SystemPersona { get; set; } = "Gordon"; // For future extensibility
+    public string SystemPersona { get; set; } = "Gordon";
     
     // Email Settings
     public string SmtpHost { get; set; } = "";
@@ -28,41 +30,74 @@ public interface ISettingsService
 
 public class SettingsService : ISettingsService
 {
-    private readonly string _filePath = "app_data/settings.json";
-    private AppSettings _currentSettings;
+    private readonly IConfiguration _configuration;
+    private readonly ILogger<SettingsService> _logger;
+    private AppSettings? _cachedSettings;
 
-    public SettingsService()
+    public SettingsService(IConfiguration configuration, ILogger<SettingsService> logger)
     {
-        // Ensure directory exists
-        Directory.CreateDirectory("app_data");
-        
-        if (File.Exists(_filePath))
+        _configuration = configuration;
+        _logger = logger;
+    }
+
+    public async Task<AppSettings> GetSettingsAsync()
+    {
+        if (_cachedSettings != null) return _cachedSettings;
+
+        try
         {
-            var json = File.ReadAllText(_filePath);
-            _currentSettings = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+            using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+            await connection.OpenAsync();
+
+            var json = await connection.QuerySingleOrDefaultAsync<string>("SELECT config FROM system_config WHERE id = 1");
+
+            if (string.IsNullOrEmpty(json))
+            {
+                // No settings found, initialize defaults
+                _cachedSettings = new AppSettings();
+                await SaveToDbAsync(_cachedSettings);
+            }
+            else
+            {
+                _cachedSettings = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+            }
         }
-        else
+        catch (Exception ex)
         {
-            _currentSettings = new AppSettings();
-            SaveSettings();
+            _logger.LogError(ex, "Failed to load settings from DB. Returning defaults.");
+            // Fallback to defaults if DB is unreachable (e.g. during startup)
+            return new AppSettings();
         }
+
+        return _cachedSettings;
     }
 
-    public Task<AppSettings> GetSettingsAsync()
+    public async Task UpdateSettingsAsync(AppSettings newSettings)
     {
-        return Task.FromResult(_currentSettings);
+        _cachedSettings = newSettings;
+        await SaveToDbAsync(newSettings);
     }
 
-    public Task UpdateSettingsAsync(AppSettings newSettings)
+    private async Task SaveToDbAsync(AppSettings settings)
     {
-        _currentSettings = newSettings;
-        SaveSettings();
-        return Task.CompletedTask;
-    }
+        try
+        {
+            using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+            await connection.OpenAsync();
 
-    private void SaveSettings()
-    {
-        var json = JsonSerializer.Serialize(_currentSettings, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(_filePath, json);
+            var json = JsonSerializer.Serialize(settings);
+            
+            var sql = @"
+                INSERT INTO system_config (id, config) 
+                VALUES (1, @Config::jsonb) 
+                ON CONFLICT (id) DO UPDATE SET config = @Config::jsonb";
+
+            await connection.ExecuteAsync(sql, new { Config = json });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to save settings to DB.");
+            throw;
+        }
     }
 }

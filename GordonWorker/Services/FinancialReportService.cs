@@ -101,6 +101,7 @@ public class FinancialReportService : IFinancialReportService
         
         // Ensure CultureInfo is set from settings
         var culture = System.Globalization.CultureInfo.GetCultureInfo(settings.CurrencyCulture);
+        var personaName = !string.IsNullOrWhiteSpace(settings.SystemPersona) ? settings.SystemPersona : "Gordon";
 
         var body = $@"
 <!DOCTYPE html>
@@ -149,7 +150,7 @@ public class FinancialReportService : IFinancialReportService
                     
                     <!-- AI Insight -->
                     <div class='ai-box'>
-                        <h3>💡 The Weekly Brief</h3>
+                        <h3>💡 Insights from {personaName}</h3>
                         {aiExplanation}
                     </div>
 

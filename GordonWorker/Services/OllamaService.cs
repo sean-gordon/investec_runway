@@ -8,6 +8,7 @@ public interface IOllamaService
     Task<string> GenerateSqlAsync(string userPrompt);
     Task<string> FormatResponseAsync(string userPrompt, string dataContext);
     Task<string> GenerateSimpleReportAsync(string statsJson);
+    Task<bool> TestConnectionAsync();
 }
 
 public class OllamaService : IOllamaService
@@ -27,6 +28,25 @@ public class OllamaService : IOllamaService
     {
         var settings = await _settingsService.GetSettingsAsync();
         return (settings.OllamaBaseUrl, settings.OllamaModelName);
+    }
+
+    public async Task<bool> TestConnectionAsync()
+    {
+        try
+        {
+            var (baseUrl, _) = await GetConnectionDetailsAsync();
+            var baseUri = baseUrl.EndsWith("/") ? baseUrl : baseUrl + "/";
+            // /api/tags lists models, lightweight check
+            var fullUrl = new Uri(new Uri(baseUri), "api/tags"); 
+
+            var response = await _httpClient.GetAsync(fullUrl);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Ollama connection test failed.");
+            return false;
+        }
     }
 
     public async Task<string> GenerateSqlAsync(string userPrompt)

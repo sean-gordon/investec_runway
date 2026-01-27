@@ -6,6 +6,7 @@ namespace GordonWorker.Services;
 public interface IEmailService
 {
     Task SendEmailAsync(string subject, string body);
+    Task<bool> SendTestEmailAsync();
 }
 
 public class EmailService : IEmailService
@@ -30,8 +31,6 @@ public class EmailService : IEmailService
         if (string.IsNullOrEmpty(smtpHost) || string.IsNullOrEmpty(toAddress))
         {
             _logger.LogWarning("SMTP configuration missing. Email not sent.\nSubject: {Subject}", subject);
-            // In a real scenario, we might want to throw or handle this gracefully.
-            // For now, logging the intent.
             return;
         }
 
@@ -59,6 +58,21 @@ public class EmailService : IEmailService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send email.");
+            throw; // Re-throw for visibility in test method
+        }
+    }
+
+    public async Task<bool> SendTestEmailAsync()
+    {
+        try
+        {
+            await SendEmailAsync("Gordon Finance: Test Email", "<h1>It Works!</h1><p>This is a test email from your Gordon Finance Engine.</p>");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Test email failed.");
+            return false;
         }
     }
 }

@@ -99,6 +99,10 @@ public class FinancialReportService : IFinancialReportService
         // 6. Send Email
         var subject = $"Weekly Financial Report - {DateTime.Now:dd MMM yyyy}";
         
+        // Define explicit SA format: R 10 000.00 or R10,000.00 depending on preference.
+        // User requested: R100,000.00 (Comma thousands, Dot decimal usually, or Space thousands)
+        // Let's stick to standard SA: Space for thousands, Comma/Dot for decimal.
+        // Actually user prompt said "R100,000.00" -> Comma thousands, Dot decimal.
         // Ensure CultureInfo is set from settings
         var culture = System.Globalization.CultureInfo.GetCultureInfo(settings.CurrencyCulture);
         var personaName = !string.IsNullOrWhiteSpace(settings.SystemPersona) ? settings.SystemPersona : "Gordon";

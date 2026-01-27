@@ -62,14 +62,17 @@ public class InvestecClient : IInvestecClient
         var secret = _configuration["INVESTEC_SECRET"];
         var apiKey = _configuration["INVESTEC_API_KEY"];
 
-        if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(secret))
+        if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(secret) || string.IsNullOrEmpty(apiKey))
         {
-            _logger.LogWarning("Investec credentials missing.");
+            _logger.LogError("Investec credentials missing. ClientID: {IdSet}, Secret: {SecretSet}, ApiKey: {KeySet}", 
+                !string.IsNullOrEmpty(clientId), !string.IsNullOrEmpty(secret), !string.IsNullOrEmpty(apiKey));
             return string.Empty;
         }
 
+        _logger.LogInformation("Authenticating with Investec... ClientID ends in: ...{IdSuffix}", clientId.Length > 4 ? clientId.Substring(clientId.Length - 4) : "short");
+
         var request = new HttpRequestMessage(HttpMethod.Post, "identity/v2/oauth2/token");
-        var authString = Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes($"{clientId}:{secret}"));
+        var authString = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes($"{clientId}:{secret}"));
         request.Headers.Authorization = new AuthenticationHeaderValue("Basic", authString);
         request.Headers.Add("x-api-key", apiKey);
         
@@ -79,7 +82,13 @@ public class InvestecClient : IInvestecClient
         });
 
         var response = await _httpClient.SendAsync(request);
-        response.EnsureSuccessStatusCode();
+        
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorContent = await response.Content.ReadAsStringAsync();
+            _logger.LogError("Investec Auth Failed. Status: {Status}. Response: {Content}", response.StatusCode, errorContent);
+            response.EnsureSuccessStatusCode(); // Throw to trigger catch block in caller
+        }
 
         var content = await response.Content.ReadAsStringAsync();
         var tokenResponse = JsonSerializer.Deserialize<JsonElement>(content);

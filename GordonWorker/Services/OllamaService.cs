@@ -15,22 +15,18 @@ public class OllamaService : IOllamaService
     private readonly HttpClient _httpClient;
     private readonly ILogger<OllamaService> _logger;
     private readonly ISettingsService _settingsService;
-    private const string OllamaBaseUrl = "http://ollama:11434"; // Default, can be overridden
 
     public OllamaService(HttpClient httpClient, ILogger<OllamaService> logger, IConfiguration configuration, ISettingsService settingsService)
     {
         _httpClient = httpClient;
         _logger = logger;
         _settingsService = settingsService;
-        
-        var baseUrl = configuration["OLLAMA_BASE_URL"] ?? OllamaBaseUrl;
-        _httpClient.BaseAddress = new Uri(baseUrl);
     }
 
-    private async Task<string> GetModelNameAsync()
+    private async Task<(string Url, string Model)> GetConnectionDetailsAsync()
     {
         var settings = await _settingsService.GetSettingsAsync();
-        return settings.OllamaModelName;
+        return (settings.OllamaBaseUrl, settings.OllamaModelName);
     }
 
     public async Task<string> GenerateSqlAsync(string userPrompt)
@@ -57,7 +53,7 @@ Return ONLY the SQL query. Do not include markdown formatting or explanations.";
         var settings = await _settingsService.GetSettingsAsync();
         var persona = settings.SystemPersona;
 
-        var systemPrompt = $@"You are a Senior Financial Analyst and Actuary named '{persona}'. 
+        var systemPrompt = $ செய்யுங்கள்@"You are a Senior Financial Analyst and Actuary named '{persona}'. 
 Your goal is to provide expert financial advice based on the provided Data Context.
 The Data Context may contain a JSON 'FinancialHealthReport' with fields like:
 - WeightedDailyBurn (EMA)
@@ -68,7 +64,7 @@ The Data Context may contain a JSON 'FinancialHealthReport' with fields like:
 
 Interpret these metrics for the user. 
 - If 'SafeRunwayDays' is low, warn them. 
-- Use 'ValueAtRisk95' to explain potential daily shocks.
+- Use 'ValueAtRisk95' to explain potential daily shocks. 
 - Mention the 'TrendDirection'.
 
 If the Data Context is just a list of transactions, summarize it.
@@ -95,7 +91,7 @@ Use the provided JSON statistics to write a weekly summary.
 
     private async Task<string> GenerateCompletionAsync(string system, string prompt)
     {
-        var model = await GetModelNameAsync();
+        var (baseUrl, model) = await GetConnectionDetailsAsync();
         var request = new
         {
             model = model,
@@ -107,7 +103,11 @@ Use the provided JSON statistics to write a weekly summary.
         
         try 
         {
-            var response = await _httpClient.PostAsync("/api/generate", content);
+            // Ensure trailing slash logic
+            var baseUri = baseUrl.EndsWith("/") ? baseUrl : baseUrl + "/";
+            var fullUrl = new Uri(new Uri(baseUri), "api/generate");
+
+            var response = await _httpClient.PostAsync(fullUrl, content);
             response.EnsureSuccessStatusCode();
 
             var responseString = await response.Content.ReadAsStringAsync();
@@ -116,7 +116,7 @@ Use the provided JSON statistics to write a weekly summary.
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error calling Ollama.");
+            _logger.LogError(ex, "Error calling Ollama at {Url}.", baseUrl);
             return "I'm sorry, I couldn't process that request right now.";
         }
     }

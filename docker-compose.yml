@@ -11,17 +11,6 @@ services:
     ports:
       - "5432:5432"
 
-  ollama:
-    image: ollama/ollama:latest
-    volumes:
-      - ollama_data:/root/.ollama
-    networks:
-      - finance-net
-    ports:
-      - "11434:11434"
-    # To pull the model on startup if needed, though usually manual exec is required or custom entrypoint
-    # For now, we assume user pulls model 'deepseek-coder' manually or we add a script.
-    
   gordon-worker:
     build:
       context: ./GordonWorker
@@ -31,12 +20,10 @@ services:
       - INVESTEC_CLIENT_ID=${INVESTEC_CLIENT_ID}
       - INVESTEC_SECRET=${INVESTEC_SECRET}
       - INVESTEC_API_KEY=${INVESTEC_API_KEY}
-      - OLLAMA_BASE_URL=http://ollama:11434
     networks:
       - finance-net
     depends_on:
       - timescaledb
-      - ollama
     ports:
       - "52944:8080"
 
@@ -45,4 +32,3 @@ networks:
 
 volumes:
   timescaledb_data:
-  ollama_data:

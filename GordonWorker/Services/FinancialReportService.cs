@@ -116,9 +116,10 @@ public class FinancialReportService : IFinancialReportService
         .header h1 {{ color: #ffffff; margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.5px; }}
         .content {{ padding: 32px 24px; }}
         .ai-box {{ background-color: #f0f9ff; border-left: 4px solid #0ea5e9; padding: 20px; border-radius: 4px; margin-bottom: 24px; font-size: 16px; line-height: 1.6; color: #334155; }}
-        .ai-box h3 {{ margin-top: 0; color: #0369a1; font-size: 16px; text-transform: uppercase; letter-spacing: 0.5px; }}
-        .ai-box ul {{ margin-bottom: 0; padding-left: 20px; }}
-        .ai-box li {{ margin-bottom: 8px; }}
+        .ai-box h3 {{ margin-top: 0; color: #0369a1; font-size: 16px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; margin-bottom: 12px; }}
+        .ai-box ul {{ margin: 0; padding-left: 24px; list-style-type: disc; }}
+        .ai-box li {{ margin-bottom: 8px; padding-left: 4px; }}
+        .ai-box p {{ margin-top: 0; margin-bottom: 16px; }}
         .stats-header {{ font-size: 18px; font-weight: 700; color: #111827; margin-bottom: 16px; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px; margin-top: 32px; }}
         .stats-table {{ width: 100%; border-collapse: collapse; }}
         .stats-table th {{ text-align: left; padding: 12px 8px; color: #6b7280; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; border-bottom: 1px solid #e5e7eb; }}

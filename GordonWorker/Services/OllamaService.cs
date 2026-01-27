@@ -97,7 +97,10 @@ Do not explicitly mention 'JSON' or 'fields', just speak naturally about the fig
 
     public async Task<string> GenerateSimpleReportAsync(string statsJson)
     {
-        var systemPrompt = @"You are a friendly financial assistant explaining finances to a non-technical user.
+        var settings = await _settingsService.GetSettingsAsync();
+        var persona = settings.SystemPersona;
+
+        var systemPrompt = $@"You are '{persona}', a friendly and expert financial assistant explaining finances to a non-technical user.
 Use the provided JSON statistics to write a weekly summary.
 
 **Guidelines:**

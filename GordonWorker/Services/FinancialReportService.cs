@@ -17,6 +17,7 @@ public class FinancialReportService : IFinancialReportService
     private readonly IActuarialService _actuarialService;
     private readonly IOllamaService _ollamaService;
     private readonly ISettingsService _settingsService;
+    private readonly IInvestecClient _investecClient;
     private readonly ILogger<FinancialReportService> _logger;
 
     public FinancialReportService(
@@ -25,6 +26,7 @@ public class FinancialReportService : IFinancialReportService
         IActuarialService actuarialService,
         IOllamaService ollamaService,
         ISettingsService settingsService,
+        IInvestecClient investecClient,
         ILogger<FinancialReportService> logger)
     {
         _configuration = configuration;
@@ -32,12 +34,22 @@ public class FinancialReportService : IFinancialReportService
         _actuarialService = actuarialService;
         _ollamaService = ollamaService;
         _settingsService = settingsService;
+        _investecClient = investecClient;
         _logger = logger;
     }
 
     public async Task GenerateAndSendReportAsync()
     {
         var settings = await _settingsService.GetSettingsAsync();
+        
+        // 0. Fetch Real-time Balance
+        var accounts = await _investecClient.GetAccountsAsync();
+        decimal currentBalance = 0;
+        foreach (var acc in accounts)
+        {
+            currentBalance += await _investecClient.GetAccountBalanceAsync(acc.AccountId);
+        }
+
         using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
         await connection.OpenAsync();
 
@@ -47,10 +59,6 @@ public class FinancialReportService : IFinancialReportService
 
         var thisWeek = transactions.Where(t => t.TransactionDate >= DateTimeOffset.UtcNow.AddDays(-7)).ToList();
         var lastWeek = transactions.Where(t => t.TransactionDate < DateTimeOffset.UtcNow.AddDays(-7)).ToList();
-
-        // 2. Get Current Balance
-        var sqlBalance = "SELECT balance FROM transactions ORDER BY transaction_date DESC LIMIT 1";
-        var currentBalance = await connection.ExecuteScalarAsync<decimal?>(sqlBalance) ?? 0;
 
         // 3. Actuarial Analysis
         var fullHistorySql = "SELECT * FROM transactions WHERE transaction_date >= NOW() - INTERVAL '90 days'";

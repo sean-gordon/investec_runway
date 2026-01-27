@@ -11,6 +11,7 @@ public interface IInvestecClient
     Task<List<InvestecAccount>> GetAccountsAsync();
     Task<List<Transaction>> GetTransactionsAsync(string accountId, DateTimeOffset fromDate);
     Task<(bool Success, string Error)> TestConnectivityAsync();
+    Task<decimal> GetAccountBalanceAsync(string accountId);
 }
 
 public class InvestecAccount
@@ -34,6 +35,35 @@ public class InvestecClient : IInvestecClient
         _logger = logger;
         _configuration = configuration;
         _httpClient.BaseAddress = new Uri("https://openapi.investec.com/");
+    }
+
+    public async Task<decimal> GetAccountBalanceAsync(string accountId)
+    {
+        if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry)
+        {
+            await AuthenticateAsync();
+        }
+
+        var request = new HttpRequestMessage(HttpMethod.Get, $"za/pb/v1/accounts/{accountId}/balance");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+
+        var response = await _httpClient.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogError("Failed to fetch balance for account {AccountId}: {StatusCode}", accountId, response.StatusCode);
+            return 0;
+        }
+
+        var content = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(content);
+        // Navigate to data.currentBalance
+        if (doc.RootElement.TryGetProperty("data", out var data) && 
+            data.TryGetProperty("currentBalance", out var currentBalance))
+        {
+            return currentBalance.GetDecimal();
+        }
+        
+        return 0;
     }
 
     public async Task<(bool Success, string Error)> TestConnectivityAsync()

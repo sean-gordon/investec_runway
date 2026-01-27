@@ -34,14 +34,15 @@ public class ConnectivityWorker : BackgroundService
         using var scope = _serviceProvider.CreateScope();
         var client = scope.ServiceProvider.GetRequiredService<IInvestecClient>();
 
-        var isOnline = await client.TestConnectivityAsync();
+        var (isOnline, error) = await client.TestConnectivityAsync();
         
         _statusService.IsInvestecOnline = isOnline;
         _statusService.LastInvestecCheck = DateTime.UtcNow;
+        _statusService.LastError = error;
 
         if (isOnline)
             _logger.LogInformation("Investec API is ONLINE.");
         else
-            _logger.LogWarning("Investec API is OFFLINE.");
+            _logger.LogWarning("Investec API is OFFLINE. Error: {Error}", error);
     }
 }

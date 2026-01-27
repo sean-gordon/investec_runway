@@ -33,7 +33,8 @@ public class SettingsController : ControllerBase
         return Ok(new 
         { 
             InvestecOnline = _statusService.IsInvestecOnline,
-            LastCheck = _statusService.LastInvestecCheck 
+            LastCheck = _statusService.LastInvestecCheck,
+            LastError = _statusService.LastError
         });
     }
 

@@ -53,7 +53,7 @@ Return ONLY the SQL query. Do not include markdown formatting or explanations.";
         var settings = await _settingsService.GetSettingsAsync();
         var persona = settings.SystemPersona;
 
-        var systemPrompt = $ செய்யுங்கள்@"You are a Senior Financial Analyst and Actuary named '{persona}'. 
+        var systemPrompt = $@"You are a Senior Financial Analyst and Actuary named '{persona}'. 
 Your goal is to provide expert financial advice based on the provided Data Context.
 The Data Context may contain a JSON 'FinancialHealthReport' with fields like:
 - WeightedDailyBurn (EMA)

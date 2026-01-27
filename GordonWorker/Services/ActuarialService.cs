@@ -37,28 +37,31 @@ public class ActuarialService : IActuarialService
         var settings = _settingsService.GetSettingsAsync().GetAwaiter().GetResult();
 
         // 1. Basic Filtering (Expenses only)
-        // Investec logic: Debits are positive. Credits are positive but category is 'CREDIT'.
-        // So Expense = Amount > 0 AND Category != 'CREDIT'
+        // Expense = Amount > 0 AND Category != 'CREDIT'
         var expenses = history.Where(t => t.Amount > 0 && !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase)).ToList();
         
         // 2. Monthly Stats
-        var now = DateTimeOffset.UtcNow;
-        var startOfThisMonth = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
+        var now = DateTime.UtcNow;
+        var startOfThisMonth = new DateTime(now.Year, now.Month, 1);
         var startOfLastMonth = startOfThisMonth.AddMonths(-1);
         
-        var spendThisMonth = Math.Abs(expenses.Where(t => t.TransactionDate >= startOfThisMonth).Sum(t => t.Amount));
-        var spendLastMonth = Math.Abs(expenses.Where(t => t.TransactionDate >= startOfLastMonth && t.TransactionDate < startOfThisMonth).Sum(t => t.Amount));
+        // Compare purely on Date component to avoid TimeZone issues
+        var spendThisMonth = expenses
+            .Where(t => t.TransactionDate.Date >= startOfThisMonth.Date)
+            .Sum(t => t.Amount);
+            
+        var spendLastMonth = expenses
+            .Where(t => t.TransactionDate.Date >= startOfLastMonth.Date && t.TransactionDate.Date < startOfThisMonth.Date)
+            .Sum(t => t.Amount);
 
         // 3. Linear Regression for Month-End Projection
-        // We project based on daily cumulative spend for the current month
         decimal projectedMonthEnd = spendThisMonth;
         var daysPassed = (now - startOfThisMonth).TotalDays;
         var daysInMonth = DateTime.DaysInMonth(now.Year, now.Month);
         
-        if (daysPassed > 1)
+        // Avoid divide by zero or projecting on day 0
+        if (daysPassed >= 1)
         {
-            // Simple linear projection: (Spend / DaysPassed) * DaysInMonth
-            // Enhancment: weighted towards recent days could be better, but linear is a solid baseline for "pace"
             projectedMonthEnd = (spendThisMonth / (decimal)daysPassed) * daysInMonth;
         }
 

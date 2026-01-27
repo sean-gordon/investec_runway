@@ -63,6 +63,12 @@ public class FinancialReportService : IFinancialReportService
         // 3. Actuarial Analysis
         var fullHistorySql = "SELECT * FROM transactions WHERE transaction_date >= NOW() - INTERVAL '90 days'";
         var fullHistory = (await connection.QueryAsync<Transaction>(fullHistorySql)).ToList();
+        
+        _logger.LogWarning("DEBUG: Full History Count: {Count}. Total Amount: {Sum}. First Date: {Date}", 
+            fullHistory.Count, 
+            fullHistory.Sum(t => t.Amount), 
+            fullHistory.FirstOrDefault()?.TransactionDate);
+
         var healthReport = _actuarialService.AnalyzeHealth(fullHistory, currentBalance);
 
         // 4. Prepare Comparison Stats

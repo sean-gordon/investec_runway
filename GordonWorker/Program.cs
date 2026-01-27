@@ -1,7 +1,11 @@
 using GordonWorker.Services;
 using GordonWorker.Workers;
+using Dapper;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Enable snake_case mapping for Dapper (Postgres style)
+DefaultTypeMap.MatchNamesWithUnderscores = true;
 
 // Add services to the container.
 

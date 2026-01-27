@@ -6,6 +6,7 @@ namespace GordonWorker.Services;
 
 public class AppSettings
 {
+    public string UserName { get; set; } = "Sir/Madam"; // Default name
     public string ReportDayOfWeek { get; set; } = "Monday";
     public int ReportHour { get; set; } = 9;
     public decimal ActuarialAlpha { get; set; } = 0.15m;

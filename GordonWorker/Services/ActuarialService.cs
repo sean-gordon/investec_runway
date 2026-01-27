@@ -36,8 +36,10 @@ public class ActuarialService : IActuarialService
     {
         var settings = _settingsService.GetSettingsAsync().GetAwaiter().GetResult();
 
-        // 1. Basic Filtering (Expenses only) - Investec returns Debits as positive amounts
-        var expenses = history.Where(t => string.Equals(t.Category, "DEBIT", StringComparison.OrdinalIgnoreCase)).ToList();
+        // 1. Basic Filtering (Expenses only)
+        // Investec logic: Debits are positive. Credits are positive but category is 'CREDIT'.
+        // So Expense = Amount > 0 AND Category != 'CREDIT'
+        var expenses = history.Where(t => t.Amount > 0 && !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase)).ToList();
         
         // 2. Monthly Stats
         var now = DateTimeOffset.UtcNow;

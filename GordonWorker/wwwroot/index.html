@@ -82,6 +82,10 @@
                                 <h2 class="font-semibold text-gray-900">Notifications</h2>
                             </div>
                             <div class="p-6 space-y-4">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Your Name (For Email)</label>
+                                    <input type="text" v-model="settings.userName" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2 text-sm">
+                                </div>
                                 <div class="grid grid-cols-2 gap-4">
                                     <div>
                                         <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Host</label>
@@ -226,6 +230,7 @@
             data() {
                 return {
                     settings: {
+                        userName: 'Sir/Madam',
                         reportDayOfWeek: 'Monday',
                         reportHour: 9,
                         actuarialAlpha: 0.15,

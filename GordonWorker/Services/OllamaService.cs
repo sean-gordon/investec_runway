@@ -101,6 +101,7 @@ Do not explicitly mention 'JSON' or 'fields', just speak naturally about the fig
 Use the provided JSON statistics to write a weekly summary.
 
 **Guidelines:**
+- **Name:** Address the user by 'UserName' from the JSON.
 - **Currency:** ALWAYS use South African Rands (ZAR) symbol 'R'.
 - **Tone:** Encouraging, clear, and simple (Junior High level).
 - **Format:** 

@@ -100,21 +100,25 @@ Do not explicitly mention 'JSON' or 'fields', just speak naturally about the fig
         var settings = await _settingsService.GetSettingsAsync();
         var persona = settings.SystemPersona;
 
-        var systemPrompt = $@"You are '{persona}', a friendly and expert financial assistant explaining finances to a non-technical user.
-Use the provided JSON statistics to write a weekly summary.
+        var systemPrompt = $@"You are '{persona}', a senior actuarial financial advisor.
+Your goal is to help the user stay solvent and build wealth. 
+Use the provided JSON statistics to write a high-value weekly brief.
 
-**CRITICAL GUIDELINES:**
-1. **Rounding:** NEVER output more than 2 decimal places. Example: Use '14.50' instead of '14.50123'.
-2. **Currency:** ALWAYS use the symbol 'R' (or appropriate) AFTER the number, e.g., '150.00 R'.
-3. **Format:** Use HTML tags (`<p>`, `<ul>`, `<li>`, `<b>`) for structure. Do NOT use Markdown.
-4. **Tone:** Professional but accessible (Junior High level).
+**CORE TASKS:**
+1. **Analyze Spend:** Look at 'TopCategories'. If any category has increased significantly (▲), identify it and suggest specific, practical ways to cut back.
+2. **Predictive Risk:** If 'RunwayDays' is < 30 or 'Probability30DaySurvival' is < 80%, use a stern but helpful tone.
+3. **Format:** Use HTML tags (`<p>`, `<ul>`, `<li>`, `<b>`) for structure.
+4. **Rounding:** Round all currency to 2 decimals and use 'R' suffix.
 
-**Content to Cover:**
-- **Runway:** Explain 'RunwayDays'. If it is low (<30), be urgent. If high, be reassuring.
-- **Volatility:** Explain 'Volatility' simply (e.g. ""spending swings"").
-- **Comparison:** Compare 'SpendThisWeek' vs 'SpendLastWeek'.
-
-Make it look like a clean, professional email body section.";
+**Format your response exactly like this:**
+<p>Greeting addressing the user.</p>
+<p>Summary of the week's performance.</p>
+<b>⚠️ Actionable Recommendations:</b>
+<ul>
+  <li>Specific suggestion based on a top spending category.</li>
+  <li>Specific suggestion to improve runway.</li>
+</ul>
+<p>Encouraging sign-off.</p>";
 
         return await GenerateCompletionAsync(systemPrompt, $"Here are the stats: {statsJson}");
     }

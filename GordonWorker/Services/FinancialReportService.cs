@@ -64,15 +64,9 @@ public class FinancialReportService : IFinancialReportService
         var fullHistorySql = "SELECT * FROM transactions WHERE transaction_date >= NOW() - INTERVAL '90 days'";
         var fullHistory = (await connection.QueryAsync<Transaction>(fullHistorySql)).ToList();
         
-        _logger.LogWarning("DEBUG: Full History Count: {Count}. Total Amount: {Sum}. First Date: {Date}", 
-            fullHistory.Count, 
-            fullHistory.Sum(t => t.Amount), 
-            fullHistory.FirstOrDefault()?.TransactionDate);
-
         var healthReport = _actuarialService.AnalyzeHealth(fullHistory, currentBalance);
 
         // 4. Prepare Comparison Stats
-        // Expense = Amount > 0 AND Category != 'CREDIT'
         var thisWeekSpend = thisWeek
             .Where(t => t.Amount > 0 && !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase))
             .Sum(t => t.Amount);
@@ -94,7 +88,8 @@ public class FinancialReportService : IFinancialReportService
             SpendThisMonth = healthReport.SpendThisMonth.ToString("F2"),
             SpendLastMonth = healthReport.SpendLastMonth.ToString("F2"),
             ProjectedMonthEnd = healthReport.ProjectedMonthEndSpend.ToString("F2"),
-            Probability30DaySurvival = healthReport.RunwayProbability.ToString("F1") + "%"
+            Probability30DaySurvival = healthReport.RunwayProbability.ToString("F1") + "%",
+            TopCategories = healthReport.TopCategories // NEW: Pass to AI
         };
 
         var jsonStats = JsonSerializer.Serialize(stats);
@@ -106,17 +101,29 @@ public class FinancialReportService : IFinancialReportService
         var subject = $"Weekly Financial Report - {DateTime.Now:dd MMM yyyy}";
         
         // Define explicit SA format
-        // NOTE: Standard SA format is "R 100,000.00" (if English/US influenced) or "R 100 000,00" (Standard).
-        // User requested "R100,000.00" explicitly.
         var culture = (System.Globalization.CultureInfo)System.Globalization.CultureInfo.InvariantCulture.Clone();
         culture.NumberFormat.CurrencySymbol = "R";
         culture.NumberFormat.CurrencyGroupSeparator = ",";
         culture.NumberFormat.CurrencyDecimalSeparator = ".";
         culture.NumberFormat.CurrencyDecimalDigits = 2;
-        culture.NumberFormat.CurrencyPositivePattern = 0; // $n -> R100
-        culture.NumberFormat.CurrencyNegativePattern = 1; // -$n -> -R100
+        culture.NumberFormat.CurrencyPositivePattern = 0; 
+        culture.NumberFormat.CurrencyNegativePattern = 1; 
 
         var personaName = !string.IsNullOrWhiteSpace(settings.SystemPersona) ? settings.SystemPersona : "Gordon";
+
+        // Build Category Rows
+        var categoryRows = "";
+        foreach (var cat in healthReport.TopCategories)
+        {
+            var changeColor = cat.ChangeFromLastMonth > 0 ? "#dc2626" : "#059669"; 
+            var changeSign = cat.ChangeFromLastMonth > 0 ? "▲" : "▼";
+            categoryRows += $@"
+                <tr>
+                    <td>{cat.Name}</td>
+                    <td style='text-align: right;' class='amount'>{string.Format(culture, "{0:C}", cat.Amount)}</td>
+                    <td style='text-align: right; color: {changeColor}; font-size: 12px; font-weight: 600;'>{changeSign} {Math.Abs(cat.ChangeFromLastMonth):F0}%</td>
+                </tr>";
+        }
 
         var body = $@"
 <!DOCTYPE html>
@@ -152,24 +159,19 @@ public class FinancialReportService : IFinancialReportService
     <div class='wrapper'>
         <br>
         <table class='main'>
-            <!-- Header -->
             <tr>
                 <td class='header'>
                     <h1>Gordon Finance Engine</h1>
                 </td>
             </tr>
-
-            <!-- Content -->
             <tr>
                 <td class='content'>
                     
-                    <!-- AI Insight -->
                     <div class='ai-box'>
                         <h3>💡 Insights from {personaName}</h3>
                         {aiExplanation}
                     </div>
 
-                    <!-- Monthly Pulse -->
                     <div class='stats-header'>Monthly Pulse (MTD)</div>
                     <table class='stats-table'>
                         <tr>
@@ -190,7 +192,16 @@ public class FinancialReportService : IFinancialReportService
                         </tr>
                     </table>
 
-                    <!-- Vital Signs -->
+                    <div class='stats-header'>Top Spending Categories</div>
+                    <table class='stats-table'>
+                        <tr>
+                            <th>Category</th>
+                            <th style='text-align: right;'>Amount</th>
+                            <th style='text-align: right;'>Vs Last Month</th>
+                        </tr>
+                        {categoryRows}
+                    </table>
+
                     <div class='stats-header'>Runway & Risk</div>
                     <table class='stats-table'>
                         <tr>

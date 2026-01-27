@@ -20,7 +20,7 @@ public record FinancialHealthReport(
     List<CategorySpend> TopCategories
 );
 
-public record CategorySpend(string Name, decimal Amount, decimal ChangeFromLastMonth);
+public record CategorySpend(string Name, decimal Amount, decimal ChangeAmount, decimal ChangePercentage);
 
 public interface IActuarialService
 {
@@ -57,13 +57,14 @@ public class ActuarialService : IActuarialService
         var spendLastMonth = lastMonthExpenses.Sum(t => t.Amount);
 
         // 3. Category Analysis (Top 3)
-        // We normalize descriptions to get broad categories (e.g. "CHECKERS..." -> "CHECKERS")
+        // Normalize descriptions to catch main vendors (e.g. "CHECKERS 123" -> "CHECKERS")
         string Normalize(string desc) 
         {
             if (string.IsNullOrEmpty(desc)) return "Uncategorized";
-            var clean = Regex.Replace(desc, @"\d", "").Trim(); // Remove numbers
-            // Take first 2 words as "Category"
+            // Remove common noise like dates, numbers, and "YOCO *"
+            var clean = Regex.Replace(desc, @"\d|ZA|CPT|JHB|GP|GAUTENG|PTY|LTD|\*", "").Trim();
             var parts = clean.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            // Take first 2 words for context
             return parts.Length > 0 ? (parts.Length > 1 ? $"{parts[0]} {parts[1]}" : parts[0]) : "Uncategorized";
         }
 
@@ -72,8 +73,7 @@ public class ActuarialService : IActuarialService
             .Select(g => new 
             { 
                 Name = g.Key, 
-                Amount = g.Sum(t => t.Amount),
-                Count = g.Count()
+                Amount = g.Sum(t => t.Amount)
             })
             .OrderByDescending(x => x.Amount)
             .Take(3)
@@ -82,29 +82,24 @@ public class ActuarialService : IActuarialService
         var categoryReport = new List<CategorySpend>();
         foreach (var cat in topCategories)
         {
-            // Find same category spend last month for comparison
             var lastMonthCatSpend = lastMonthExpenses
                 .Where(t => Normalize(t.Description) == cat.Name)
                 .Sum(t => t.Amount);
             
-            decimal change = lastMonthCatSpend == 0 ? 100 : ((cat.Amount - lastMonthCatSpend) / lastMonthCatSpend) * 100;
-            categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, change));
+            decimal diff = cat.Amount - lastMonthCatSpend;
+            decimal percent = lastMonthCatSpend == 0 ? 100 : (diff / lastMonthCatSpend) * 100;
+            categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent));
         }
 
         // 4. Linear Regression for Month-End Projection
         decimal projectedMonthEnd = spendThisMonth;
         var daysPassed = (today - startOfThisMonth).TotalDays + 1; 
         var daysInMonth = DateTime.DaysInMonth(today.Year, today.Month);
-        
-        if (daysPassed >= 1)
-        {
-            projectedMonthEnd = (spendThisMonth / (decimal)daysPassed) * daysInMonth;
-        }
+        if (daysPassed >= 1) projectedMonthEnd = (spendThisMonth / (decimal)daysPassed) * daysInMonth;
 
         // 5. Daily Aggregation & Burn Rate
         var analysisWindowDays = settings.AnalysisWindowDays > 0 ? settings.AnalysisWindowDays : 90;
         var windowStartDate = today.AddDays(-analysisWindowDays);
-
         var validExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= windowStartDate).ToList();
         var totalWindowSpend = validExpenses.Sum(t => t.Amount);
         var avgDailySpend = (double)totalWindowSpend / analysisWindowDays;
@@ -130,17 +125,9 @@ public class ActuarialService : IActuarialService
         // 6. Runway Scenarios
         var baseBurn = weightedBurn > 0 ? weightedBurn : (decimal)avgDailySpend;
         if (baseBurn <= 0) baseBurn = 1; 
-
         var expectedRunway = currentBalance / baseBurn;
-        var stressBurn = (decimal)((double)baseBurn + stdDev); 
-        var safeRunway = stressBurn > 0 ? currentBalance / stressBurn : 0;
-        var lowBurn = (decimal)Math.Max((double)baseBurn - stdDev, 1.0);
-        var optimisticRunway = currentBalance / lowBurn;
 
-        // 7. Value at Risk
-        var maxProbableDailySpend = avgDailySpend + (1.645 * stdDev);
-
-        // 8. Trend Analysis
+        // 7. Trend Analysis
         var trend = "Stable";
         if (analysisWindowDays >= 60)
         {
@@ -152,7 +139,7 @@ public class ActuarialService : IActuarialService
             else if (period2Spend < period1Spend * 0.9m) trend = "Improving";
         }
 
-        // 9. Monte Carlo Probability
+        // 8. Monte Carlo Probability
         double probSurvival = 0;
         if (stdDev > 0)
         {
@@ -171,10 +158,10 @@ public class ActuarialService : IActuarialService
             WeightedDailyBurn: weightedBurn,
             MonthlyBurnRate: weightedBurn * 30,
             BurnVolatility: stdDev,
-            SafeRunwayDays: safeRunway,
+            SafeRunwayDays: currentBalance / (decimal)((double)baseBurn + stdDev),
             ExpectedRunwayDays: expectedRunway,
-            OptimisticRunwayDays: optimisticRunway,
-            ValueAtRisk95: (decimal)maxProbableDailySpend,
+            OptimisticRunwayDays: currentBalance / (decimal)Math.Max((double)baseBurn - stdDev, 1.0),
+            ValueAtRisk95: (decimal)(avgDailySpend + (1.645 * stdDev)),
             TrendDirection: trend,
             SpendThisMonth: spendThisMonth,
             SpendLastMonth: spendLastMonth,
@@ -186,14 +173,8 @@ public class ActuarialService : IActuarialService
 
     private double CumulativeDistributionFunction(double x)
     {
-        double a1 =  0.254829592;
-        double a2 = -0.284496736;
-        double a3 =  1.421413741;
-        double a4 = -1.453152027;
-        double a5 =  1.061405429;
-        double p  =  0.3275911;
-        int sign = 1;
-        if (x < 0) sign = -1;
+        double a1 = 0.254829592; double a2 = -0.284496736; double a3 = 1.421413741; double a4 = -1.453152027; double a5 = 1.061405429; double p = 0.3275911;
+        int sign = 1; if (x < 0) sign = -1;
         x = Math.Abs(x) / Math.Sqrt(2.0);
         double t = 1.0 / (1.0 + p * x);
         double y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.Exp(-x * x);

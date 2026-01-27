@@ -42,7 +42,6 @@ public class FinancialReportService : IFinancialReportService
     {
         var settings = await _settingsService.GetSettingsAsync();
         
-        // 0. Fetch Real-time Balance
         var accounts = await _investecClient.GetAccountsAsync();
         decimal currentBalance = 0;
         foreach (var acc in accounts)
@@ -53,20 +52,17 @@ public class FinancialReportService : IFinancialReportService
         using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
         await connection.OpenAsync();
 
-        // 1. Get Data (Last 14 days for comparison)
         var sql = "SELECT * FROM transactions WHERE transaction_date >= NOW() - INTERVAL '14 days'";
         var transactions = (await connection.QueryAsync<Transaction>(sql)).ToList();
 
         var thisWeek = transactions.Where(t => t.TransactionDate >= DateTimeOffset.UtcNow.AddDays(-7)).ToList();
         var lastWeek = transactions.Where(t => t.TransactionDate < DateTimeOffset.UtcNow.AddDays(-7)).ToList();
 
-        // 3. Actuarial Analysis
         var fullHistorySql = "SELECT * FROM transactions WHERE transaction_date >= NOW() - INTERVAL '90 days'";
         var fullHistory = (await connection.QueryAsync<Transaction>(fullHistorySql)).ToList();
         
         var healthReport = _actuarialService.AnalyzeHealth(fullHistory, currentBalance);
 
-        // 4. Prepare Comparison Stats
         var thisWeekSpend = thisWeek
             .Where(t => t.Amount > 0 && !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase))
             .Sum(t => t.Amount);
@@ -84,23 +80,19 @@ public class FinancialReportService : IFinancialReportService
             RunwayDays = healthReport.ExpectedRunwayDays.ToString("F1"),
             Volatility = healthReport.BurnVolatility.ToString("F2"),
             Trend = healthReport.TrendDirection,
-            Currency = settings.CurrencyCulture,
+            Currency = "ZAR",
             SpendThisMonth = healthReport.SpendThisMonth.ToString("F2"),
             SpendLastMonth = healthReport.SpendLastMonth.ToString("F2"),
             ProjectedMonthEnd = healthReport.ProjectedMonthEndSpend.ToString("F2"),
             Probability30DaySurvival = healthReport.RunwayProbability.ToString("F1") + "%",
-            TopCategories = healthReport.TopCategories // NEW: Pass to AI
+            TopCategories = healthReport.TopCategories
         };
 
         var jsonStats = JsonSerializer.Serialize(stats);
-
-        // 5. Generate Content with AI
         var aiExplanation = await _ollamaService.GenerateSimpleReportAsync(jsonStats);
 
-        // 6. Send Email
         var subject = $"Weekly Financial Report - {DateTime.Now:dd MMM yyyy}";
         
-        // Define explicit SA format
         var culture = (System.Globalization.CultureInfo)System.Globalization.CultureInfo.InvariantCulture.Clone();
         culture.NumberFormat.CurrencySymbol = "R";
         culture.NumberFormat.CurrencyGroupSeparator = ",";
@@ -111,17 +103,16 @@ public class FinancialReportService : IFinancialReportService
 
         var personaName = !string.IsNullOrWhiteSpace(settings.SystemPersona) ? settings.SystemPersona : "Gordon";
 
-        // Build Category Rows
         var categoryRows = "";
         foreach (var cat in healthReport.TopCategories)
         {
-            var changeColor = cat.ChangeFromLastMonth > 0 ? "#dc2626" : "#059669"; 
-            var changeSign = cat.ChangeFromLastMonth > 0 ? "▲" : "▼";
+            var changeColor = cat.ChangePercentage > 0 ? "#dc2626" : (cat.ChangePercentage < 0 ? "#059669" : "#6b7280"); 
+            var changeSign = cat.ChangePercentage > 0 ? "▲" : (cat.ChangePercentage < 0 ? "▼" : "•");
             categoryRows += $@"
                 <tr>
                     <td>{cat.Name}</td>
                     <td style='text-align: right;' class='amount'>{string.Format(culture, "{0:C}", cat.Amount)}</td>
-                    <td style='text-align: right; color: {changeColor}; font-size: 12px; font-weight: 600;'>{changeSign} {Math.Abs(cat.ChangeFromLastMonth):F0}%</td>
+                    <td style='text-align: right; color: {changeColor}; font-size: 12px; font-weight: 600;'>{changeSign} {Math.Abs(cat.ChangePercentage):F0}%</td>
                 </tr>";
         }
 
@@ -159,85 +150,37 @@ public class FinancialReportService : IFinancialReportService
     <div class='wrapper'>
         <br>
         <table class='main'>
-            <tr>
-                <td class='header'>
-                    <h1>Gordon Finance Engine</h1>
-                </td>
-            </tr>
+            <tr><td class='header'><h1>Gordon Finance Engine</h1></td></tr>
             <tr>
                 <td class='content'>
-                    
                     <div class='ai-box'>
                         <h3>💡 Insights from {personaName}</h3>
                         {aiExplanation}
                     </div>
-
                     <div class='stats-header'>Monthly Pulse (MTD)</div>
                     <table class='stats-table'>
-                        <tr>
-                            <th>Metric</th>
-                            <th style='text-align: right;'>Value</th>
-                        </tr>
-                        <tr>
-                            <td>Spend This Month</td>
-                            <td style='text-align: right;' class='amount'>{string.Format(culture, "{0:C}", healthReport.SpendThisMonth)}</td>
-                        </tr>
-                        <tr>
-                            <td>Spend Last Month</td>
-                            <td style='text-align: right;' class='amount'>{string.Format(culture, "{0:C}", healthReport.SpendLastMonth)}</td>
-                        </tr>
-                        <tr>
-                            <td>Projected Month End</td>
-                            <td style='text-align: right;' class='amount highlight-warn'>{string.Format(culture, "{0:C}", healthReport.ProjectedMonthEndSpend)}</td>
-                        </tr>
+                        <tr><th>Metric</th><th style='text-align: right;'>Value</th></tr>
+                        <tr><td>Spend This Month</td><td style='text-align: right;' class='amount'>{string.Format(culture, "{0:C}", healthReport.SpendThisMonth)}</td></tr>
+                        <tr><td>Spend Last Month</td><td style='text-align: right;' class='amount'>{string.Format(culture, "{0:C}", healthReport.SpendLastMonth)}</td></tr>
+                        <tr><td>Projected Month End</td><td style='text-align: right;' class='amount highlight-warn'>{string.Format(culture, "{0:C}", healthReport.ProjectedMonthEndSpend)}</td></tr>
                     </table>
-
                     <div class='stats-header'>Top Spending Categories</div>
                     <table class='stats-table'>
-                        <tr>
-                            <th>Category</th>
-                            <th style='text-align: right;'>Amount</th>
-                            <th style='text-align: right;'>Vs Last Month</th>
-                        </tr>
+                        <tr><th>Category</th><th style='text-align: right;'>Amount</th><th style='text-align: right;'>Vs Last Month</th></tr>
                         {categoryRows}
                     </table>
-
                     <div class='stats-header'>Runway & Risk</div>
                     <table class='stats-table'>
-                        <tr>
-                            <th>Metric</th>
-                            <th style='text-align: right;'>Value</th>
-                        </tr>
-                        <tr>
-                            <td>Current Balance</td>
-                            <td style='text-align: right;' class='amount'>{string.Format(culture, "{0:C}", currentBalance)}</td>
-                        </tr>
-                        <tr>
-                            <td>Projected Runway</td>
-                            <td style='text-align: right;' class='{(healthReport.ExpectedRunwayDays < 30 ? "highlight-bad" : "highlight-good")}'>
-                                {healthReport.ExpectedRunwayDays:F0} Days
-                            </td>
-                        </tr>
-                        <tr>
-                            <td>30-Day Survival Probability</td>
-                            <td style='text-align: right;' class='{(healthReport.RunwayProbability < 80 ? "highlight-bad" : "highlight-good")}'>
-                                {healthReport.RunwayProbability:F1}%
-                            </td>
-                        </tr>
-                        <tr>
-                            <td>Spending Trend</td>
-                            <td style='text-align: right;'>{healthReport.TrendDirection}</td>
-                        </tr>
+                        <tr><th>Metric</th><th style='text-align: right;'>Value</th></tr>
+                        <tr><td>Current Balance</td><td style='text-align: right;' class='amount'>{string.Format(culture, "{0:C}", currentBalance)}</td></tr>
+                        <tr><td>Projected Runway</td><td style='text-align: right;' class='{(healthReport.ExpectedRunwayDays < 30 ? "highlight-bad" : "highlight-good")}'>{healthReport.ExpectedRunwayDays:F0} Days</td></tr>
+                        <tr><td>30-Day Survival Probability</td><td style='text-align: right;' class='{(healthReport.RunwayProbability < 80 ? "highlight-bad" : "highlight-good")}'>{healthReport.RunwayProbability:F1}%</td></tr>
+                        <tr><td>Spending Trend</td><td style='text-align: right;'>{healthReport.TrendDirection}</td></tr>
                     </table>
-
                 </td>
             </tr>
         </table>
-        
-        <div class='footer'>
-            Generated automatically by your Gordon Finance Engine.<br>
-            {DateTime.Now:yyyy-MM-dd HH:mm}
-        </div>
+        <div class='footer'>Generated automatically by your Gordon Finance Engine.<br>{DateTime.Now:yyyy-MM-dd HH:mm}</div>
     </div>
 </body>
 </html>";

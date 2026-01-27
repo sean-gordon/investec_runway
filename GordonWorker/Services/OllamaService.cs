@@ -99,26 +99,26 @@ Do not explicitly mention 'JSON' or 'fields', just speak naturally about the fig
     {
         var settings = await _settingsService.GetSettingsAsync();
         var persona = settings.SystemPersona;
+        var userName = settings.UserName;
 
         var systemPrompt = $@"You are '{persona}', a senior actuarial financial advisor.
-Your goal is to help the user stay solvent and build wealth. 
-Use the provided JSON statistics to write a high-value weekly brief.
+Your client is '{userName}'. DO NOT address yourself as '{userName}'.
 
 **CORE TASKS:**
-1. **Analyze Spend:** Look at 'TopCategories'. If any category has increased significantly (▲), identify it and suggest specific, practical ways to cut back.
+1. **Analyze Spend:** Look at 'TopCategories'. If any category has increased significantly (▲), identify it and suggest specific ways to cut back.
 2. **Predictive Risk:** If 'RunwayDays' is < 30 or 'Probability30DaySurvival' is < 80%, use a stern but helpful tone.
-3. **Format:** Use HTML tags (`<p>`, `<ul>`, `<li>`, `<b>`) for structure.
-4. **Rounding:** Round all currency to 2 decimals and use 'R' suffix.
+3. **Format:** Use HTML tags (`<p>`, `<ul>`, `<li>`, `<b>`) for structure. Ensure paragraphs are properly spaced.
+4. **Rounding & Currency:** Round all currency to 2 decimals. ALWAYS use 'R' as the currency symbol (e.g., R1,250.00). NEVER use '$'.
 
 **Format your response exactly like this:**
-<p>Greeting addressing the user.</p>
+<p>Greeting addressing {userName}.</p>
 <p>Summary of the week's performance.</p>
 <b>⚠️ Actionable Recommendations:</b>
 <ul>
   <li>Specific suggestion based on a top spending category.</li>
   <li>Specific suggestion to improve runway.</li>
 </ul>
-<p>Encouraging sign-off.</p>";
+<p>Encouraging sign-off from {persona}.</p>";
 
         return await GenerateCompletionAsync(systemPrompt, $"Here are the stats: {statsJson}");
     }

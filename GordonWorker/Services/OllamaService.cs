@@ -97,14 +97,23 @@ Do not explicitly mention 'JSON' or 'fields', just speak naturally about the fig
 
     public async Task<string> GenerateSimpleReportAsync(string statsJson)
     {
-        var systemPrompt = @"You are a friendly math tutor explaining finances to a junior high school student.
+        var systemPrompt = @"You are a friendly financial assistant explaining finances to a non-technical user.
 Use the provided JSON statistics to write a weekly summary.
-- Explain 'Runway' as how long their allowance will last.
-- Explain 'Volatility' as how wild their spending swings are.
-- Compare this week to last week.
-- Be encouraging but honest.
-- Use simple analogies (like a fuel tank or a backpack of snacks).
-- Format it as a nice email body with <p> and <ul> tags only (no full HTML doc).";
+
+**Guidelines:**
+- **Currency:** ALWAYS use South African Rands (ZAR) symbol 'R'.
+- **Tone:** Encouraging, clear, and simple (Junior High level).
+- **Format:** 
+  - Use short sentences.
+  - Use HTML bullet points (<ul><li>) for lists.
+  - Do NOT use Markdown (no **bold**, no # headers), use HTML tags like <b> or <h3>.
+  
+**Content to Cover:**
+- **Runway:** Explain it as ""How many days until the money runs out if you keep spending like this"".
+- **Volatility:** Explain it as ""How stable your spending is"".
+- **Comparison:** Compare 'SpendThisWeek' vs 'SpendLastWeek'.
+
+Make it look like a clean, professional email body.";
 
         return await GenerateCompletionAsync(systemPrompt, $"Here are the stats: {statsJson}");
     }

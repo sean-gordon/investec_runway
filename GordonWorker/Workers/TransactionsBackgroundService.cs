@@ -61,11 +61,18 @@ public class TransactionsBackgroundService : BackgroundService
 
         var totalIngested = 0;
 
+        // Check if we need a deep sync (empty table)
+        var countSql = "SELECT COUNT(*) FROM transactions";
+        var transactionCount = await connection.ExecuteScalarAsync<int>(countSql);
+        
+        // If empty, fetch last 180 days. Otherwise, just last 10 minutes (buffer).
+        var fetchWindow = transactionCount == 0 ? TimeSpan.FromDays(180) : TimeSpan.FromMinutes(10);
+        var fromDate = DateTimeOffset.UtcNow.Subtract(fetchWindow);
+
+        _logger.LogInformation("Syncing transactions from: {FromDate} (Deep Sync: {IsDeep})", fromDate, transactionCount == 0);
+
         foreach (var account in accounts)
         {
-            // Fetch transactions from 5 minutes ago for each account
-            var fromDate = DateTimeOffset.UtcNow.AddMinutes(-5);
-            
             var transactions = await client.GetTransactionsAsync(account.AccountId, fromDate);
             
             if (transactions.Count == 0) continue;

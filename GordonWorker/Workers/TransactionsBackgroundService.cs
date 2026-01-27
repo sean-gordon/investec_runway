@@ -43,38 +43,49 @@ public class TransactionsBackgroundService : BackgroundService
     {
         using var scope = _serviceProvider.CreateScope();
         var client = scope.ServiceProvider.GetRequiredService<IInvestecClient>();
-        var accountId = _configuration["INVESTEC_ACCOUNT_ID"];
         
-        if (string.IsNullOrEmpty(accountId))
+        // 1. Fetch Accounts
+        var accounts = await client.GetAccountsAsync();
+        
+        if (accounts.Count == 0)
         {
-            _logger.LogWarning("INVESTEC_ACCOUNT_ID is not set.");
+            _logger.LogWarning("No accounts found for the configured Investec credentials.");
             return;
         }
 
-        // Fetch transactions from 5 minutes ago
-        var fromDate = DateTimeOffset.UtcNow.AddMinutes(-5);
-        
-        _logger.LogInformation("Fetching transactions since {FromDate}", fromDate);
-        
-        var transactions = await client.GetTransactionsAsync(accountId, fromDate);
-        
-        if (transactions.Count == 0)
-        {
-            _logger.LogInformation("No new transactions found.");
-            return;
-        }
+        _logger.LogInformation("Found {Count} accounts. Starting sync...", accounts.Count);
 
         var connectionString = _configuration.GetConnectionString("DefaultConnection");
         using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(token);
 
-        var sql = @"
-            INSERT INTO transactions (id, transaction_date, description, amount, balance, category, is_ai_processed)
-            VALUES (@Id, @TransactionDate, @Description, @Amount, @Balance, @Category, @IsAiProcessed)
-            ON CONFLICT (id) DO NOTHING";
+        var totalIngested = 0;
 
-        var count = await connection.ExecuteAsync(sql, transactions);
+        foreach (var account in accounts)
+        {
+            // Fetch transactions from 5 minutes ago for each account
+            var fromDate = DateTimeOffset.UtcNow.AddMinutes(-5);
+            
+            var transactions = await client.GetTransactionsAsync(account.AccountId, fromDate);
+            
+            if (transactions.Count == 0) continue;
 
-        _logger.LogInformation("Ingested {Count} new transactions.", count);
+            var sql = @"
+                INSERT INTO transactions (id, account_id, transaction_date, description, amount, balance, category, is_ai_processed)
+                VALUES (@Id, @AccountId, @TransactionDate, @Description, @Amount, @Balance, @Category, @IsAiProcessed)
+                ON CONFLICT (id) DO NOTHING";
+
+            var count = await connection.ExecuteAsync(sql, transactions);
+            totalIngested += count;
+        }
+
+        if (totalIngested > 0)
+        {
+            _logger.LogInformation("Ingested {Count} new transactions across all accounts.", totalIngested);
+        }
+        else 
+        {
+             _logger.LogInformation("No new transactions found.");
+        }
     }
 }

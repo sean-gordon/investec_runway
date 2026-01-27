@@ -31,7 +31,6 @@ services:
       - INVESTEC_CLIENT_ID=${INVESTEC_CLIENT_ID}
       - INVESTEC_SECRET=${INVESTEC_SECRET}
       - INVESTEC_API_KEY=${INVESTEC_API_KEY}
-      - INVESTEC_ACCOUNT_ID=${INVESTEC_ACCOUNT_ID}
       - OLLAMA_BASE_URL=http://ollama:11434
     networks:
       - finance-net

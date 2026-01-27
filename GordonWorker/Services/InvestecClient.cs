@@ -8,7 +8,15 @@ namespace GordonWorker.Services;
 public interface IInvestecClient
 {
     Task<string> AuthenticateAsync();
+    Task<List<InvestecAccount>> GetAccountsAsync();
     Task<List<Transaction>> GetTransactionsAsync(string accountId, DateTimeOffset fromDate);
+}
+
+public class InvestecAccount
+{
+    public string AccountId { get; set; } = string.Empty;
+    public string AccountNumber { get; set; } = string.Empty;
+    public string AccountName { get; set; } = string.Empty;
 }
 
 public class InvestecClient : IInvestecClient
@@ -62,6 +70,30 @@ public class InvestecClient : IInvestecClient
         return _accessToken ?? string.Empty;
     }
 
+    public async Task<List<InvestecAccount>> GetAccountsAsync()
+    {
+        if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry)
+        {
+            await AuthenticateAsync();
+        }
+
+        var request = new HttpRequestMessage(HttpMethod.Get, "za/pb/v1/accounts");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+
+        var response = await _httpClient.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogError("Failed to fetch accounts: {StatusCode}", response.StatusCode);
+            return new List<InvestecAccount>();
+        }
+
+        var content = await response.Content.ReadAsStringAsync();
+        var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var root = JsonSerializer.Deserialize<InvestecAccountsResponse>(content, jsonOptions);
+
+        return root?.Data?.Accounts ?? new List<InvestecAccount>();
+    }
+
     public async Task<List<Transaction>> GetTransactionsAsync(string accountId, DateTimeOffset fromDate)
     {
         if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry)
@@ -69,8 +101,7 @@ public class InvestecClient : IInvestecClient
             await AuthenticateAsync();
         }
 
-        var fromDateStr = fromDate.ToString("yyyy-MM-dd"); // Investec format usually
-        // API endpoint might vary, using a standard approximation based on prompt
+        var fromDateStr = fromDate.ToString("yyyy-MM-dd"); 
         var url = $"za/pb/v1/accounts/{accountId}/transactions?fromDate={fromDateStr}";
         
         var request = new HttpRequestMessage(HttpMethod.Get, url);
@@ -79,13 +110,11 @@ public class InvestecClient : IInvestecClient
         var response = await _httpClient.SendAsync(request);
         if (!response.IsSuccessStatusCode)
         {
-            _logger.LogError("Failed to fetch transactions: {StatusCode}", response.StatusCode);
+            _logger.LogError("Failed to fetch transactions for account {AccountId}: {StatusCode}", accountId, response.StatusCode);
             return new List<Transaction>();
         }
 
         var content = await response.Content.ReadAsStringAsync();
-        // Parsing logic - assuming Investec structure
-        // data: { transactions: [ ... ] }
         var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         var root = JsonSerializer.Deserialize<InvestecResponse>(content, jsonOptions);
 
@@ -94,26 +123,20 @@ public class InvestecClient : IInvestecClient
         {
             foreach (var t in root.Data.Transactions)
             {
-                // Map to our model
-                // Note: Investec ID is usually string, we need UUID. 
-                // We might need to hash it or parsing if it is UUID. 
-                // Assuming we can parse or generate a stable UUID from the Investec ID string.
-                // For this exercise, I'll assume standard UUID parsing or fallback.
-                
                 if (!Guid.TryParse(t.Id, out var id))
                 {
-                    // Generate stable UUID from string ID
                     id = GenerateUuidFromString(t.Id ?? Guid.NewGuid().ToString());
                 }
 
                 transactions.Add(new Transaction
                 {
                     Id = id,
+                    AccountId = accountId,
                     TransactionDate = t.TransactionDate == default ? DateTimeOffset.UtcNow : t.TransactionDate,
                     Description = t.Description,
                     Amount = t.Amount,
-                    Balance = t.AccountBalance, // Assuming mapped
-                    Category = t.Type, // Approximate mapping
+                    Balance = t.AccountBalance, 
+                    Category = t.Type, 
                     IsAiProcessed = false
                 });
             }
@@ -131,6 +154,16 @@ public class InvestecClient : IInvestecClient
         }
     }
 
+    private class InvestecAccountsResponse
+    {
+        public InvestecAccountsData? Data { get; set; }
+    }
+
+    private class InvestecAccountsData
+    {
+        public List<InvestecAccount>? Accounts { get; set; }
+    }
+
     private class InvestecResponse
     {
         public InvestecData? Data { get; set; }
@@ -143,12 +176,11 @@ public class InvestecClient : IInvestecClient
 
     private class InvestecTransaction
     {
-        // Investec fields
-        public string? Id { get; set; } // postingDate, valueDate, etc.
+        public string? Id { get; set; } 
         public string? Description { get; set; }
         public decimal Amount { get; set; }
         public decimal AccountBalance { get; set; }
-        public DateTimeOffset TransactionDate { get; set; } // postedOrder
+        public DateTimeOffset TransactionDate { get; set; } 
         public string? Type { get; set; }
     }
 }

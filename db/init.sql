@@ -4,6 +4,7 @@ CREATE EXTENSION IF NOT EXISTS timescaledb;
 -- Create transactions table
 CREATE TABLE IF NOT EXISTS transactions (
     id UUID PRIMARY KEY,
+    account_id TEXT,
     transaction_date TIMESTAMPTZ NOT NULL,
     description TEXT,
     amount DECIMAL(18, 2),

@@ -14,13 +14,16 @@
 </head>
 <body class="bg-gray-50 text-gray-800">
     <div id="app" class="min-h-screen p-8">
-        <div class="max-w-4xl mx-auto">
-            <header class="mb-10 flex items-center justify-between">
+        <div class="max-w-5xl mx-auto">
+            <!-- Header -->
+            <header class="mb-8 flex items-center justify-between bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                 <div>
-                    <h1 class="text-3xl font-bold text-gray-900 tracking-tight">Gordon Finance</h1>
-                    <p class="text-gray-500 mt-1">Configuration & Control Panel</p>
+                    <h1 class="text-2xl font-bold text-gray-900 tracking-tight flex items-center gap-2">
+                        <span>Gordon Finance Engine</span>
+                    </h1>
+                    <p class="text-gray-500 text-sm mt-1">System Configuration</p>
                 </div>
-                <div class="text-right flex flex-col items-end gap-2">
+                <div class="text-right flex flex-col items-end gap-1">
                     <span class="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset transition-colors duration-500"
                           :class="systemStatus.investecOnline ? 'bg-green-50 text-green-700 ring-green-600/20' : 'bg-red-50 text-red-700 ring-red-600/20'"
                           :title="systemStatus.lastError">
@@ -34,167 +37,183 @@
                 </div>
             </header>
 
-            <main class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <!-- Email Configuration -->
-                <section class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 md:col-span-2">
-                    <div class="flex items-center gap-3 mb-6">
-                        <div class="p-2 bg-green-50 rounded-lg text-green-600">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
-                        </div>
-                        <h2 class="text-lg font-semibold">Email Server Settings</h2>
-                    </div>
-                    <form @submit.prevent="saveSettings"> <!-- Form wrapper -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">SMTP Host</label>
-                            <input type="text" v-model="settings.smtpHost" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2" placeholder="smtp.gmail.com">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">SMTP Port</label>
-                            <input type="number" v-model.number="settings.smtpPort" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">SMTP Username</label>
-                            <input type="text" v-model="settings.smtpUser" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">SMTP Password</label>
-                            <input type="password" v-model="settings.smtpPass" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2">
-                        </div>
-                        <div class="md:col-span-2">
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Recipient Email Address(es)</label>
-                            <div class="flex gap-2">
-                                <input type="text" v-model="settings.emailTo" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2" placeholder="me@example.com; spouse@example.com">
-                                <button type="button" @click="testEmail" 
-                                    :disabled="emailTesting"
-                                    class="bg-blue-100 text-blue-700 px-4 py-2 rounded hover:bg-blue-200 disabled:opacity-50 text-sm font-medium whitespace-nowrap">
-                                    {{ emailTesting ? 'Sending...' : 'Test Send' }}
-                                </button>
-                            </div>
-                            <p class="text-xs text-gray-500 mt-1">Separate multiple addresses with a semicolon (;) or comma (,).</p>
-                        </div>
-                    </div>
-                    </form>
-                </section>
-
-                <!-- Weekly Report Settings -->
-                <section class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                    <div class="flex items-center gap-3 mb-6">
-                        <div class="p-2 bg-blue-50 rounded-lg text-blue-600">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
-                        </div>
-                        <h2 class="text-lg font-semibold">Weekly Report Schedule</h2>
-                    </div>
+            <form @submit.prevent="saveSettings">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Day of Week</label>
-                            <select v-model="settings.reportDayOfWeek" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2">
-                                <option v-for="day in days" :key="day" :value="day">{{ day }}</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Time of Day (Hour)</label>
-                            <select v-model.number="settings.reportHour" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2">
-                                <option v-for="h in 24" :key="h-1" :value="h-1">{{ formatHour(h-1) }}</option>
-                            </select>
-                        </div>
-                        <div class="pt-4 border-t border-gray-100">
-                            <button @click="sendReportNow" 
-                                :disabled="sendingReport"
-                                class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium shadow transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
-                                <span v-if="sendingReport">Generating Report...</span>
-                                <span v-else>Generate & Send Report Now</span>
-                                <svg v-if="!sendingReport" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>
-                            </button>
-                            <p class="text-xs text-gray-400 mt-2 text-center">Triggers full AI analysis and emails the recipient immediately.</p>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Actuarial Settings -->
-                <section class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                    <div class="flex items-center gap-3 mb-6">
-                        <div class="p-2 bg-purple-50 rounded-lg text-purple-600">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-                        </div>
-                        <h2 class="text-lg font-semibold">Actuarial Logic</h2>
-                    </div>
-
-                    <div class="space-y-6">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">
-                                EMA Weight (Alpha)
-                                <span class="text-xs text-gray-400 font-normal ml-2">Higher = More reactive</span>
-                            </label>
-                            <input type="range" v-model.number="settings.actuarialAlpha" min="0.01" max="1.0" step="0.01" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
-                            <div class="flex justify-between text-xs text-gray-500 mt-1">
-                                <span>Smooth (0.01)</span>
-                                <span class="font-bold text-blue-600">{{ settings.actuarialAlpha }}</span>
-                                <span>Reactive (1.0)</span>
+                    <!-- Left Column: Data & Notifications -->
+                    <div class="lg:col-span-1 space-y-8">
+                        
+                        <!-- Data Settings -->
+                        <section class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                            <div class="px-6 py-4 border-b border-gray-50 bg-gray-50/50 flex items-center gap-2">
+                                <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
+                                <h2 class="font-semibold text-gray-900">Data & Sync</h2>
                             </div>
-                            <p class="text-xs text-gray-500 mt-2 leading-relaxed bg-gray-50 p-2 rounded">
-                                <strong>Exponential Moving Average (EMA):</strong> Controls how fast your "Burn Rate" adapts. 
-                                <br>• <strong>Low Alpha (0.05):</strong> Ignores one-off big spends. Good for stability.
-                                <br>• <strong>High Alpha (0.50):</strong> Panic mode! Recent purchases heavily impact your runway.
-                            </p>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Analysis Window (Days)</label>
-                            <input type="number" v-model.number="settings.analysisWindowDays" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2">
-                            <p class="text-xs text-gray-500 mt-2 leading-relaxed bg-gray-50 p-2 rounded">
-                                Defines the historical range for calculating Volatility (Standard Deviation) and Value at Risk (VaR).
-                            </p>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- AI Configuration -->
-                <section class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 md:col-span-2">
-                    <div class="flex items-center gap-3 mb-6">
-                        <div class="p-2 bg-indigo-50 rounded-lg text-indigo-600">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/></svg>
-                        </div>
-                        <h2 class="text-lg font-semibold">AI Brain</h2>
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div class="md:col-span-2">
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Ollama Base URL</label>
-                            <div class="flex gap-2">
-                                <input type="text" v-model="settings.ollamaBaseUrl" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2" placeholder="http://100.x.y.z:11434">
-                                <button @click="testAi" :disabled="aiTesting" class="bg-indigo-100 text-indigo-700 px-4 py-2 rounded hover:bg-indigo-200 disabled:opacity-50 text-sm font-medium">
-                                    {{ aiTesting ? '...' : 'Test' }}
-                                </button>
+                            <div class="p-6 space-y-4">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">History Depth (Days)</label>
+                                    <input type="number" v-model.number="settings.historyDaysBack" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2 text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Currency Culture</label>
+                                    <select v-model="settings.currencyCulture" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2 text-sm">
+                                        <option value="en-ZA">South Africa (ZAR)</option>
+                                        <option value="en-US">United States (USD)</option>
+                                        <option value="en-GB">United Kingdom (GBP)</option>
+                                        <option value="en-EU">Europe (EUR)</option>
+                                    </select>
+                                </div>
+                                <div class="pt-2">
+                                    <button type="button" @click="forceRepull" 
+                                        :disabled="repulling"
+                                        class="w-full bg-red-50 text-red-600 hover:bg-red-100 px-3 py-2 rounded-lg text-sm font-medium transition-colors border border-red-100 flex items-center justify-center gap-2">
+                                        <svg v-if="!repulling" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                                        {{ repulling ? 'Syncing...' : 'Force Full Re-Sync' }}
+                                    </button>
+                                    <p class="text-[10px] text-gray-400 mt-1 text-center">Deletes all data and re-fetches history.</p>
+                                </div>
                             </div>
-                            <p class="text-xs text-gray-500 mt-1">Address of your Tailscale/External Ollama instance.</p>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Ollama Model</label>
-                            <input type="text" v-model="settings.ollamaModelName" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2">
-                            <p class="text-xs text-gray-500 mt-1">Must be pulled on the remote server.</p>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">System Persona</label>
-                            <input type="text" v-model="settings.systemPersona" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2">
-                            <p class="text-xs text-gray-500 mt-1">E.g., "Gordon", "Jarvis", "The Accountant"</p>
-                        </div>
-                    </div>
-                </section>
-            </main>
+                        </section>
 
-            <div class="mt-8 flex justify-end">
-                <button @click="saveSettings" 
-                    :disabled="saving"
-                    class="bg-gray-900 hover:bg-black text-white px-6 py-2.5 rounded-lg font-medium shadow-lg shadow-gray-200 transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
-                    <span v-if="saving">Saving...</span>
-                    <span v-else>Save Configuration</span>
-                    <svg v-if="!saving" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                </button>
-            </div>
+                        <!-- Notification Settings -->
+                        <section class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                            <div class="px-6 py-4 border-b border-gray-50 bg-gray-50/50 flex items-center gap-2">
+                                <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                                <h2 class="font-semibold text-gray-900">Notifications</h2>
+                            </div>
+                            <div class="p-6 space-y-4">
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Host</label>
+                                        <input type="text" v-model="settings.smtpHost" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2 text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Port</label>
+                                        <input type="number" v-model.number="settings.smtpPort" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2 text-sm">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Username</label>
+                                        <input type="text" v-model="settings.smtpUser" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2 text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Password</label>
+                                        <input type="password" v-model="settings.smtpPass" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2 text-sm">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Recipients (semicolon separated)</label>
+                                    <input type="text" v-model="settings.emailTo" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2 text-sm">
+                                </div>
+                                <div class="grid grid-cols-2 gap-4 pt-2">
+                                    <button type="button" @click="testEmail" :disabled="emailTesting" class="bg-gray-100 text-gray-700 hover:bg-gray-200 px-3 py-2 rounded-lg text-sm font-medium transition-colors">
+                                        {{ emailTesting ? '...' : 'Test Email' }}
+                                    </button>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+
+                    <!-- Middle & Right: Intelligence & Logic -->
+                    <div class="lg:col-span-2 space-y-8">
+                        
+                        <!-- AI & Logic -->
+                        <section class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                            <div class="px-6 py-4 border-b border-gray-50 bg-gray-50/50 flex items-center gap-2">
+                                <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                <h2 class="font-semibold text-gray-900">Intelligence Engine</h2>
+                            </div>
+                            <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <!-- AI -->
+                                <div class="space-y-4">
+                                    <h3 class="text-sm font-bold text-gray-900">Ollama Connection</h3>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Base URL</label>
+                                        <div class="flex gap-2">
+                                            <input type="text" v-model="settings.ollamaBaseUrl" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2 text-sm">
+                                            <button type="button" @click="testAi" :disabled="aiTesting" class="bg-gray-100 text-gray-700 hover:bg-gray-200 px-3 py-1 rounded-md text-xs font-medium">
+                                                {{ aiTesting ? '...' : 'Test' }}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Model Name</label>
+                                        <input type="text" v-model="settings.ollamaModelName" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2 text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Persona Name</label>
+                                        <input type="text" v-model="settings.systemPersona" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2 text-sm">
+                                    </div>
+                                </div>
+
+                                <!-- Actuarial -->
+                                <div class="space-y-4 md:border-l md:border-gray-100 md:pl-6">
+                                    <h3 class="text-sm font-bold text-gray-900">Actuarial Logic</h3>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Analysis Window (Days)</label>
+                                        <input type="number" v-model.number="settings.analysisWindowDays" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2 text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
+                                            Sensitivity (Alpha): <span class="text-blue-600">{{ settings.actuarialAlpha }}</span>
+                                        </label>
+                                        <input type="range" v-model.number="settings.actuarialAlpha" min="0.01" max="1.0" step="0.01" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                                        <div class="flex justify-between text-[10px] text-gray-400 mt-1">
+                                            <span>Smooth</span>
+                                            <span>Reactive</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <!-- Report Schedule & Trigger -->
+                        <section class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                            <div class="px-6 py-4 border-b border-gray-50 bg-gray-50/50 flex items-center gap-2">
+                                <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                <h2 class="font-semibold text-gray-900">Weekly Report</h2>
+                            </div>
+                            <div class="p-6 flex items-end gap-4">
+                                <div class="flex-1">
+                                    <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Day</label>
+                                    <select v-model="settings.reportDayOfWeek" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2 text-sm">
+                                        <option v-for="day in days" :key="day" :value="day">{{ day }}</option>
+                                    </select>
+                                </div>
+                                <div class="flex-1">
+                                    <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Time (Hour)</label>
+                                    <select v-model.number="settings.reportHour" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2 text-sm">
+                                        <option v-for="h in 24" :key="h-1" :value="h-1">{{ formatHour(h-1) }}</option>
+                                    </select>
+                                </div>
+                                <div class="flex-1">
+                                    <button type="button" @click="sendReportNow" 
+                                        :disabled="sendingReport"
+                                        class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium shadow transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed h-[38px]">
+                                        <span v-if="sendingReport">Generating...</span>
+                                        <span v-else>Send Now</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+                </div>
+
+                <!-- Footer Save Action -->
+                <div class="mt-8 flex justify-end">
+                    <button type="submit" 
+                        :disabled="saving"
+                        class="bg-gray-900 hover:bg-black text-white px-8 py-3 rounded-xl font-medium shadow-lg shadow-gray-200 transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed text-base">
+                        <span v-if="saving">Saving Configuration...</span>
+                        <span v-else>Save All Changes</span>
+                    </button>
+                </div>
+            </form>
             
             <!-- Toast -->
-            <div v-if="message" class="fixed bottom-5 right-5 text-white px-4 py-2 rounded-lg shadow-xl transition-opacity duration-300" :class="messageType === 'error' ? 'bg-red-600' : 'bg-green-600'">
+            <div v-if="message" class="fixed bottom-5 right-5 text-white px-6 py-3 rounded-lg shadow-xl transition-all duration-300 transform translate-y-0 opacity-100 font-medium z-50" 
+                 :class="messageType === 'error' ? 'bg-red-600' : 'bg-emerald-600'">
                 {{ message }}
             </div>
         </div>
@@ -218,7 +237,9 @@
                         smtpPort: 587,
                         smtpUser: '',
                         smtpPass: '',
-                        emailTo: ''
+                        emailTo: '',
+                        historyDaysBack: 180,
+                        currencyCulture: 'en-ZA'
                     },
                     systemStatus: {
                         investecOnline: false,
@@ -230,6 +251,7 @@
                     emailTesting: false,
                     aiTesting: false,
                     sendingReport: false,
+                    repulling: false,
                     message: '',
                     messageType: 'success'
                 }
@@ -237,7 +259,7 @@
             mounted() {
                 this.loadSettings();
                 this.loadStatus();
-                setInterval(this.loadStatus, 30000); // Poll status every 30s
+                setInterval(this.loadStatus, 15000);
             },
             methods: {
                 formatHour(h) {
@@ -323,9 +345,28 @@
                         this.sendingReport = false;
                     }
                 },
+                async forceRepull() {
+                    if (!confirm("Are you sure? This will delete all local transaction data and re-download it from Investec. This cannot be undone.")) return;
+                    
+                    this.repulling = true;
+                    // Save history depth first to ensure sync uses new value
+                    await this.saveSettings();
+                    
+                    try {
+                        const res = await fetch('/api/settings/force-repull', { method: 'POST' });
+                        if (res.ok) {
+                            this.showToast("Sync started. Check logs.", 'success');
+                        } else {
+                            this.showToast("Failed to start sync.", 'error');
+                        }
+                    } catch (e) {
+                        this.showToast("Error starting sync.", 'error');
+                    } finally {
+                        this.repulling = false;
+                    }
+                },
                 async testAi() {
                     this.aiTesting = true;
-                    // Save first to ensure backend uses new URL
                     await this.saveSettings(); 
                     
                     try {

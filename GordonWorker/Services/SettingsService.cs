@@ -14,6 +14,10 @@ public class AppSettings
     public string OllamaModelName { get; set; } = "deepseek-coder";
     public string SystemPersona { get; set; } = "Gordon";
     
+    // Data Settings
+    public int HistoryDaysBack { get; set; } = 180;
+    public string CurrencyCulture { get; set; } = "en-ZA"; // For formatting (e.g. en-ZA, en-US, en-GB)
+
     // Email Settings
     public string SmtpHost { get; set; } = "";
     public int SmtpPort { get; set; } = 587;

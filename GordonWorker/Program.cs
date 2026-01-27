@@ -16,6 +16,7 @@ builder.Services.AddSingleton<IActuarialService, ActuarialService>();
 builder.Services.AddSingleton<ISystemStatusService, SystemStatusService>();
 builder.Services.AddTransient<IEmailService, EmailService>();
 builder.Services.AddScoped<IFinancialReportService, FinancialReportService>();
+builder.Services.AddScoped<ITransactionSyncService, TransactionSyncService>();
 builder.Services.AddTransient<DatabaseInitializer>();
 
 builder.Services.AddHostedService<TransactionsBackgroundService>();

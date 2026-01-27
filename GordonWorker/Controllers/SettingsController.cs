@@ -14,13 +14,16 @@ public class SettingsController : ControllerBase
     private readonly ISystemStatusService _statusService;
     private readonly ITransactionSyncService _syncService;
 
+    private readonly IInvestecClient _investecClient;
+
     public SettingsController(
         ISettingsService settingsService, 
         IEmailService emailService, 
         IOllamaService ollamaService,
         IFinancialReportService reportService,
         ISystemStatusService statusService,
-        ITransactionSyncService syncService)
+        ITransactionSyncService syncService,
+        IInvestecClient investecClient)
     {
         _settingsService = settingsService;
         _emailService = emailService;
@@ -28,6 +31,33 @@ public class SettingsController : ControllerBase
         _reportService = reportService;
         _statusService = statusService;
         _syncService = syncService;
+        _investecClient = investecClient;
+    }
+
+    [HttpGet("debug-investec")]
+    public async Task<IActionResult> DebugInvestec()
+    {
+        try
+        {
+            var accounts = await _investecClient.GetAccountsAsync();
+            var debugData = new Dictionary<string, object>
+            {
+                { "AccountsFound", accounts.Count },
+                { "Accounts", accounts }
+            };
+
+            foreach (var acc in accounts)
+            {
+                var txs = await _investecClient.GetTransactionsAsync(acc.AccountId, DateTimeOffset.UtcNow.AddDays(-30));
+                debugData.Add($"Transactions_{acc.AccountId}", txs);
+            }
+
+            return Ok(debugData);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Error = ex.Message, Stack = ex.StackTrace });
+        }
     }
 
     [HttpGet]

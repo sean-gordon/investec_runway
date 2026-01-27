@@ -111,13 +111,16 @@ public class InvestecClient : IInvestecClient
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
 
         var response = await _httpClient.SendAsync(request);
+        var content = await response.Content.ReadAsStringAsync();
+
         if (!response.IsSuccessStatusCode)
         {
-            _logger.LogError("Failed to fetch accounts: {StatusCode}", response.StatusCode);
+            _logger.LogError("Failed to fetch accounts: {StatusCode}. Response: {Content}", response.StatusCode, content);
             return new List<InvestecAccount>();
         }
 
-        var content = await response.Content.ReadAsStringAsync();
+        _logger.LogInformation("GetAccounts Raw Response: {Content}", content); // DEBUG LOG
+
         var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         var root = JsonSerializer.Deserialize<InvestecAccountsResponse>(content, jsonOptions);
 
@@ -138,13 +141,16 @@ public class InvestecClient : IInvestecClient
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
 
         var response = await _httpClient.SendAsync(request);
+        var content = await response.Content.ReadAsStringAsync();
+
         if (!response.IsSuccessStatusCode)
         {
-            _logger.LogError("Failed to fetch transactions for account {AccountId}: {StatusCode}", accountId, response.StatusCode);
+            _logger.LogError("Failed to fetch transactions for account {AccountId}: {StatusCode}. Response: {Content}", accountId, response.StatusCode, content);
             return new List<Transaction>();
         }
 
-        var content = await response.Content.ReadAsStringAsync();
+        // _logger.LogInformation("GetTransactions Raw Response (First 500 chars): {Content}", content.Length > 500 ? content.Substring(0, 500) : content); // DEBUG LOG - uncomment if needed
+
         var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         var root = JsonSerializer.Deserialize<InvestecResponse>(content, jsonOptions);
 

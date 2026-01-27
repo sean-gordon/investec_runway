@@ -1,0 +1,21 @@
+# .NET
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.launchSettings.json
+
+# Environment Variables (Secrets)
+.env
+
+# Docker
+docker-compose.override.yml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+app_data/

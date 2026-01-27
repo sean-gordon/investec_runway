@@ -11,6 +11,13 @@ public class AppSettings
     public string OllamaBaseUrl { get; set; } = "http://host.docker.internal:11434";
     public string OllamaModelName { get; set; } = "deepseek-coder";
     public string SystemPersona { get; set; } = "Gordon"; // For future extensibility
+    
+    // Email Settings
+    public string SmtpHost { get; set; } = "";
+    public int SmtpPort { get; set; } = 587;
+    public string SmtpUser { get; set; } = "";
+    public string SmtpPass { get; set; } = "";
+    public string EmailTo { get; set; } = "";
 }
 
 public interface ISettingsService

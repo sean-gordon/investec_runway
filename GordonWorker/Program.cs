@@ -16,12 +16,20 @@ builder.Services.AddSingleton<IActuarialService, ActuarialService>();
 builder.Services.AddSingleton<ISystemStatusService, SystemStatusService>();
 builder.Services.AddTransient<IEmailService, EmailService>();
 builder.Services.AddScoped<IFinancialReportService, FinancialReportService>();
+builder.Services.AddTransient<DatabaseInitializer>();
 
 builder.Services.AddHostedService<TransactionsBackgroundService>();
 builder.Services.AddHostedService<WeeklyReportWorker>();
 builder.Services.AddHostedService<ConnectivityWorker>();
 
 var app = builder.Build();
+
+// Ensure DB is ready
+using (var scope = app.Services.CreateScope())
+{
+    var initializer = scope.ServiceProvider.GetRequiredService<DatabaseInitializer>();
+    await initializer.InitializeAsync();
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

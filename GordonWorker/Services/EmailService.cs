@@ -59,7 +59,12 @@ public class EmailService : IEmailService
             IsBodyHtml = true
         };
 
-        mailMessage.To.Add(config.To);
+        mailMessage.To.Clear();
+        var recipients = config.To.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var recipient in recipients)
+        {
+            mailMessage.To.Add(recipient.Trim());
+        }
 
         try
         {

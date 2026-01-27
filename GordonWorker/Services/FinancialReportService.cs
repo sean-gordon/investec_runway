@@ -79,13 +79,16 @@ public class FinancialReportService : IFinancialReportService
             SpendLastWeek = Math.Abs(lastWeekSpend).ToString("F2"),
             RunwayDays = healthReport.ExpectedRunwayDays.ToString("F1"),
             Volatility = healthReport.BurnVolatility.ToString("F2"),
-            Trend = healthReport.TrendDirection,
             Currency = "ZAR",
             SpendThisMonth = healthReport.SpendThisMonth.ToString("F2"),
             SpendLastMonth = healthReport.SpendLastMonth.ToString("F2"),
             ProjectedMonthEnd = healthReport.ProjectedMonthEndSpend.ToString("F2"),
             Probability30DaySurvival = healthReport.RunwayProbability.ToString("F1") + "%",
-            TopCategories = healthReport.TopCategories
+            TopCategories = healthReport.TopCategories.Select(c => new { 
+                Name = c.Name, 
+                Amount = c.Amount.ToString("F2"), 
+                PercentChange = c.ChangePercentage.ToString("F0") + "%" 
+            }).ToList()
         };
 
         var jsonStats = JsonSerializer.Serialize(stats);
@@ -111,7 +114,7 @@ public class FinancialReportService : IFinancialReportService
             categoryRows += $@"
                 <tr>
                     <td>{cat.Name}</td>
-                    <td style='text-align: right;' class='amount'>{string.Format(culture, "{0:C}", cat.Amount)}</td>
+                    <td style='text-align: right;' class='amount'>{string.Format(culture, "{{0:C}}", cat.Amount)}</td>
                     <td style='text-align: right; color: {changeColor}; font-size: 12px; font-weight: 600;'>{changeSign} {Math.Abs(cat.ChangePercentage):F0}%</td>
                 </tr>";
         }
@@ -125,14 +128,14 @@ public class FinancialReportService : IFinancialReportService
     <style>
         body {{ font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f3f4f6; margin: 0; padding: 0; }}
         .wrapper {{ width: 100%; table-layout: fixed; background-color: #f3f4f6; padding-bottom: 40px; }}
-        .main {{ background-color: #ffffff; margin: 0 auto; width: 100%; max-width: 600px; border-spacing: 0; font-family: sans-serif; color: #171717; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }}
+        .main {{ background-color: #ffffff; margin: 0 auto; width: 100%; max-width: 600px; border-spacing: 0; color: #171717; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }}
         .header {{ background-color: #111827; padding: 24px; text-align: center; }}
         .header h1 {{ color: #ffffff; margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.5px; }}
         .content {{ padding: 32px 24px; }}
         .ai-box {{ background-color: #f0f9ff; border-left: 4px solid #0ea5e9; padding: 20px; border-radius: 4px; margin-bottom: 24px; font-size: 16px; line-height: 1.6; color: #334155; }}
         .ai-box h3 {{ margin-top: 0; color: #0369a1; font-size: 16px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; margin-bottom: 12px; }}
         .ai-box ul {{ margin: 0; padding-left: 24px; list-style-type: disc; }}
-        .ai-box li {{ margin-bottom: 8px; padding-left: 4px; }}
+        .ai-box li {{ margin-bottom: 8px; }}
         .ai-box p {{ margin-top: 0; margin-bottom: 16px; }}
         .stats-header {{ font-size: 18px; font-weight: 700; color: #111827; margin-bottom: 16px; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px; margin-top: 32px; }}
         .stats-table {{ width: 100%; border-collapse: collapse; }}
@@ -160,9 +163,9 @@ public class FinancialReportService : IFinancialReportService
                     <div class='stats-header'>Monthly Pulse (MTD)</div>
                     <table class='stats-table'>
                         <tr><th>Metric</th><th style='text-align: right;'>Value</th></tr>
-                        <tr><td>Spend This Month</td><td style='text-align: right;' class='amount'>{string.Format(culture, "{0:C}", healthReport.SpendThisMonth)}</td></tr>
-                        <tr><td>Spend Last Month</td><td style='text-align: right;' class='amount'>{string.Format(culture, "{0:C}", healthReport.SpendLastMonth)}</td></tr>
-                        <tr><td>Projected Month End</td><td style='text-align: right;' class='amount highlight-warn'>{string.Format(culture, "{0:C}", healthReport.ProjectedMonthEndSpend)}</td></tr>
+                        <tr><td>Spend This Month</td><td style='text-align: right;' class='amount'>{string.Format(culture, "{{0:C}}", healthReport.SpendThisMonth)}</td></tr>
+                        <tr><td>Spend Last Month</td><td style='text-align: right;' class='amount'>{string.Format(culture, "{{0:C}}", healthReport.SpendLastMonth)}</td></tr>
+                        <tr><td>Projected Month End</td><td style='text-align: right;' class='amount highlight-warn'>{string.Format(culture, "{{0:C}}", healthReport.ProjectedMonthEndSpend)}</td></tr>
                     </table>
                     <div class='stats-header'>Top Spending Categories</div>
                     <table class='stats-table'>
@@ -172,7 +175,7 @@ public class FinancialReportService : IFinancialReportService
                     <div class='stats-header'>Runway & Risk</div>
                     <table class='stats-table'>
                         <tr><th>Metric</th><th style='text-align: right;'>Value</th></tr>
-                        <tr><td>Current Balance</td><td style='text-align: right;' class='amount'>{string.Format(culture, "{0:C}", currentBalance)}</td></tr>
+                        <tr><td>Current Balance</td><td style='text-align: right;' class='amount'>{string.Format(culture, "{{0:C}}", currentBalance)}</td></tr>
                         <tr><td>Projected Runway</td><td style='text-align: right;' class='{(healthReport.ExpectedRunwayDays < 30 ? "highlight-bad" : "highlight-good")}'>{healthReport.ExpectedRunwayDays:F0} Days</td></tr>
                         <tr><td>30-Day Survival Probability</td><td style='text-align: right;' class='{(healthReport.RunwayProbability < 80 ? "highlight-bad" : "highlight-good")}'>{healthReport.RunwayProbability:F1}%</td></tr>
                         <tr><td>Spending Trend</td><td style='text-align: right;'>{healthReport.TrendDirection}</td></tr>

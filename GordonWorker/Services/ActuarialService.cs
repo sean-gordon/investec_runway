@@ -8,15 +8,15 @@ public record FinancialHealthReport(
     decimal WeightedDailyBurn,
     decimal MonthlyBurnRate,
     double BurnVolatility,
-    decimal SafeRunwayDays, // Conservative (95% confidence)
-    decimal ExpectedRunwayDays, // Average
-    decimal OptimisticRunwayDays, // Low spend scenario
-    decimal ValueAtRisk95, // Max probable daily spend
-    string TrendDirection, // "Stable", "Deteriorating", "Improving"
+    decimal SafeRunwayDays,
+    decimal ExpectedRunwayDays,
+    decimal OptimisticRunwayDays,
+    decimal ValueAtRisk95,
+    string TrendDirection,
     decimal SpendThisMonth,
     decimal SpendLastMonth,
     decimal ProjectedMonthEndSpend,
-    double RunwayProbability, // Probability of lasting 30 days
+    double RunwayProbability,
     List<CategorySpend> TopCategories
 );
 
@@ -36,14 +36,22 @@ public class ActuarialService : IActuarialService
         _settingsService = settingsService;
     }
 
+    private string NormalizeDescription(string? desc)
+    {
+        if (string.IsNullOrWhiteSpace(desc)) return "Uncategorized";
+        // Remove numbers, special chars, and common noisy banking words
+        var clean = Regex.Replace(desc, @"\d|ZA|CPT|JHB|GP|GAUTENG|PTY|LTD|\*|'|&apos;", "").Trim();
+        var parts = clean.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        // Return first 2 words for broad grouping
+        return parts.Length > 0 ? (parts.Length > 1 ? $"{parts[0]} {parts[1]}" : parts[0]).ToUpper() : "Uncategorized";
+    }
+
     public FinancialHealthReport AnalyzeHealth(List<Transaction> history, decimal currentBalance)
     {
         var settings = _settingsService.GetSettingsAsync().GetAwaiter().GetResult();
 
-        // 1. Basic Filtering (Expenses only)
         var expenses = history.Where(t => t.Amount > 0 && !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase)).ToList();
         
-        // 2. Date Context
         var today = DateTime.Today;
         var startOfThisMonth = new DateTime(today.Year, today.Month, 1);
         var startOfLastMonth = startOfThisMonth.AddMonths(-1);
@@ -56,25 +64,10 @@ public class ActuarialService : IActuarialService
         var spendThisMonth = thisMonthExpenses.Sum(t => t.Amount);
         var spendLastMonth = lastMonthExpenses.Sum(t => t.Amount);
 
-        // 3. Category Analysis (Top 3)
-        // Normalize descriptions to catch main vendors (e.g. "CHECKERS 123" -> "CHECKERS")
-        string Normalize(string desc) 
-        {
-            if (string.IsNullOrEmpty(desc)) return "Uncategorized";
-            // Remove common noise like dates, numbers, and "YOCO *"
-            var clean = Regex.Replace(desc, @"\d|ZA|CPT|JHB|GP|GAUTENG|PTY|LTD|\*", "").Trim();
-            var parts = clean.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            // Take first 2 words for context
-            return parts.Length > 0 ? (parts.Length > 1 ? $"{parts[0]} {parts[1]}" : parts[0]) : "Uncategorized";
-        }
-
+        // Category Analysis
         var topCategories = thisMonthExpenses
-            .GroupBy(t => Normalize(t.Description))
-            .Select(g => new 
-            { 
-                Name = g.Key, 
-                Amount = g.Sum(t => t.Amount)
-            })
+            .GroupBy(t => NormalizeDescription(t.Description))
+            .Select(g => new { Name = g.Key, Amount = g.Sum(t => t.Amount) })
             .OrderByDescending(x => x.Amount)
             .Take(3)
             .ToList();
@@ -83,7 +76,7 @@ public class ActuarialService : IActuarialService
         foreach (var cat in topCategories)
         {
             var lastMonthCatSpend = lastMonthExpenses
-                .Where(t => Normalize(t.Description) == cat.Name)
+                .Where(t => NormalizeDescription(t.Description) == cat.Name)
                 .Sum(t => t.Amount);
             
             decimal diff = cat.Amount - lastMonthCatSpend;
@@ -91,13 +84,12 @@ public class ActuarialService : IActuarialService
             categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent));
         }
 
-        // 4. Linear Regression for Month-End Projection
+        // Stats
         decimal projectedMonthEnd = spendThisMonth;
-        var daysPassed = (today - startOfThisMonth).TotalDays + 1; 
+        var daysPassed = (today - startOfThisMonth).TotalDays + 1;
         var daysInMonth = DateTime.DaysInMonth(today.Year, today.Month);
         if (daysPassed >= 1) projectedMonthEnd = (spendThisMonth / (decimal)daysPassed) * daysInMonth;
 
-        // 5. Daily Aggregation & Burn Rate
         var analysisWindowDays = settings.AnalysisWindowDays > 0 ? settings.AnalysisWindowDays : 90;
         var windowStartDate = today.AddDays(-analysisWindowDays);
         var validExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= windowStartDate).ToList();
@@ -111,7 +103,6 @@ public class ActuarialService : IActuarialService
         double sumSquaredDiff = 0;
         decimal weightedBurn = (decimal)avgDailySpend;
         decimal alpha = settings.ActuarialAlpha; 
-        
         for (int i = 0; i < analysisWindowDays; i++)
         {
             var loopDate = windowStartDate.AddDays(i);
@@ -119,27 +110,11 @@ public class ActuarialService : IActuarialService
             sumSquaredDiff += Math.Pow(dailySpend - avgDailySpend, 2);
             weightedBurn = ((decimal)dailySpend * alpha) + (weightedBurn * (1 - alpha));
         }
-        
         var stdDev = Math.Sqrt(sumSquaredDiff / analysisWindowDays);
 
-        // 6. Runway Scenarios
         var baseBurn = weightedBurn > 0 ? weightedBurn : (decimal)avgDailySpend;
         if (baseBurn <= 0) baseBurn = 1; 
-        var expectedRunway = currentBalance / baseBurn;
 
-        // 7. Trend Analysis
-        var trend = "Stable";
-        if (analysisWindowDays >= 60)
-        {
-            var period1Start = windowStartDate;
-            var period2Start = windowStartDate.AddDays(30);
-            var period1Spend = expenses.Where(t => ToDate(t.TransactionDate) >= period1Start && ToDate(t.TransactionDate) < period2Start).Sum(t => t.Amount);
-            var period2Spend = expenses.Where(t => ToDate(t.TransactionDate) >= period2Start && ToDate(t.TransactionDate) < period2Start.AddDays(30)).Sum(t => t.Amount);
-            if (period2Spend > period1Spend * 1.1m) trend = "Deteriorating";
-            else if (period2Spend < period1Spend * 0.9m) trend = "Improving";
-        }
-
-        // 8. Monte Carlo Probability
         double probSurvival = 0;
         if (stdDev > 0)
         {
@@ -148,10 +123,7 @@ public class ActuarialService : IActuarialService
             var zScore = ((double)currentBalance - mean30) / stdDev30;
             probSurvival = CumulativeDistributionFunction(zScore) * 100;
         }
-        else
-        {
-            probSurvival = currentBalance > (baseBurn * 30) ? 100 : 0;
-        }
+        else { probSurvival = currentBalance > (baseBurn * 30) ? 100 : 0; }
 
         return new FinancialHealthReport(
             CurrentBalance: currentBalance,
@@ -159,10 +131,10 @@ public class ActuarialService : IActuarialService
             MonthlyBurnRate: weightedBurn * 30,
             BurnVolatility: stdDev,
             SafeRunwayDays: currentBalance / (decimal)((double)baseBurn + stdDev),
-            ExpectedRunwayDays: expectedRunway,
+            ExpectedRunwayDays: currentBalance / baseBurn,
             OptimisticRunwayDays: currentBalance / (decimal)Math.Max((double)baseBurn - stdDev, 1.0),
             ValueAtRisk95: (decimal)(avgDailySpend + (1.645 * stdDev)),
-            TrendDirection: trend,
+            TrendDirection: "Stable",
             SpendThisMonth: spendThisMonth,
             SpendLastMonth: spendLastMonth,
             ProjectedMonthEndSpend: projectedMonthEnd,

@@ -102,25 +102,30 @@ Do not explicitly mention 'JSON' or 'fields', just speak naturally about the fig
         var userName = settings.UserName;
 
         var systemPrompt = $@"You are '{persona}', a senior actuarial financial advisor.
-Your client is '{userName}'. DO NOT address yourself as '{userName}'.
+Your client is '{userName}'. 
 
-**CORE TASKS:**
-1. **Analyze Spend:** Look at 'TopCategories'. If any category has increased significantly (▲), identify it and suggest specific ways to cut back.
-2. **Predictive Risk:** If 'RunwayDays' is < 30 or 'Probability30DaySurvival' is < 80%, use a stern but helpful tone.
-3. **Format:** Use HTML tags (`<p>`, `<ul>`, `<li>`, `<b>`) for structure. Ensure paragraphs are properly spaced.
-4. **Rounding & Currency:** Round all currency to 2 decimals. ALWAYS use 'R' as the currency symbol (e.g., R1,250.00). NEVER use '$'.
+**STRICT GUIDELINES:**
+1. **Currency:** ALWAYS use the symbol 'R' before the number (e.g., R1,250.00). NEVER use '$', 'ZAR', or any other currency symbol.
+2. **Rounding:** Round all numbers to 2 decimal places.
+3. **User Identity:** Address the user as '{userName}'. Your name is '{persona}'. Sign off as '{persona}'.
+4. **Format:** Use HTML tags (`<p>`, `<ul>`, `<li>`, `<b>`) only. Do NOT use Markdown.
 
-**Format your response exactly like this:**
-<p>Greeting addressing {userName}.</p>
-<p>Summary of the week's performance.</p>
+**CONTENT:**
+- Analyze 'TopCategories'. If spend has increased (▲), identify the category and suggest a specific cut-back action.
+- Explain 'RunwayDays' and the risk indicated by 'Probability30DaySurvival'.
+- Compare 'SpendThisMonth' vs 'SpendLastMonth'.
+
+**RESPONSE STRUCTURE:**
+<p>Greeting to {userName},</p>
+<p>A concise overview of the financial health.</p>
 <b>⚠️ Actionable Recommendations:</b>
 <ul>
-  <li>Specific suggestion based on a top spending category.</li>
-  <li>Specific suggestion to improve runway.</li>
+  <li>Suggestion for a high-spend category.</li>
+  <li>Suggestion to improve survival probability.</li>
 </ul>
 <p>Encouraging sign-off from {persona}.</p>";
 
-        return await GenerateCompletionAsync(systemPrompt, $"Here are the stats: {statsJson}");
+        return await GenerateCompletionAsync(systemPrompt, $"Data: {statsJson}");
     }
 
     private async Task<string> GenerateCompletionAsync(string system, string prompt)

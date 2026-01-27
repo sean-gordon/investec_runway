@@ -19,8 +19,13 @@
                     <h1 class="text-3xl font-bold text-gray-900 tracking-tight">Gordon Finance</h1>
                     <p class="text-gray-500 mt-1">Configuration & Control Panel</p>
                 </div>
-                <div class="text-right">
-                    <span class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">System Active</span>
+                <div class="text-right flex flex-col items-end gap-2">
+                    <span class="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset transition-colors duration-500"
+                          :class="systemStatus.investecOnline ? 'bg-green-50 text-green-700 ring-green-600/20' : 'bg-red-50 text-red-700 ring-red-600/20'">
+                        <span class="w-1.5 h-1.5 rounded-full mr-1.5" :class="systemStatus.investecOnline ? 'bg-green-600' : 'bg-red-600'"></span>
+                        {{ systemStatus.investecOnline ? 'Investec Live' : 'Investec Offline' }}
+                    </span>
+                    <span class="text-[10px] text-gray-400">Last Checked: {{ formatTime(systemStatus.lastCheck) }}</span>
                 </div>
             </header>
 
@@ -85,6 +90,16 @@
                             <select v-model.number="settings.reportHour" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2">
                                 <option v-for="h in 24" :key="h-1" :value="h-1">{{ formatHour(h-1) }}</option>
                             </select>
+                        </div>
+                        <div class="pt-4 border-t border-gray-100">
+                            <button @click="sendReportNow" 
+                                :disabled="sendingReport"
+                                class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium shadow transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
+                                <span v-if="sendingReport">Generating Report...</span>
+                                <span v-else>Generate & Send Report Now</span>
+                                <svg v-if="!sendingReport" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>
+                            </button>
+                            <p class="text-xs text-gray-400 mt-2 text-center">Triggers full AI analysis and emails the recipient immediately.</p>
                         </div>
                     </div>
                 </section>
@@ -197,20 +212,31 @@
                         smtpPass: '',
                         emailTo: ''
                     },
+                    systemStatus: {
+                        investecOnline: false,
+                        lastCheck: ''
+                    },
                     days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
                     saving: false,
                     emailTesting: false,
                     aiTesting: false,
+                    sendingReport: false,
                     message: '',
                     messageType: 'success'
                 }
             },
             mounted() {
                 this.loadSettings();
+                this.loadStatus();
+                setInterval(this.loadStatus, 30000); // Poll status every 30s
             },
             methods: {
                 formatHour(h) {
                     return h.toString().padStart(2, '0') + ':00';
+                },
+                formatTime(dateStr) {
+                    if (!dateStr || dateStr.startsWith('0001')) return 'Never';
+                    return new Date(dateStr).toLocaleTimeString();
                 },
                 showToast(msg, type = 'success') {
                     this.message = msg;
@@ -226,6 +252,16 @@
                         }
                     } catch (e) {
                         console.error("Failed to load settings", e);
+                    }
+                },
+                async loadStatus() {
+                    try {
+                        const res = await fetch('/api/settings/status');
+                        if (res.ok) {
+                            this.systemStatus = await res.json();
+                        }
+                    } catch (e) {
+                        console.error("Failed to load status", e);
                     }
                 },
                 async saveSettings() {
@@ -261,6 +297,21 @@
                         this.showToast("Error sending email.", 'error');
                     } finally {
                         this.emailTesting = false;
+                    }
+                },
+                async sendReportNow() {
+                    this.sendingReport = true;
+                    try {
+                        const res = await fetch('/api/settings/send-report-now', { method: 'POST' });
+                        if (res.ok) {
+                            this.showToast("Financial Report Sent!", 'success');
+                        } else {
+                            this.showToast("Failed to generate report.", 'error');
+                        }
+                    } catch (e) {
+                        this.showToast("Error generating report.", 'error');
+                    } finally {
+                        this.sendingReport = false;
                     }
                 },
                 async testAi() {

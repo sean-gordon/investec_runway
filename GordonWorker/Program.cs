@@ -13,10 +13,13 @@ builder.Services.AddHttpClient<IInvestecClient, InvestecClient>();
 builder.Services.AddHttpClient<IOllamaService, OllamaService>();
 builder.Services.AddSingleton<ISettingsService, SettingsService>();
 builder.Services.AddSingleton<IActuarialService, ActuarialService>();
+builder.Services.AddSingleton<ISystemStatusService, SystemStatusService>();
 builder.Services.AddTransient<IEmailService, EmailService>();
+builder.Services.AddScoped<IFinancialReportService, FinancialReportService>();
 
 builder.Services.AddHostedService<TransactionsBackgroundService>();
 builder.Services.AddHostedService<WeeklyReportWorker>();
+builder.Services.AddHostedService<ConnectivityWorker>();
 
 var app = builder.Build();
 

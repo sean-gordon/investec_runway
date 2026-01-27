@@ -10,6 +10,7 @@ public interface IInvestecClient
     Task<string> AuthenticateAsync();
     Task<List<InvestecAccount>> GetAccountsAsync();
     Task<List<Transaction>> GetTransactionsAsync(string accountId, DateTimeOffset fromDate);
+    Task<bool> TestConnectivityAsync();
 }
 
 public class InvestecAccount
@@ -33,6 +34,20 @@ public class InvestecClient : IInvestecClient
         _logger = logger;
         _configuration = configuration;
         _httpClient.BaseAddress = new Uri("https://openapi.investec.com/");
+    }
+
+    public async Task<bool> TestConnectivityAsync()
+    {
+        try 
+        {
+            var token = await AuthenticateAsync();
+            return !string.IsNullOrEmpty(token);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Investec connectivity check failed.");
+            return false;
+        }
     }
 
     public async Task<string> AuthenticateAsync()

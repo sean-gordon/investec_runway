@@ -37,25 +37,29 @@ public class ActuarialService : IActuarialService
         var settings = _settingsService.GetSettingsAsync().GetAwaiter().GetResult();
 
         // 1. Basic Filtering (Expenses only)
+        // Expense = Amount > 0 AND Category != 'CREDIT'
         var expenses = history.Where(t => t.Amount > 0 && !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase)).ToList();
         
-        // 2. Monthly Stats - Use Local Time context for "Month" boundaries to match user expectation
-        var now = DateTime.Now;
-        var startOfThisMonth = new DateTime(now.Year, now.Month, 1);
+        // 2. Date Context (Use Local Server Time or force SAST if needed)
+        var today = DateTime.Today;
+        var startOfThisMonth = new DateTime(today.Year, today.Month, 1);
         var startOfLastMonth = startOfThisMonth.AddMonths(-1);
         
+        // Helper to normalize transaction date to local midnight for comparison
+        DateTime ToDate(DateTimeOffset dto) => dto.LocalDateTime.Date;
+
         var spendThisMonth = expenses
-            .Where(t => t.TransactionDate.Date >= startOfThisMonth)
+            .Where(t => ToDate(t.TransactionDate) >= startOfThisMonth)
             .Sum(t => t.Amount);
             
         var spendLastMonth = expenses
-            .Where(t => t.TransactionDate.Date >= startOfLastMonth && t.TransactionDate.Date < startOfThisMonth)
+            .Where(t => ToDate(t.TransactionDate) >= startOfLastMonth && ToDate(t.TransactionDate) < startOfThisMonth)
             .Sum(t => t.Amount);
 
         // 3. Linear Regression for Month-End Projection
         decimal projectedMonthEnd = spendThisMonth;
-        var daysPassed = (now - startOfThisMonth).TotalDays;
-        var daysInMonth = DateTime.DaysInMonth(now.Year, now.Month);
+        var daysPassed = (today - startOfThisMonth).TotalDays + 1; // Include today
+        var daysInMonth = DateTime.DaysInMonth(today.Year, today.Month);
         
         if (daysPassed >= 1)
         {
@@ -63,45 +67,43 @@ public class ActuarialService : IActuarialService
         }
 
         // 4. Daily Aggregation & Burn Rate Calculation
-        // CRITICAL FIX: To calculate daily burn correctly, we must consider the full window size, not just days with spend.
         var analysisWindowDays = settings.AnalysisWindowDays > 0 ? settings.AnalysisWindowDays : 90;
-        var windowStartDate = DateTime.UtcNow.AddDays(-analysisWindowDays).Date;
+        var windowStartDate = today.AddDays(-analysisWindowDays);
 
-        var validExpenses = expenses.Where(t => t.TransactionDate.Date >= windowStartDate).ToList();
+        var validExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= windowStartDate).ToList();
         var totalWindowSpend = validExpenses.Sum(t => t.Amount);
         
-        // Average Daily Spend = Total Spend / Window Days
+        // Average Daily Spend
         var avgDailySpend = (double)totalWindowSpend / analysisWindowDays;
 
+        // Group by normalized date
         var dailyExpensesMap = validExpenses
-            .GroupBy(t => t.TransactionDate.Date)
+            .GroupBy(t => ToDate(t.TransactionDate))
             .ToDictionary(g => g.Key, g => (double)g.Sum(t => t.Amount));
 
-        // Calculate Standard Deviation (Volatility) considering ALL days in the window (including zeros)
+        // Calculate Volatility & Weighted Burn
         double sumSquaredDiff = 0;
-        for (int i = 0; i < analysisWindowDays; i++)
-        {
-            var date = windowStartDate.AddDays(i);
-            var dailySpend = dailyExpensesMap.ContainsKey(date) ? dailyExpensesMap[date] : 0.0;
-            sumSquaredDiff += Math.Pow(dailySpend - avgDailySpend, 2);
-        }
-        var stdDev = Math.Sqrt(sumSquaredDiff / analysisWindowDays);
-
-        // 6. Exponential Moving Average (EMA) - "Weighted Burn"
-        // We iterate through every day in the window to let the EMA decay on zero-spend days
-        decimal weightedBurn = (decimal)avgDailySpend; // Start with simple average
+        decimal weightedBurn = (decimal)avgDailySpend;
         decimal alpha = settings.ActuarialAlpha; 
         
+        // Iterate accurately through every calendar day in the window
         for (int i = 0; i < analysisWindowDays; i++)
         {
-            var date = windowStartDate.AddDays(i);
-            var dailySpend = (decimal)(dailyExpensesMap.ContainsKey(date) ? dailyExpensesMap[date] : 0.0);
-            weightedBurn = (dailySpend * alpha) + (weightedBurn * (1 - alpha));
+            var loopDate = windowStartDate.AddDays(i);
+            var dailySpend = dailyExpensesMap.ContainsKey(loopDate) ? dailyExpensesMap[loopDate] : 0.0;
+            
+            // Volatility
+            sumSquaredDiff += Math.Pow(dailySpend - avgDailySpend, 2);
+            
+            // EMA
+            weightedBurn = ((decimal)dailySpend * alpha) + (weightedBurn * (1 - alpha));
         }
+        
+        var stdDev = Math.Sqrt(sumSquaredDiff / analysisWindowDays);
 
         // 7. Runway Scenarios
-        var baseBurn = weightedBurn > 0 ? weightedBurn : (decimal)avgDailySpend; // Fallback to simple average
-        if (baseBurn == 0) baseBurn = 1; // Prevent div/0
+        var baseBurn = weightedBurn > 0 ? weightedBurn : (decimal)avgDailySpend;
+        if (baseBurn <= 0) baseBurn = 1; // Prevent div/0 if literally 0 spend
 
         var expectedRunway = currentBalance / baseBurn;
         var stressBurn = (decimal)((double)baseBurn + stdDev); 
@@ -114,14 +116,14 @@ public class ActuarialService : IActuarialService
 
         // 9. Trend Analysis
         var trend = "Stable";
-        // Compare last 30 days vs previous 30 days within the window
         if (analysisWindowDays >= 60)
         {
             var period1Start = windowStartDate;
             var period2Start = windowStartDate.AddDays(30);
             
-            var period1Spend = validExpenses.Where(t => t.TransactionDate.Date >= period1Start && t.TransactionDate.Date < period2Start).Sum(t => t.Amount);
-            var period2Spend = validExpenses.Where(t => t.TransactionDate.Date >= period2Start && t.TransactionDate.Date < period2Start.AddDays(30)).Sum(t => t.Amount);
+            // Use ToDate() helper
+            var period1Spend = expenses.Where(t => ToDate(t.TransactionDate) >= period1Start && ToDate(t.TransactionDate) < period2Start).Sum(t => t.Amount);
+            var period2Spend = expenses.Where(t => ToDate(t.TransactionDate) >= period2Start && ToDate(t.TransactionDate) < period2Start.AddDays(30)).Sum(t => t.Amount);
             
             if (period2Spend > period1Spend * 1.1m) trend = "Deteriorating (Spending Accelerating)";
             else if (period2Spend < period1Spend * 0.9m) trend = "Improving (Spending Decelerating)";

@@ -8,8 +8,6 @@ services:
       - timescaledb_data:/var/lib/postgresql/data
     networks:
       - finance-net
-    ports:
-      - "5432:5432"
 
   gordon-worker:
     build:

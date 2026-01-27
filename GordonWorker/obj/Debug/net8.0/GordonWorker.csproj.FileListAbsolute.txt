@@ -1,0 +1,106 @@
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\appsettings.Development.json
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\appsettings.json
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\GordonWorker.staticwebassets.endpoints.json
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\GordonWorker.exe
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\GordonWorker.deps.json
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\GordonWorker.runtimeconfig.json
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\GordonWorker.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\GordonWorker.pdb
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\Dapper.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\Microsoft.AspNetCore.OpenApi.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\Microsoft.OpenApi.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\Npgsql.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\Swashbuckle.AspNetCore.Swagger.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\Swashbuckle.AspNetCore.SwaggerGen.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\Swashbuckle.AspNetCore.SwaggerUI.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\GordonWorker.csproj.AssemblyReference.cache
+C:\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\rpswa.dswa.cache.json
+C:\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\GordonWorker.GeneratedMSBuildEditorConfig.editorconfig
+C:\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\GordonWorker.AssemblyInfoInputs.cache
+C:\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\GordonWorker.AssemblyInfo.cs
+C:\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\GordonWorker.csproj.CoreCompileInputs.cache
+C:\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\GordonWorker.MvcApplicationPartsAssemblyInfo.cs
+C:\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\GordonWorker.MvcApplicationPartsAssemblyInfo.cache
+C:\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\rjimswa.dswa.cache.json
+C:\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\rjsmrazor.dswa.cache.json
+C:\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\rjsmcshtml.dswa.cache.json
+C:\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\scopedcss\bundle\GordonWorker.styles.css
+C:\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\staticwebassets.build.json
+C:\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\staticwebassets.build.json.cache
+C:\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\staticwebassets.development.json
+C:\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\staticwebassets.build.endpoints.json
+C:\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\GordonWo.86171B1D.Up2Date
+C:\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\GordonWorker.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\refint\GordonWorker.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\GordonWorker.pdb
+C:\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\GordonWorker.genruntimeconfig.cache
+C:\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\ref\GordonWorker.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\GordonWorker.staticwebassets.runtime.json
+C:\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\GordonWorker.sourcelink.json
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\Microsoft.Bcl.Memory.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\Microsoft.IdentityModel.Abstractions.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\Microsoft.IdentityModel.JsonWebTokens.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\Microsoft.IdentityModel.Logging.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\Microsoft.IdentityModel.Tokens.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\Newtonsoft.Json.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\System.IdentityModel.Tokens.Jwt.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\Twilio.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\Microsoft.AspNetCore.Cryptography.Internal.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\Microsoft.AspNetCore.DataProtection.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\Microsoft.AspNetCore.DataProtection.Abstractions.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\Microsoft.AspNetCore.DataProtection.Extensions.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\Microsoft.Extensions.Options.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\Telegram.Bot.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\BCrypt.Net-Next.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\Microsoft.AspNetCore.Authentication.JwtBearer.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\Microsoft.IdentityModel.Protocols.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\Microsoft.IdentityModel.Protocols.OpenIdConnect.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\HarfBuzzSharp.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\ScottPlot.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\SkiaSharp.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\SkiaSharp.HarfBuzz.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\linux-arm\native\libHarfBuzzSharp.so
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\linux-arm64\native\libHarfBuzzSharp.so
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\linux-loongarch64\native\libHarfBuzzSharp.so
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\linux-musl-arm\native\libHarfBuzzSharp.so
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\linux-musl-arm64\native\libHarfBuzzSharp.so
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\linux-musl-loongarch64\native\libHarfBuzzSharp.so
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\linux-musl-riscv64\native\libHarfBuzzSharp.so
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\linux-musl-x64\native\libHarfBuzzSharp.so
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\linux-riscv64\native\libHarfBuzzSharp.so
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\linux-x64\native\libHarfBuzzSharp.so
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\linux-x86\native\libHarfBuzzSharp.so
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\osx\native\libHarfBuzzSharp.dylib
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\win-arm64\native\libHarfBuzzSharp.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\win-x64\native\libHarfBuzzSharp.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\win-x86\native\libHarfBuzzSharp.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\linux-arm\native\libSkiaSharp.so
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\linux-arm64\native\libSkiaSharp.so
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\linux-loongarch64\native\libSkiaSharp.so
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\linux-musl-arm\native\libSkiaSharp.so
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\linux-musl-arm64\native\libSkiaSharp.so
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\linux-musl-loongarch64\native\libSkiaSharp.so
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\linux-musl-riscv64\native\libSkiaSharp.so
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\linux-musl-x64\native\libSkiaSharp.so
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\linux-riscv64\native\libSkiaSharp.so
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\linux-x64\native\libSkiaSharp.so
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\linux-x86\native\libSkiaSharp.so
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\osx\native\libSkiaSharp.dylib
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\win-arm64\native\libSkiaSharp.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\win-x64\native\libSkiaSharp.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\runtimes\win-x86\native\libSkiaSharp.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\HealthChecks.NpgSql.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\Microsoft.Extensions.Diagnostics.HealthChecks.dll
+C:\AI\Gemini\InvestecRunway App\GordonWorker\bin\Debug\net8.0\Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions.dll
+G:\My Drive\Tech\Coding\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\GordonWorker.csproj.AssemblyReference.cache
+G:\My Drive\Tech\Coding\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\rpswa.dswa.cache.json
+G:\My Drive\Tech\Coding\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\GordonWorker.GeneratedMSBuildEditorConfig.editorconfig
+G:\My Drive\Tech\Coding\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\GordonWorker.AssemblyInfoInputs.cache
+G:\My Drive\Tech\Coding\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\GordonWorker.AssemblyInfo.cs
+G:\My Drive\Tech\Coding\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\GordonWorker.csproj.CoreCompileInputs.cache
+G:\My Drive\Tech\Coding\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\GordonWorker.MvcApplicationPartsAssemblyInfo.cs
+G:\My Drive\Tech\Coding\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\GordonWorker.MvcApplicationPartsAssemblyInfo.cache
+G:\My Drive\Tech\Coding\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\GordonWorker.sourcelink.json
+G:\My Drive\Tech\Coding\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\GordonWorker.dll
+G:\My Drive\Tech\Coding\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\refint\GordonWorker.dll
+G:\My Drive\Tech\Coding\AI\Gemini\InvestecRunway App\GordonWorker\obj\Debug\net8.0\GordonWorker.pdb

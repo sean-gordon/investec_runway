@@ -37,21 +37,19 @@ public class ActuarialService : IActuarialService
         var settings = _settingsService.GetSettingsAsync().GetAwaiter().GetResult();
 
         // 1. Basic Filtering (Expenses only)
-        // Expense = Amount > 0 AND Category != 'CREDIT'
         var expenses = history.Where(t => t.Amount > 0 && !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase)).ToList();
         
-        // 2. Monthly Stats
-        var now = DateTime.UtcNow;
+        // 2. Monthly Stats - Use Local Time context for "Month" boundaries to match user expectation
+        var now = DateTime.Now;
         var startOfThisMonth = new DateTime(now.Year, now.Month, 1);
         var startOfLastMonth = startOfThisMonth.AddMonths(-1);
         
-        // Compare purely on Date component to avoid TimeZone issues
         var spendThisMonth = expenses
-            .Where(t => t.TransactionDate.Date >= startOfThisMonth.Date)
+            .Where(t => t.TransactionDate.Date >= startOfThisMonth)
             .Sum(t => t.Amount);
             
         var spendLastMonth = expenses
-            .Where(t => t.TransactionDate.Date >= startOfLastMonth.Date && t.TransactionDate.Date < startOfThisMonth.Date)
+            .Where(t => t.TransactionDate.Date >= startOfLastMonth && t.TransactionDate.Date < startOfThisMonth)
             .Sum(t => t.Amount);
 
         // 3. Linear Regression for Month-End Projection
@@ -59,79 +57,77 @@ public class ActuarialService : IActuarialService
         var daysPassed = (now - startOfThisMonth).TotalDays;
         var daysInMonth = DateTime.DaysInMonth(now.Year, now.Month);
         
-        // Avoid divide by zero or projecting on day 0
         if (daysPassed >= 1)
         {
             projectedMonthEnd = (spendThisMonth / (decimal)daysPassed) * daysInMonth;
         }
 
-        // 4. Daily Aggregation for Volatility & Burn
-        var dailyExpenses = expenses
+        // 4. Daily Aggregation & Burn Rate Calculation
+        // CRITICAL FIX: To calculate daily burn correctly, we must consider the full window size, not just days with spend.
+        var analysisWindowDays = settings.AnalysisWindowDays > 0 ? settings.AnalysisWindowDays : 90;
+        var windowStartDate = DateTime.UtcNow.AddDays(-analysisWindowDays).Date;
+
+        var validExpenses = expenses.Where(t => t.TransactionDate.Date >= windowStartDate).ToList();
+        var totalWindowSpend = validExpenses.Sum(t => t.Amount);
+        
+        // Average Daily Spend = Total Spend / Window Days
+        var avgDailySpend = (double)totalWindowSpend / analysisWindowDays;
+
+        var dailyExpensesMap = validExpenses
             .GroupBy(t => t.TransactionDate.Date)
-            .Select(g => Math.Abs(g.Sum(t => t.Amount)))
-            .ToList();
+            .ToDictionary(g => g.Key, g => (double)g.Sum(t => t.Amount));
 
-        if (dailyExpenses.Count == 0)
+        // Calculate Standard Deviation (Volatility) considering ALL days in the window (including zeros)
+        double sumSquaredDiff = 0;
+        for (int i = 0; i < analysisWindowDays; i++)
         {
-            return new FinancialHealthReport(currentBalance, 0, 0, 0, 0, 0, 0, 0, "No Data", 0, 0, 0, 0);
+            var date = windowStartDate.AddDays(i);
+            var dailySpend = dailyExpensesMap.ContainsKey(date) ? dailyExpensesMap[date] : 0.0;
+            sumSquaredDiff += Math.Pow(dailySpend - avgDailySpend, 2);
         }
-
-        // 5. Statistical Analysis (Mean & StdDev)
-        var n = dailyExpenses.Count;
-        var avgDailySpend = dailyExpenses.Average();
-        var sumOfSquares = dailyExpenses.Sum(val => Math.Pow((double)(val - avgDailySpend), 2));
-        var stdDev = Math.Sqrt(sumOfSquares / n); 
+        var stdDev = Math.Sqrt(sumSquaredDiff / analysisWindowDays);
 
         // 6. Exponential Moving Average (EMA) - "Weighted Burn"
-        decimal weightedBurn = 0;
+        // We iterate through every day in the window to let the EMA decay on zero-spend days
+        decimal weightedBurn = (decimal)avgDailySpend; // Start with simple average
         decimal alpha = settings.ActuarialAlpha; 
-        var orderedExpenses = expenses
-             .GroupBy(t => t.TransactionDate.Date)
-             .OrderBy(g => g.Key)
-             .Select(g => Math.Abs(g.Sum(t => t.Amount)))
-             .ToList();
-
-        if (orderedExpenses.Any())
+        
+        for (int i = 0; i < analysisWindowDays; i++)
         {
-            weightedBurn = orderedExpenses.First();
-            foreach (var expense in orderedExpenses.Skip(1))
-            {
-                weightedBurn = (expense * alpha) + (weightedBurn * (1 - alpha));
-            }
+            var date = windowStartDate.AddDays(i);
+            var dailySpend = (decimal)(dailyExpensesMap.ContainsKey(date) ? dailyExpensesMap[date] : 0.0);
+            weightedBurn = (dailySpend * alpha) + (weightedBurn * (1 - alpha));
         }
 
         // 7. Runway Scenarios
-        var baseBurn = weightedBurn > 0 ? weightedBurn : 1; 
+        var baseBurn = weightedBurn > 0 ? weightedBurn : (decimal)avgDailySpend; // Fallback to simple average
+        if (baseBurn == 0) baseBurn = 1; // Prevent div/0
+
         var expectedRunway = currentBalance / baseBurn;
-        
-        // Conservative (High Volatility impact)
         var stressBurn = (decimal)((double)baseBurn + stdDev); 
         var safeRunway = stressBurn > 0 ? currentBalance / stressBurn : 0;
-
-        // Optimistic
         var lowBurn = (decimal)Math.Max((double)baseBurn - stdDev, 1.0);
         var optimisticRunway = currentBalance / lowBurn;
 
-        // 8. Value at Risk (VaR 95%) - One-tailed Z=1.645
-        var maxProbableDailySpend = (double)avgDailySpend + (1.645 * stdDev);
+        // 8. Value at Risk (VaR 95%)
+        var maxProbableDailySpend = avgDailySpend + (1.645 * stdDev);
 
-        // 9. Trend Analysis (Slope of last 30 days)
+        // 9. Trend Analysis
         var trend = "Stable";
-        if (orderedExpenses.Count > 14)
+        // Compare last 30 days vs previous 30 days within the window
+        if (analysisWindowDays >= 60)
         {
-            var recent = orderedExpenses.TakeLast(14).Average();
-            var prior = orderedExpenses.SkipLast(14).TakeLast(14).Average();
-            var change = (recent - prior) / (prior == 0 ? 1 : prior);
+            var period1Start = windowStartDate;
+            var period2Start = windowStartDate.AddDays(30);
             
-            if (change > 0.1m) trend = "Deteriorating (Spending Accelerating)";
-            else if (change < -0.1m) trend = "Improving (Spending Decelerating)";
+            var period1Spend = validExpenses.Where(t => t.TransactionDate.Date >= period1Start && t.TransactionDate.Date < period2Start).Sum(t => t.Amount);
+            var period2Spend = validExpenses.Where(t => t.TransactionDate.Date >= period2Start && t.TransactionDate.Date < period2Start.AddDays(30)).Sum(t => t.Amount);
+            
+            if (period2Spend > period1Spend * 1.1m) trend = "Deteriorating (Spending Accelerating)";
+            else if (period2Spend < period1Spend * 0.9m) trend = "Improving (Spending Decelerating)";
         }
 
-        // 10. Monte Carlo Simulation for Probability (Simplified)
-        // Probability that balance > 0 after 30 days given Mean and StdDev
-        // This is effectively calculating Z-score of (CurrentBalance / 30) against the daily distribution
-        // If DailySpend ~ N(Mean, StdDev), then 30-Day Spend ~ N(30*Mean, Sqrt(30)*StdDev)
-        // We want P(30-Day Spend < CurrentBalance)
+        // 10. Monte Carlo Probability
         double probSurvival = 0;
         if (stdDev > 0)
         {

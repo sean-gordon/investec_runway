@@ -78,17 +78,17 @@ public class FinancialReportService : IFinancialReportService
         var stats = new
         {
             UserName = settings.UserName,
-            CurrentBalance = currentBalance,
-            SpendThisWeek = Math.Abs(thisWeekSpend),
-            SpendLastWeek = Math.Abs(lastWeekSpend),
-            RunwayDays = healthReport.ExpectedRunwayDays,
-            Volatility = healthReport.BurnVolatility,
+            CurrentBalance = currentBalance.ToString("F2"),
+            SpendThisWeek = Math.Abs(thisWeekSpend).ToString("F2"),
+            SpendLastWeek = Math.Abs(lastWeekSpend).ToString("F2"),
+            RunwayDays = healthReport.ExpectedRunwayDays.ToString("F1"),
+            Volatility = healthReport.BurnVolatility.ToString("F2"),
             Trend = healthReport.TrendDirection,
             Currency = settings.CurrencyCulture,
-            SpendThisMonth = healthReport.SpendThisMonth,
-            SpendLastMonth = healthReport.SpendLastMonth,
-            ProjectedMonthEnd = healthReport.ProjectedMonthEndSpend,
-            Probability30DaySurvival = healthReport.RunwayProbability
+            SpendThisMonth = healthReport.SpendThisMonth.ToString("F2"),
+            SpendLastMonth = healthReport.SpendLastMonth.ToString("F2"),
+            ProjectedMonthEnd = healthReport.ProjectedMonthEndSpend.ToString("F2"),
+            Probability30DaySurvival = healthReport.RunwayProbability.ToString("F1") + "%"
         };
 
         var jsonStats = JsonSerializer.Serialize(stats);

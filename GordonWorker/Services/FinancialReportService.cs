@@ -75,69 +75,100 @@ public class FinancialReportService : IFinancialReportService
         // 6. Send Email
         var subject = $"Weekly Financial Report - {DateTime.Now:dd MMM yyyy}";
         
-        // CSS for cleaner email
-        var style = @"
-            <style>
-                body { font-family: sans-serif; color: #333; line-height: 1.6; }
-                .container { max-width: 600px; margin: 0 auto; }
-                h1 { color: #003366; border-bottom: 2px solid #003366; padding-bottom: 10px; }
-                .stats-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-                .stats-table th, .stats-table td { text-align: left; padding: 12px; border-bottom: 1px solid #ddd; }
-                .stats-table th { background-color: #f8f9fa; color: #666; font-weight: 600; }
-                .highlight { color: #d32f2f; font-weight: bold; }
-                .positive { color: #388e3c; font-weight: bold; }
-            </style>";
+        // Ensure CultureInfo is set to South Africa for currency formatting
+        var culture = System.Globalization.CultureInfo.GetCultureInfo("en-ZA");
 
         var body = $@"
-            <html>
-            <head>{style}</head>
-            <body>
-                <div class='container'>
-                    <h1>Weekly Finance Update</h1>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <style>
+        body {{ font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f3f4f6; margin: 0; padding: 0; }}
+        .wrapper {{ width: 100%; table-layout: fixed; background-color: #f3f4f6; padding-bottom: 40px; }}
+        .main {{ background-color: #ffffff; margin: 0 auto; width: 100%; max-width: 600px; border-spacing: 0; font-family: sans-serif; color: #171717; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }}
+        .header {{ background-color: #111827; padding: 24px; text-align: center; }}
+        .header h1 {{ color: #ffffff; margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.5px; }}
+        .content {{ padding: 32px 24px; }}
+        .ai-box {{ background-color: #f0f9ff; border-left: 4px solid #0ea5e9; padding: 20px; border-radius: 4px; margin-bottom: 24px; font-size: 16px; line-height: 1.6; color: #334155; }}
+        .ai-box h3 {{ margin-top: 0; color: #0369a1; font-size: 16px; text-transform: uppercase; letter-spacing: 0.5px; }}
+        .ai-box ul {{ margin-bottom: 0; padding-left: 20px; }}
+        .ai-box li {{ margin-bottom: 8px; }}
+        .stats-header {{ font-size: 18px; font-weight: 700; color: #111827; margin-bottom: 16px; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px; }}
+        .stats-table {{ width: 100%; border-collapse: collapse; }}
+        .stats-table th {{ text-align: left; padding: 12px 8px; color: #6b7280; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; border-bottom: 1px solid #e5e7eb; }}
+        .stats-table td {{ padding: 16px 8px; border-bottom: 1px solid #f3f4f6; font-size: 15px; font-weight: 500; color: #1f2937; }}
+        .stats-table tr:last-child td {{ border-bottom: none; }}
+        .amount {{ font-family: monospace; font-size: 16px; color: #111827; }}
+        .highlight-good {{ color: #059669; font-weight: 700; }}
+        .highlight-bad {{ color: #dc2626; font-weight: 700; }}
+        .footer {{ text-align: center; padding: 24px; color: #9ca3af; font-size: 12px; }}
+    </style>
+</head>
+<body>
+    <div class='wrapper'>
+        <br>
+        <table class='main'>
+            <!-- Header -->
+            <tr>
+                <td class='header'>
+                    <h1>Gordon Finance Engine</h1>
+                </td>
+            </tr>
+
+            <!-- Content -->
+            <tr>
+                <td class='content'>
                     
-                    <div>
+                    <!-- AI Insight -->
+                    <div class='ai-box'>
+                        <h3>💡 The Weekly Brief</h3>
                         {aiExplanation}
                     </div>
-                    
-                    <h3>Key Statistics</h3>
+
+                    <!-- Stats Table -->
+                    <div class='stats-header'>Financial Vital Signs</div>
                     <table class='stats-table'>
                         <tr>
                             <th>Metric</th>
-                            <th>Value</th>
+                            <th style='text-align: right;'>Value</th>
                         </tr>
                         <tr>
                             <td>Current Balance</td>
-                            <td>{currentBalance:C} (ZAR)</td>
+                            <td style='text-align: right;' class='amount'>{string.Format(culture, "{0:C}", currentBalance)}</td>
                         </tr>
                         <tr>
                             <td>Spend This Week</td>
-                            <td>{Math.Abs(thisWeekSpend):C}</td>
+                            <td style='text-align: right;' class='amount'>{string.Format(culture, "{0:C}", Math.Abs(thisWeekSpend))}</td>
                         </tr>
                         <tr>
                             <td>Spend Last Week</td>
-                            <td>{Math.Abs(lastWeekSpend):C}</td>
+                            <td style='text-align: right;' class='amount'>{string.Format(culture, "{0:C}", Math.Abs(lastWeekSpend))}</td>
                         </tr>
                         <tr>
-                            <td>Estimated Runway</td>
-                            <td class='{(healthReport.ExpectedRunwayDays < 30 ? "highlight" : "positive")}'>{healthReport.ExpectedRunwayDays:F0} Days</td>
+                            <td>Projected Runway</td>
+                            <td style='text-align: right;' class='{(healthReport.ExpectedRunwayDays < 30 ? "highlight-bad" : "highlight-good")}'>
+                                {healthReport.ExpectedRunwayDays:F0} Days
+                            </td>
                         </tr>
                         <tr>
-                            <td>Trend</td>
-                            <td>{healthReport.TrendDirection}</td>
+                            <td>Spending Trend</td>
+                            <td style='text-align: right;'>{healthReport.TrendDirection}</td>
                         </tr>
                     </table>
-                    
-                    <p style='font-size: 12px; color: #999; margin-top: 30px;'>
-                        Generated by Gordon Finance Engine at {DateTime.Now:HH:mm}
-                    </p>
-                </div>
-            </body>
-            </html>
-        ";
+
+                </td>
+            </tr>
+        </table>
         
-        // Ensure CultureInfo is set to South Africa for currency formatting if not system default
-        var culture = System.Globalization.CultureInfo.GetCultureInfo("en-ZA");
-        body = string.Format(culture, body); 
+        <div class='footer'>
+            Generated automatically by your Gordon Finance Engine.<br>
+            {DateTime.Now:yyyy-MM-dd HH:mm}
+        </div>
+    </div>
+</body>
+</html>";
 
         await _emailService.SendEmailAsync(subject, body);
         _logger.LogInformation("Financial Report generated and sent.");

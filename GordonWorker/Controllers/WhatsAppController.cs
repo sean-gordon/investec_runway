@@ -59,17 +59,13 @@ public class WhatsAppController : ControllerBase
             var summaryJson = JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true });
 
             // 3. Try to answer using Summary first
-            var promptForSummary = $@"You are Gordon, a senior financial analyst. 
-Use the following financial summary to answer the user's question.
-If the summary does NOT contain the specific information needed to answer the question (e.g. asking for specific transactions, dates, or details not in the top 3 categories), respond with EXACTLY and ONLY the word 'NEED_SQL'.
-
-SUMMARY:
-{summaryJson}
+            var promptForSummary = $@"Use the provided financial summary to answer the user's question.
+If the summary does NOT contain the specific information needed (e.g. specific transaction details not in the top categories), respond with EXACTLY and ONLY the word 'NEED_SQL'.
 
 USER QUESTION:
 {Body}";
 
-            var aiResponse = await _aiService.FormatResponseAsync(promptForSummary, "Summary Context");
+            var aiResponse = await _aiService.FormatResponseAsync(promptForSummary, summaryJson);
 
             string finalAnswer;
 

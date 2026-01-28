@@ -87,15 +87,37 @@ public class AiService : IAiService
 
     public async Task<string> GenerateSqlAsync(string userPrompt)
     {
-        var systemPrompt = "You are a PostgreSQL expert. Return ONLY the SQL query.";
+        var systemPrompt = @"You are a PostgreSQL expert for a financial database.
+Table 'transactions' schema:
+- transaction_date (timestamptz)
+- description (text)
+- amount (numeric): IMPORTANT - POSITIVE numbers are Expenses (Debits), NEGATIVE numbers are Income/Credits (Deposits).
+- balance (numeric)
+- category (text)
+
+Return ONLY the SQL query. Use standard PostgreSQL syntax.";
         return await GenerateCompletionAsync(systemPrompt, userPrompt);
     }
 
     public async Task<string> FormatResponseAsync(string userPrompt, string dataContext)
     {
         var settings = await _settingsService.GetSettingsAsync();
-        var systemPrompt = $"You are a senior financial analyst named {settings.SystemPersona}.";
-        return await GenerateCompletionAsync(systemPrompt, userPrompt + "\nContext: " + dataContext);
+        var persona = settings.SystemPersona;
+        var userName = settings.UserName;
+
+        var systemPrompt = $@"You are {persona}, a senior actuarial financial advisor for {userName}.
+        
+**STRICT GUIDELINES:**
+1. **Currency:** ALWAYS use R symbol for ZAR (e.g. R1,500.00). 
+2. **Sign Convention:** In this database, POSITIVE numbers are Expenses (Debits) and NEGATIVE numbers are Income/Credits (Deposits).
+3. **Math Accuracy:** If you are provided with an Actuarial Report or Summary, PRIORITIZE those calculated values over doing your own math on raw transactions.
+4. **Formatting:** Use clear Markdown (bold, lists) for readability. Do NOT use HTML.
+5. **Tone:** Professional, concise, and helpful.
+
+Context Information:
+{dataContext}";
+
+        return await GenerateCompletionAsync(systemPrompt, userPrompt);
     }
 
         public async Task<string> GenerateSimpleReportAsync(string statsJson)

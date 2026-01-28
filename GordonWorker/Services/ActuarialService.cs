@@ -16,6 +16,8 @@ public record FinancialHealthReport(
     decimal SpendThisMonth,
     decimal SpendLastMonth,
     decimal ProjectedMonthEndSpend,
+    decimal ProjectedBalanceAtNextSalary,
+    int DaysUntilNextSalary,
     double RunwayProbability,
     List<CategorySpend> TopCategories
 );
@@ -248,6 +250,9 @@ public class ActuarialService : IActuarialService
         decimal projectedMonthEnd = spendThisMonth;
         if (daysIntoPeriod >= 1) projectedMonthEnd = (spendThisMonth / (decimal)daysIntoPeriod) * (decimal)avgCycleDays;
 
+        decimal remainingSpendExpected = (decimal)weightedMean * (decimal)daysUntilNextSalary;
+        decimal projectedBalanceAtPayday = currentBalance - remainingSpendExpected;
+
         return new FinancialHealthReport(
             CurrentBalance: currentBalance,
             WeightedDailyBurn: baseBurn,
@@ -261,6 +266,8 @@ public class ActuarialService : IActuarialService
             SpendThisMonth: spendThisMonth,
             SpendLastMonth: spendLastMonth,
             ProjectedMonthEndSpend: projectedMonthEnd,
+            ProjectedBalanceAtNextSalary: projectedBalanceAtPayday,
+            DaysUntilNextSalary: (int)Math.Round(daysUntilNextSalary),
             RunwayProbability: Math.Min(Math.Max(probSurvival, 0), 100),
             TopCategories: categoryReport.OrderByDescending(c => c.Amount).Take(3).ToList()
         );

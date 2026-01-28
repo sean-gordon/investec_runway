@@ -98,98 +98,97 @@ public class AiService : IAiService
         return await GenerateCompletionAsync(systemPrompt, userPrompt + "\nContext: " + dataContext);
     }
 
-    public async Task<string> GenerateSimpleReportAsync(string statsJson)
-    {
-        var settings = await _settingsService.GetSettingsAsync();
-        var persona = settings.SystemPersona;
-        var userName = settings.UserName;
-        
-        var systemPrompt = $@"You are {persona}, a senior actuarial financial advisor for {userName}. 
-
-**STRICT GUIDELINES:**
-1. **Currency:** ALWAYS use R symbol (e.g. R1,500.00).
-2. **Fixed Costs:** NEVER suggest cut-backs for School, Mortgage, Levies, Home Loan, or Insurance. Treat these as essential overhead.
-3. **No Hallucination:** Only use provided numbers. Do not invent reasons for fluctuations.
-4. **Format:** Output HTML ONLY (p, ul, li, b). Do NOT use Markdown.
-
-**INSIGHT LOGIC:**
-- **Balance Projection:** Mention the 'ProjectedBalanceAtPayday'. This ALREADY accounts for both predicted daily burn AND the 'UpcomingFixedCosts' (unpaid large bills).
-- **Upcoming Payments:** Acknowledge any bills in 'UpcomingFixedCosts' as pending liabilities.
-- **TopCategories:** ONLY suggest cut-backs for 'TopCategoriesWithIncreases' (categories with non-stable spending growth).
-- **Runway:** Explain 'RunwayDays' and 'ProbabilityToReachPayday'.
-
-**OUTPUT STRUCTURE:**
-1. A personal greeting.
-2. A summary of current spend vs last period, explicitly mentioning the projected balance before next payday.
-3. A section titled '<b>⚠️ Actionable Recommendations:</b>' with a bulleted list. 
-   - If 'UpcomingFixedCosts' has items, remind the user to ensure funds are ready for them.
-   - If 'AllTopCategoriesAreStable' is true, provide 1-2 generic tips for long-term wealth building or automating savings.
-   - Otherwise, suggest specific cut-backs for categories in 'TopCategoriesWithIncreases'.
-   - ALWAYS ensure the list contains at least one item.
-4. A professional sign-off.";
-
-        return await GenerateCompletionAsync(systemPrompt, $"[DATA_CONTEXT]\n{statsJson}\n[/DATA_CONTEXT]\n\nResponse:");
-    }
-
-    private async Task<string> GenerateCompletionAsync(string system, string prompt)
-    {
-        var (provider, _, _, geminiKey) = await GetConnectionDetailsAsync();
-        if (provider == "Gemini") return await GenerateGeminiCompletionAsync(system, prompt, geminiKey);
-        
-        var settings = await _settingsService.GetSettingsAsync();
-        var model = settings.OllamaModelName;
-        var baseUrl = settings.OllamaBaseUrl;
-        var request = new { model = model, prompt = $"{system}\n\n{prompt}", stream = false };
-        var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
-        try 
-        {
-            var baseUri = baseUrl.EndsWith("/") ? baseUrl : baseUrl + "/";
-            var fullUrl = new Uri(new Uri(baseUri), "api/generate");
-            var response = await _httpClient.PostAsync(fullUrl, content);
-            response.EnsureSuccessStatusCode();
-            var responseString = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<OllamaResponse>(responseString);
-            return result?.Response?.Trim() ?? string.Empty;
-        }
-        catch (Exception ex) { _logger.LogError(ex, "Error calling Ollama."); return "I'm sorry, I couldn't process that request right now."; }
-    }
-
-    private async Task<string> GenerateGeminiCompletionAsync(string system, string prompt, string apiKey)
-    {
-        try
+        public async Task<string> GenerateSimpleReportAsync(string statsJson)
         {
             var settings = await _settingsService.GetSettingsAsync();
-            var model = !string.IsNullOrWhiteSpace(settings.OllamaModelName) ? settings.OllamaModelName : "gemini-1.5-flash";
-            var url = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={apiKey}";
-            var request = new
-            {
-                contents = new[] { new { role = "user", parts = new[] { new { text = system + "\n\n" + prompt } } } },
-                safetySettings = new[]
-                {
-                    new { category = "HARM_CATEGORY_HARASSMENT", threshold = "BLOCK_NONE" },
-                    new { category = "HARM_CATEGORY_HATE_SPEECH", threshold = "BLOCK_NONE" },
-                    new { category = "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold = "BLOCK_NONE" },
-                    new { category = "HARM_CATEGORY_DANGEROUS_CONTENT", threshold = "BLOCK_NONE" }
-                }
-            };
-            var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
-            var response = await _httpClient.PostAsync(url, content);
-            if (!response.IsSuccessStatusCode) { var errorBody = await response.Content.ReadAsStringAsync(); return $"Error: Gemini API returned {response.StatusCode}. Details: {errorBody}"; }
-            var responseString = await response.Content.ReadAsStringAsync();
-            using var doc = JsonDocument.Parse(responseString);
-            if (doc.RootElement.TryGetProperty("candidates", out var candidates) && candidates.GetArrayLength() > 0)
-            {
-                var firstCandidate = candidates[0];
-                if (firstCandidate.TryGetProperty("content", out var candidateContent) && candidateContent.TryGetProperty("parts", out var parts) && parts.GetArrayLength() > 0)
-                {
-                    return parts[0].GetProperty("text").GetString()?.Trim() ?? "";
-                }
-            }
-            return "Error: Gemini returned an empty response candidate.";
+            var persona = settings.SystemPersona;
+            var userName = settings.UserName;
+            
+            var systemPrompt = $@"You are {persona}, a senior actuarial financial advisor for {userName}. 
+    
+    **STRICT GUIDELINES:**
+    1. **Currency:** ALWAYS use R symbol (e.g. R1,500.00).
+    2. **Fixed Costs:** NEVER suggest cut-backs for School, Mortgage, Levies, Home Loan, or Insurance. Treat these as essential overhead.
+    3. **No Hallucination:** Only use provided numbers. Do not invent reasons for fluctuations.
+    4. **Format:** Output HTML ONLY (p, ul, li, b). Do NOT use Markdown.
+    
+    **INSIGHT LOGIC:**
+    - **Balance Projection:** Mention the 'ProjectedBalanceAtPayday'. This ALREADY accounts for both predicted daily burn AND the 'UpcomingFixedCosts' (unpaid large bills).
+    - **Upcoming Payments:** Acknowledge any bills in 'UpcomingFixedCosts' as pending liabilities.
+    - **TopCategories:** ONLY suggest cut-backs for 'TopCategoriesWithIncreases' (categories with non-stable spending growth).
+    - **Runway:** Explain 'RunwayDays' and 'ProbabilityToReachPayday'.
+    
+    **OUTPUT STRUCTURE:**
+    1. A personal greeting.
+    2. A summary of current spend vs last period, explicitly mentioning the projected balance before next payday.
+    3. A section titled '<b>⚠️ Actionable Recommendations:</b>' with a bulleted list. 
+       - If 'UpcomingFixedCosts' has items, remind the user to ensure funds are ready for them.
+       - If 'AllTopCategoriesAreStable' is true, provide 1-2 generic tips for long-term wealth building or automating savings.
+       - Otherwise, suggest specific cut-backs for categories in 'TopCategoriesWithIncreases'.
+       - ALWAYS ensure the list contains at least one item.
+    4. A professional sign-off.";
+    
+            return await GenerateCompletionAsync(systemPrompt, $"[DATA_CONTEXT]\n{statsJson}\n[/DATA_CONTEXT]\n\nResponse:");
         }
-        catch (Exception ex) { _logger.LogError(ex, "Gemini API call failed."); return "I'm sorry, I couldn't process that request via Gemini."; }
-    }
-
+    
+        private async Task<string> GenerateCompletionAsync(string system, string prompt, CancellationToken ct = default)
+        {
+            var (provider, _, _, geminiKey) = await GetConnectionDetailsAsync();
+            if (provider == "Gemini") return await GenerateGeminiCompletionAsync(system, prompt, geminiKey, ct); 
+            
+            var settings = await _settingsService.GetSettingsAsync();
+            var model = settings.OllamaModelName;
+            var baseUrl = settings.OllamaBaseUrl;
+            var request = new { model = model, prompt = $"{system}\n\n{prompt}", stream = false };
+            var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
+            try 
+            {
+                var baseUri = baseUrl.EndsWith("/") ? baseUrl : baseUrl + "/";
+                var fullUrl = new Uri(new Uri(baseUri), "api/generate");
+                var response = await _httpClient.PostAsync(fullUrl, content, ct);
+                response.EnsureSuccessStatusCode();
+                var responseString = await response.Content.ReadAsStringAsync(ct);
+                var result = JsonSerializer.Deserialize<OllamaResponse>(responseString);
+                return result?.Response?.Trim() ?? string.Empty;
+            }
+            catch (Exception ex) { _logger.LogError(ex, "Error calling Ollama."); return "I'm sorry, I couldn't process that request right now."; }
+        }
+    
+        private async Task<string> GenerateGeminiCompletionAsync(string system, string prompt, string apiKey, CancellationToken ct = default)
+        {
+            try
+            {
+                var settings = await _settingsService.GetSettingsAsync();
+                var model = !string.IsNullOrWhiteSpace(settings.OllamaModelName) ? settings.OllamaModelName : "gemini-1.5-flash";
+                var url = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={apiKey}";
+                var request = new
+                {
+                    contents = new[] { new { role = "user", parts = new[] { new { text = system + "\n\n" + prompt } } } },
+                    safetySettings = new[]
+                    {
+                        new { category = "HARM_CATEGORY_HARASSMENT", threshold = "BLOCK_NONE" },
+                        new { category = "HARM_CATEGORY_HATE_SPEECH", threshold = "BLOCK_NONE" },
+                        new { category = "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold = "BLOCK_NONE" },      
+                        new { category = "HARM_CATEGORY_DANGEROUS_CONTENT", threshold = "BLOCK_NONE" }       
+                    }
+                };
+                var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
+                var response = await _httpClient.PostAsync(url, content, ct);
+                if (!response.IsSuccessStatusCode) { var errorBody = await response.Content.ReadAsStringAsync(ct); return $"Error: Gemini API returned {response.StatusCode}. Details: {errorBody}"; }
+                var responseString = await response.Content.ReadAsStringAsync(ct);
+                using var doc = JsonDocument.Parse(responseString);
+                if (doc.RootElement.TryGetProperty("candidates", out var candidates) && candidates.GetArrayLength() > 0)
+                {
+                    var firstCandidate = candidates[0];
+                    if (firstCandidate.TryGetProperty("content", out var candidateContent) && candidateContent.TryGetProperty("parts", out var parts) && parts.GetArrayLength() > 0)
+                    {
+                        return parts[0].GetProperty("text").GetString()?.Trim() ?? "";
+                    }
+                }
+                return "Error: Gemini returned an empty response candidate.";
+            }
+            catch (Exception ex) { _logger.LogError(ex, "Gemini API call failed."); return "I'm sorry, I couldn't process that request via Gemini."; }
+        }
     private class OllamaResponse { [System.Text.Json.Serialization.JsonPropertyName("response")] public string? Response { get; set; } }
     private class OllamaTagsResponse { [System.Text.Json.Serialization.JsonPropertyName("models")] public List<OllamaModelTag>? Models { get; set; } }
     private class OllamaModelTag { [System.Text.Json.Serialization.JsonPropertyName("name")] public string? Name { get; set; } }

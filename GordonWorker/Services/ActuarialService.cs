@@ -149,10 +149,9 @@ public class ActuarialService : IActuarialService
             decimal diff = cat.Amount - ptdLastSpend;
             decimal percent = ptdLastSpend > 0 ? (diff / ptdLastSpend) * 100 : 100;
 
-            bool isStable = Math.Abs(percent) < 10 || Math.Abs(diff) < 100;
-            categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent, isStable, false));        
-        }
-
+                        bool isStable = Math.Abs(percent) < 10 || Math.Abs(diff) < 100;
+                        categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent, isStable, IsFixedCost(cat.Name)));                                                                                                           
+                    }
         // Identify Upcoming Expected Payments
         var upcomingFixedCosts = new List<UpcomingExpense>();
         var historicalFixedExpenses = lastPeriodFullExpenses.Where(t => IsFixedCost(NormalizeDescription(t.Description)))

@@ -1,24 +1,26 @@
 # Gordon Finance Engine
 
-A self-hosted, containerised financial analytics platform that acts as your personal "Actuarial AI". It synchronises Investec Programmable Banking transactions into a TimescaleDB hypertable, performs advanced statistical analysis (Burn Rate, Volatility, Runway Probability), and provides natural language insights via a local LLM (Ollama).
+A self-hosted, containerised financial analytics platform that acts as your personal "Actuarial AI". It synchronises Investec Programmable Banking transactions into a TimescaleDB hypertable, performs advanced statistical analysis (Burn Rate, Volatility, Runway Probability), and provides natural language insights via local LLMs (Ollama) or Cloud AI (Google Gemini).
 
 ## Features
 
--   **Multi-Account Sync**: Automatically fetches transactions for all linked Investec accounts every 60 seconds.
+-   **Multi-Account Sync**: Automatically fetches transactions for all linked Investec accounts every 60 seconds with deterministic deduplication.
+-   **Salary-to-Salary Lifecycle**: Reports are grounded in your actual paycheck dates (e.g. "TCP 131") rather than arbitrary calendar months.
+-   **Forward-Looking Projections**:
+    -   **Upcoming Expected Payments**: Automatically identifies recurring large overheads (School, Mortgage, Insurance) that haven't hit yet and reserves them in your projections.
+    -   **Projected Payday Balance**: Calculates exactly what will be left in your account the moment before your next salary arrives.
 -   **Advanced Actuarial Logic**:
-    -   **Runway Prediction**: "How many days until I run out of money?"
-    -   **Monte Carlo Simulation**: Calculates the *probability* (0-100%) of surviving the next 30 days.
-    -   **Linear Regression**: Forecasts month-end spending based on current daily pace.
-    -   **Volatility Analysis**: Measures how erratic your spending is.
--   **AI Analyst**: Connects to an external Ollama instance (via Tailscale/LAN) to interpret data and answer questions in plain English.
--   **Weekly Reports**: Sends beautiful, high-quality HTML emails with "Vital Signs" and AI summaries.
--   **Web Dashboard**: A modern, zero-build Vue.js interface for configuration, manual triggers, and system status.
+    -   **Payday-Targeted Runway**: Conservative estimates of how long your money will truly last, accounting for unpaid overhead.
+    -   **Like-for-Like PTD Comparison**: Compares current spending strictly against the same point in the *previous* salary cycle.
+    -   **Volatility & Trend Analysis**: Chronological EMA-weighted burn rate and variance.
+-   **AI Analyst (Dual-Brain)**: Connect to **Ollama** (local) or **Google Gemini** (cloud) to interpret data and provide actionable recommendations.
+-   **Weekly Reports**: Sends high-quality HTML emails with "Financial Vital Signs" and AI summaries.
 
 ## Prerequisites
 
 -   Docker Desktop
 -   Investec Programmable Banking credentials (Client ID, Secret, API Key)
--   An **Ollama** instance running externally (e.g., on another server via Tailscale).
+-   **AI Provider**: Either an Ollama instance or a Google Gemini API Key.
 -   SMTP Server details (e.g., Gmail) for email reports.
 
 ## Quick Start
@@ -49,10 +51,9 @@ A self-hosted, containerised financial analytics platform that acts as your pers
 
 Once the app is running, use the dashboard (`http://localhost:52944`) to configure:
 
-*   **AI Brain**: Point to your Ollama URL (e.g., `http://100.x.y.z:11434`) and set the model (e.g., `deepseek-coder`).
-*   **Data Settings**: Set "History Depth" (days to sync) and choose your Currency (ZAR, USD, GBP).
+*   **Intelligence Engine**: Switch between Ollama and Gemini. Test connections and select models from dynamic dropdowns.
+*   **Data Settings**: Set "History Depth" and choose your Currency Culture (e.g., en-ZA for Rands).
 *   **Notifications**: Enter SMTP details to enable email reports.
-*   **Actuarial Logic**: Adjust sensitivity (Alpha) to make the burn rate more or less reactive to recent spending.
 
 ## Usage
 
@@ -66,23 +67,18 @@ POST http://localhost:52944/chat
 Content-Type: application/json
 
 {
-  "message": "What is my current runway and risk level?"
+  "message": "What is my projected balance for the next payday?"
 }
 ```
 
 ### Force Re-Sync
-If data looks incorrect or you want to fetch more history, go to the **Data** section in the dashboard and click **"Force Full Re-Sync"**. This will wipe local data and re-download transactions from Investec.
+If data looks incorrect, click **"Force Full Re-Sync"** in the Data section. This clears local data and re-calculates all transaction IDs using stable deterministic fingerprinting.
 
 ## Architecture
 
 -   **timescaledb**: PostgreSQL with Timescale extension. Stores transactions and persistent system settings.
 -   **gordon-worker**: .NET 8 Service.
-    -   **Ingestion**: Background service polling Investec.
-    -   **Analysis**: `ActuarialService` performing math.
+    -   **Ingestion**: Background service with deterministic deduplication.
+    -   **Analysis**: `ActuarialService` performing payday-targeted math.
+    -   **AI Service**: Abstracted LLM communication (Ollama/Gemini).
     -   **API/UI**: Serves the Vue.js frontend and REST endpoints.
-
-## Troubleshooting
-
--   **"Investec Offline"**: Check the dashboard header. Hover over the badge to see the specific error (e.g., HTTP 401).
--   **No Email**: Use the "Test Email" button in the dashboard to verify SMTP settings.
--   **0 Days Runway**: Ensure you have enough history. Use "Force Full Re-Sync" to backfill up to 180 days.

@@ -1,72 +1,45 @@
 # Project Overview
 
-**Gordon Finance Engine** is a self-hosted, containerised financial analytics platform designed to provide "Actuarial-grade" insights into personal finances. It connects to Investec Programmable Banking, stores transaction history in a robust time-series database, and uses a local Large Language Model (LLM) to offer a natural language interface for queries and reporting.
+**Gordon Finance Engine** is a self-hosted, containerised financial analytics platform designed to provide "Actuarial-grade" insights into personal finances. It connects to Investec Programmable Banking, stores transaction history in a robust time-series database, and uses a Large Language Model (LLM) to offer a natural language interface for queries and reporting.
 
 ## Key Technologies
 
 *   **Core:** .NET 8 (C#)
 *   **Database:** TimescaleDB (PostgreSQL extension).
     *   `transactions` table: Time-series hypertable.
-    *   `system_config` table: JSONB singleton for storing persistent app settings.
-*   **AI/LLM:** External Ollama instance (configurable URL).
-*   **Frontend:** Vue.js 3 (Global build, no bundler) + Tailwind CSS (CDN). Served as static files from `wwwroot` by the .NET app.
+    *   `system_config` table: JSONB singleton for app settings.
+*   **AI/LLM:** Multi-provider support (Ollama or Google Gemini).
+*   **Frontend:** Vue.js 3 (Global build) + Tailwind CSS. Served as static files from `wwwroot`.
 *   **Orchestration:** Docker Compose.
 
 ## Architecture
 
-The system consists of two main containers managed via `docker-compose.yml`:
-
-1.  **`timescaledb`**: Stores financial data and configuration. Not exposed externally (internal network only).
+1.  **`timescaledb`**: Stores financial data and configuration.
 2.  **`gordon-worker`**: The main application logic.
-    *   **Ingestion Worker**: Polls Investec API every 60s (`TransactionsBackgroundService`).
-    *   **Connectivity Worker**: Checks Investec API status every 30m (`ConnectivityWorker`).
-    *   **Weekly Reporter**: Scheduled emailing service (`WeeklyReportWorker`).
-    *   **API**: Exposes endpoints for Chat, Settings, and Status (`/api/settings`, `/chat`).
-    *   **UI**: Serves the Single Page Application (`index.html`).
+    *   **Ingestion Worker**: Polls Investec API with deterministic deduplication (`TransactionsBackgroundService`).
+    *   **Weekly Reporter**: Orchestrates the salary-cycle reporting pipeline.
+    *   **API/UI**: Serves the dashboard and REST endpoints.
 
 ### Key Services (`GordonWorker/Services`)
 
-*   **`ActuarialService`**: Implements advanced financial math:
-    *   **Monte Carlo Simulation**: Probability of survival (30-day).
-    *   **Linear Regression**: Month-end projection.
+*   **`ActuarialService`**: Implements the Payday-Targeted Lifecycle:
+    *   **Salary Cycle Detection**: Sign-agnostic detection of paycheck dates.
+    *   **Upcoming Payments**: Reserves balance for missing fixed historical overhead.
+    *   **Period-To-Date (PTD)**: Like-for-like comparison between cycles.
     *   **Weighted Burn (EMA)**: Recent spending sensitivity.
-*   **`AiService`**: Handles LLM communication (Ollama or Google Gemini).
+*   **`AiService`**: Handles LLM communication (Ollama/Gemini).
     *   *Text-to-SQL*: Generates SQL for raw queries.
     *   *Analyst Persona*: Interprets complex JSON stats into simple advice.
-*   **`SettingsService`**: Persists runtime configuration to the `system_config` database table. **Always use this service to retrieve settings, do not hardcode.**
-*   **`TransactionSyncService`**: Central logic for fetching and upserting transactions. Handles "Deep Sync" logic.
+*   **`SettingsService`**: Persists runtime configuration to the database.
+*   **`TransactionSyncService`**: Logic for fetching and fingerprinting transactions.
 *   **`FinancialReportService`**: Orchestrates data fetching, math, AI summary, and HTML email generation.
 
-# Building and Running
-
-The project is designed to be run entirely via Docker.
-
-## Prerequisites
-*   Docker Desktop
-*   Investec API Credentials (set in `.env`)
-
-## Commands
-
-**Start the System:**
-```bash
-docker-compose up -d --build
-```
-
-**Accessing the Application:**
-*   **Dashboard & Settings:** `http://localhost:52944`
-*   **Chat API:** `POST http://localhost:52944/chat`
-
-# Development Conventions
+## Development Conventions
 
 *   **Language & Locale:** All code, comments, and logs must use **English UK**.
-*   **Formatting:** No em dashes (—) are permitted in code comments or strings; use regular dashes (-).
-*   **Database:** 
-    *   Use "Safe Upsert" (`ON CONFLICT DO NOTHING`) for transaction ingestion.
-    *   Store all user-configurable settings in the `system_config` table (JSONB).
-*   **Frontend:** Keep the frontend "no-build". Use Vue 3 Global build. Do not introduce npm/webpack.
-*   **Configuration:** 
-    *   Secrets (API Keys) -> `.env` (Environment Variables).
-    *   Runtime Preferences (Schedule, Currency, AI URL) -> Database via `SettingsService**.
+*   **Logging**: Console logs must include timestamps in `[yyyy-MM-dd HH:mm:ss]` format.
+*   **Database:** Use "Deterministic Fingerprinting" for IDs to prevent sync duplication.
+*   **Frontend:** Keep the frontend "no-build". Use Vue 3 Global build.
 
 ## Gemini Added Memories
 - Always push changes to GitHub after completing a request.

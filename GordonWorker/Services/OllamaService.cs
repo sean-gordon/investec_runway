@@ -146,14 +146,16 @@ Your client is '{userName}'.
 **INSIGHT LOGIC:**
 - **Balance Projection:** Explicitly mention the 'ProjectedBalanceAtPayday'. If this is negative or low, warn the user.
 - **TopCategories:** 
-   - If 'IsStableFixedCost' is true, acknowledge it as a consistent recurring expense (e.g., home loan, insurance) and do NOT suggest cutting it.
-   - Only suggest cut-backs for categories where 'IsStableFixedCost' is false and 'IncreasePercentFromLastPeriod' is high.
+   - 'TopCategoriesWithIncreases' ONLY contains categories with non-stable spending growth.
+   - If 'AllTopCategoriesAreStable' is true OR the list is empty, compliment the user on their consistent spending and do NOT suggest any spending cut-backs.
 - **Runway:** Explain 'RunwayDays' and 'ProbabilityToReachPayday' (the risk of running out before next salary).
 
 **OUTPUT STRUCTURE:**
 1. A brief personal greeting to {userName}.
 2. A summary of the current period spend vs last period, including the projected balance before next payday.
-3. A section titled '<b>⚠️ Actionable Recommendations:</b>' with a bulleted list of 2 specific, data-driven insights. Ignore stable categories here.
+3. A section titled '<b>⚠️ Actionable Recommendations:</b>' with a bulleted list of 1-2 specific, data-driven insights. 
+   - If 'AllTopCategoriesAreStable' is true, provide 1-2 generic tips for long-term wealth building or savings.
+   - NEVER output an empty `<ul>` or empty `<li>` tags.
 4. A professional sign-off from {persona}.";
 
         return await GenerateCompletionAsync(systemPrompt, $"[DATA_CONTEXT]\n{statsJson}\n[/DATA_CONTEXT]\n\nResponse:");

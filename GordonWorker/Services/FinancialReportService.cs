@@ -108,12 +108,14 @@ public class FinancialReportService : IFinancialReportService
             RunwayDays = healthReport.ExpectedRunwayDays.ToString("F1"),
             ProbabilityToReachPayday = healthReport.RunwayProbability.ToString("F1") + "%",
             CurrencySymbol = "R",
-            TopCategories = healthReport.TopCategories.Select(c => new { 
-                CategoryName = c.Name, 
-                TotalAmountSpentThisPeriod = c.Amount.ToString("F2"), 
-                IsStableFixedCost = c.IsStable,
-                IncreasePercentFromLastPeriod = c.IsStable ? 0 : c.ChangePercentage
-            }).ToList()
+            AllTopCategoriesAreStable = healthReport.TopCategories.All(c => c.IsStable),
+            TopCategoriesWithIncreases = healthReport.TopCategories
+                .Where(c => !c.IsStable) 
+                .Select(c => new { 
+                    CategoryName = c.Name, 
+                    TotalAmountSpentThisPeriod = c.Amount.ToString("F2"), 
+                    IncreasePercentFromLastPeriod = c.ChangePercentage
+                }).ToList()
         };
 
         var jsonStats = JsonSerializer.Serialize(stats);

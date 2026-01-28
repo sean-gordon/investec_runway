@@ -9,7 +9,7 @@ public class SettingsController : ControllerBase
 {
     private readonly ISettingsService _settingsService;
     private readonly IEmailService _emailService;
-    private readonly IOllamaService _ollamaService;
+    private readonly IAiService _ollamaService;
     private readonly IFinancialReportService _reportService;
     private readonly ISystemStatusService _statusService;
     private readonly ITransactionSyncService _syncService;
@@ -19,7 +19,7 @@ public class SettingsController : ControllerBase
     public SettingsController(
         ISettingsService settingsService, 
         IEmailService emailService, 
-        IOllamaService ollamaService,
+        IAiService ollamaService,
         IFinancialReportService reportService,
         ISystemStatusService statusService,
         ITransactionSyncService syncService,
@@ -84,8 +84,29 @@ public class SettingsController : ControllerBase
     [HttpPost("test-ai")]
     public async Task<IActionResult> TestAi()
     {
-        var success = await _ollamaService.TestConnectionAsync();
-        return success ? Ok("Connected to Ollama successfully.") : StatusCode(500, "Failed to connect to Ollama.");
+        var result = await _ollamaService.TestConnectionAsync();
+        return result.Success ? Ok("Connected to AI Brain successfully.") : StatusCode(500, result.Error);
+    }
+
+    [HttpPost("test-whatsapp")]
+    public async Task<IActionResult> TestWhatsApp()
+    {
+        var settings = await _settingsService.GetSettingsAsync();
+        if (string.IsNullOrWhiteSpace(settings.AuthorizedWhatsAppNumber))
+        {
+            return BadRequest("Authorized WhatsApp Number is not configured.");
+        }
+
+        var twilioService = HttpContext.RequestServices.GetRequiredService<ITwilioService>();
+        await twilioService.SendWhatsAppMessageAsync(settings.AuthorizedWhatsAppNumber, "Ping! This is a test message from your Gordon Finance Engine. 🚀");
+        return Ok("WhatsApp test message dispatched.");
+    }
+
+    [HttpGet("models")]
+    public async Task<IActionResult> GetModels()
+    {
+        var models = await _ollamaService.GetAvailableModelsAsync();
+        return Ok(models);
     }
 
     [HttpGet("status")]

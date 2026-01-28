@@ -11,12 +11,12 @@ namespace GordonWorker.Controllers;
 [Route("[controller]")]
 public class ChatController : ControllerBase
 {
-    private readonly IOllamaService _ollamaService;
+    private readonly IAiService _ollamaService;
     private readonly IActuarialService _actuarialService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<ChatController> _logger;
 
-    public ChatController(IOllamaService ollamaService, IActuarialService actuarialService, IConfiguration configuration, ILogger<ChatController> logger)
+    public ChatController(IAiService ollamaService, IActuarialService actuarialService, IConfiguration configuration, ILogger<ChatController> logger)
     {
         _ollamaService = ollamaService;
         _actuarialService = actuarialService;
@@ -55,7 +55,7 @@ public class ChatController : ControllerBase
             var currentBalance = await connection.ExecuteScalarAsync<decimal?>(sqlBalance) ?? 0;
 
             // 3. Run Actuarial Analysis
-            var report = _actuarialService.AnalyzeHealth(history, currentBalance);
+            var report = await _actuarialService.AnalyzeHealthAsync(history, currentBalance);
 
             // 4. Create Context
             dataContext = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });

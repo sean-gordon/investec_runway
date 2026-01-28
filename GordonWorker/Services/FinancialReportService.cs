@@ -71,29 +71,16 @@ public class FinancialReportService : IFinancialReportService
         
         var healthReport = await _actuarialService.AnalyzeHealthAsync(fullHistory, currentBalance);
 
-        // Define internal transfer check matching ActuarialService
-        bool IsInternalTransfer(Transaction t)
-        {
-            if (string.Equals(t.Category, "TRANSFER", StringComparison.OrdinalIgnoreCase)) return true;
-            if (t.Description != null && (
-                t.Description.Contains("INT-ACC", StringComparison.OrdinalIgnoreCase) || 
-                t.Description.Contains("INTERNAL TRANSFER", StringComparison.OrdinalIgnoreCase) ||
-                t.Description.Contains("SAVINGS TO", StringComparison.OrdinalIgnoreCase) ||
-                t.Description.Contains("TO SAVINGS", StringComparison.OrdinalIgnoreCase))) 
-                return true;
-            return false;
-        }
-
         var thisWeekSpend = thisWeek
             .Where(t => t.Amount > 0 && 
-                        !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase) &&
-                        !IsInternalTransfer(t))
+                        !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase) &&      
+                        !t.IsInternalTransfer())
             .Sum(t => t.Amount);
             
         var lastWeekSpend = lastWeek
             .Where(t => t.Amount > 0 && 
-                        !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase) &&
-                        !IsInternalTransfer(t))
+                        !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase) &&      
+                        !t.IsInternalTransfer())
             .Sum(t => t.Amount);
 
         var stats = new
@@ -114,7 +101,8 @@ public class FinancialReportService : IFinancialReportService
                 .Select(c => new { 
                     CategoryName = c.Name, 
                     TotalAmountSpentThisPeriod = c.Amount.ToString("F2"), 
-                    IncreasePercentFromLastPeriod = c.ChangePercentage
+                    IncreasePercentFromLastPeriod = c.ChangePercentage,
+                    IsFixedUncontrollableCost = c.IsFixedCost
                 }).ToList()
         };
 
@@ -178,7 +166,7 @@ public class FinancialReportService : IFinancialReportService
             <tr><td class='header'><h1>Gordon Finance Engine</h1></td></tr>
             <tr>
                 <td class='content'>
-                    <div class='ai-box'>
+                    <div class='ai-box' style='display: {(string.IsNullOrWhiteSpace(aiExplanation) ? "none" : "block")};'>
                         <h3>💡 Insights from {personaName}</h3>
                         {aiExplanation}
                     </div>

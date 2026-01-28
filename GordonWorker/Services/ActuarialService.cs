@@ -22,7 +22,7 @@ public record FinancialHealthReport(
     List<CategorySpend> TopCategories
 );
 
-public record CategorySpend(string Name, decimal Amount, decimal ChangeAmount, decimal ChangePercentage, bool IsStable);
+public record CategorySpend(string Name, decimal Amount, decimal ChangeAmount, decimal ChangePercentage, bool IsStable, bool IsFixedCost);
 
 public interface IActuarialService
 {
@@ -42,11 +42,9 @@ public class ActuarialService : IActuarialService
     {
         if (string.IsNullOrWhiteSpace(desc)) return "Uncategorized";
         
-        // Remove months (full and short)
         string[] months = { "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER", "JAN", "FEB", "MAR", "APR", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC" };
         
         var clean = desc.ToUpper();
-        // Remove numbers and common noise
         clean = Regex.Replace(clean, @"\d|ZA|CPT|JHB|GP|GAUTENG|PTY|LTD|\*|'|&APOS;|DEBIT|ORDER|PAYMENT|INSTALMENT|EFT|MAG|TAPE|ELECTRONIC|FUNDS|TRANSFER|INT-ACC|INTERNAL", " ").Trim();
         
         foreach (var m in months) {
@@ -54,27 +52,19 @@ public class ActuarialService : IActuarialService
         }
 
         var parts = clean.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        // Return first 2 words for grouping
         return parts.Length > 0 ? (parts.Length > 1 ? $"{parts[0]} {parts[1]}" : parts[0]).ToUpper() : "Uncategorized";
     }
 
-    private bool IsInternalTransfer(Transaction t)
+    private bool IsFixedCost(string categoryName)
     {
-        if (string.Equals(t.Category, "TRANSFER", StringComparison.OrdinalIgnoreCase)) return true;
-        if (t.Description != null && (
-            t.Description.Contains("INT-ACC", StringComparison.OrdinalIgnoreCase) || 
-            t.Description.Contains("INTERNAL TRANSFER", StringComparison.OrdinalIgnoreCase) ||
-            t.Description.Contains("SAVINGS TO", StringComparison.OrdinalIgnoreCase) ||
-            t.Description.Contains("TO SAVINGS", StringComparison.OrdinalIgnoreCase))) 
-            return true;
-        return false;
+        string[] fixedKeywords = { "SCHOOL", "MORTGAGE", "LEVIES", "HOME LOAN", "INSURANCE", "BOND", "INVESTMENT", "LIFE", "MEDICAL", "NEDBHL", "DISC PREM" };
+        return fixedKeywords.Any(k => categoryName.Contains(k, StringComparison.OrdinalIgnoreCase));
     }
 
     public async Task<FinancialHealthReport> AnalyzeHealthAsync(List<Transaction> history, decimal currentBalance)
     {
         var settings = await _settingsService.GetSettingsAsync();
 
-        // Identify Salary Dates (TCP 131 or TCP131)
         var salaryPayments = history
             .Where(t => t.Description != null && (t.Description.Contains("TCP 131", StringComparison.OrdinalIgnoreCase) || t.Description.Contains("TCP131", StringComparison.OrdinalIgnoreCase)))
             .OrderByDescending(t => t.TransactionDate)
@@ -88,12 +78,9 @@ public class ActuarialService : IActuarialService
 
         if (salaryPayments.Count >= 1)
         {
-            // Current period starts at the last salary date
             periodStart = salaryPayments[0].TransactionDate.LocalDateTime.Date;
-            
             if (salaryPayments.Count >= 2)
             {
-                // Previous period is between the two most recent distinct salary dates
                 var prevSalary = salaryPayments.FirstOrDefault(s => s.TransactionDate.LocalDateTime.Date < periodStart);
                 if (prevSalary != null)
                 {
@@ -119,18 +106,16 @@ public class ActuarialService : IActuarialService
             prevPeriodEnd = periodStart;
         }
 
-        // Period-To-Date logic
         var daysIntoPeriod = (today - periodStart).TotalDays + 1;
         if (daysIntoPeriod < 1) daysIntoPeriod = 1;
 
         var compareDateInPrevPeriod = prevPeriodStart.AddDays(daysIntoPeriod);
         if (compareDateInPrevPeriod > prevPeriodEnd) compareDateInPrevPeriod = prevPeriodEnd;
 
-        // FILTER: amount > 0 (Debit), Not Credit, and NOT Internal Transfer
         var expenses = history
             .Where(t => t.Amount > 0 && 
-                        !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase) &&
-                        !IsInternalTransfer(t))
+                        !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase) &&      
+                        !t.IsInternalTransfer())
             .ToList();
         
         DateTime ToDate(DateTimeOffset dto) => dto.LocalDateTime.Date;
@@ -142,7 +127,6 @@ public class ActuarialService : IActuarialService
         var spendThisMonth = thisPeriodExpenses.Sum(t => t.Amount);
         var spendLastMonth = lastPeriodFullExpenses.Sum(t => t.Amount);
 
-        // Category Analysis
         var topCategories = thisPeriodExpenses
             .GroupBy(t => NormalizeDescription(t.Description))
             .Select(g => new { Name = g.Key, Amount = g.Sum(t => t.Amount) })
@@ -153,13 +137,8 @@ public class ActuarialService : IActuarialService
         var categoryReport = new List<CategorySpend>();
         foreach (var cat in topCategories)
         {
-            var ptdLastPeriodCatSpend = lastPeriodPtdExpenses
-                .Where(t => NormalizeDescription(t.Description) == cat.Name)
-                .Sum(t => t.Amount);
-            
-            var fullLastPeriodCatSpend = lastPeriodFullExpenses
-                .Where(t => NormalizeDescription(t.Description) == cat.Name)
-                .Sum(t => t.Amount);
+            var ptdLastPeriodCatSpend = lastPeriodPtdExpenses.Where(t => NormalizeDescription(t.Description) == cat.Name).Sum(t => t.Amount);
+            var fullLastPeriodCatSpend = lastPeriodFullExpenses.Where(t => NormalizeDescription(t.Description) == cat.Name).Sum(t => t.Amount);
             
             decimal diff = 0;
             decimal percent = 0;
@@ -167,31 +146,23 @@ public class ActuarialService : IActuarialService
             decimal ptdPercent = ptdLastPeriodCatSpend > 0 ? ((cat.Amount - ptdLastPeriodCatSpend) / ptdLastPeriodCatSpend) * 100 : 100;
             decimal fullPercent = fullLastPeriodCatSpend > 0 ? ((cat.Amount - fullLastPeriodCatSpend) / fullLastPeriodCatSpend) * 100 : 100;
 
-            // A category is 'stable' if:
-            // 1. The PTD or Full-Period change is small (< 5%)
-            // 2. OR the absolute difference is very small (< R50)
-            bool isStable = (fullLastPeriodCatSpend > 0 && Math.Abs(fullPercent) < 5) || 
-                            (ptdLastPeriodCatSpend > 0 && Math.Abs(ptdPercent) < 5) ||
-                            (Math.Abs(cat.Amount - ptdLastPeriodCatSpend) < 50) ||
-                            (fullLastPeriodCatSpend > 0 && Math.Abs(cat.Amount - fullLastPeriodCatSpend) < 50);
-
-            if (isStable)
+            // Logic Fix: If we find a match in the FULL period that is reasonably close, treat it as the baseline to avoid timing shifts
+            if (fullLastPeriodCatSpend > 0 && Math.Abs(fullPercent) < 15)
             {
-                // If stable, use the smaller percentage to avoid "100% increase" confusion
-                percent = Math.Abs(fullPercent) < Math.Abs(ptdPercent) ? fullPercent : ptdPercent;
-                diff = Math.Abs(fullPercent) < Math.Abs(ptdPercent) ? (cat.Amount - fullLastPeriodCatSpend) : (cat.Amount - ptdLastPeriodCatSpend);
+                percent = fullPercent;
+                diff = cat.Amount - fullLastPeriodCatSpend;
             }
             else
             {
-                // If truly not stable, prefer PTD comparison for accuracy
-                diff = cat.Amount - ptdLastPeriodCatSpend;
                 percent = ptdPercent;
+                diff = cat.Amount - ptdLastPeriodCatSpend;
             }
 
-            categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent, isStable));        
+            // A category is 'stable' if variance < 10% (accounts for school fee increases) OR absolute diff < R100
+            bool isStable = Math.Abs(percent) < 10 || Math.Abs(diff) < 100;
+            categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent, isStable, IsFixedCost(cat.Name)));        
         }
 
-        // Stats - Projecting to next payday
         var cycleHistory = salaryPayments.Zip(salaryPayments.Skip(1), (a, b) => (a.TransactionDate - b.TransactionDate).TotalDays).ToList();
         var avgCycleDays = cycleHistory.Any() ? cycleHistory.Average() : 30;
         if (avgCycleDays < 20 || avgCycleDays > 45) avgCycleDays = 30; 
@@ -204,11 +175,8 @@ public class ActuarialService : IActuarialService
         var windowStartDate = today.AddDays(-analysisWindowDays);
         var validExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= windowStartDate).OrderBy(t => t.TransactionDate).ToList();
 
-        var dailyExpensesMap = validExpenses
-            .GroupBy(t => ToDate(t.TransactionDate))
-            .ToDictionary(g => g.Key, g => (double)g.Sum(t => t.Amount));
+        var dailyExpensesMap = validExpenses.GroupBy(t => ToDate(t.TransactionDate)).ToDictionary(g => g.Key, g => (double)g.Sum(t => t.Amount));
 
-        // Refined Math: Chronological EMA and Weighted Volatility
         decimal alpha = settings.ActuarialAlpha > 0 ? settings.ActuarialAlpha : 0.15m;
         double weightedMean = 0;
         double weightedVar = 0;
@@ -218,12 +186,7 @@ public class ActuarialService : IActuarialService
         {
             var loopDate = windowStartDate.AddDays(i);
             double dailySpend = dailyExpensesMap.TryGetValue(loopDate, out var value) ? value : 0.0;
-
-            if (!initialized)
-            {
-                weightedMean = dailySpend;
-                initialized = true;
-            }
+            if (!initialized) { weightedMean = dailySpend; initialized = true; }
             else
             {
                 double delta = dailySpend - weightedMean;
@@ -235,7 +198,6 @@ public class ActuarialService : IActuarialService
         var stdDev = Math.Sqrt(weightedVar);
         var baseBurn = (decimal)weightedMean > 0 ? (decimal)weightedMean : 1m;
 
-        // Survival Probability
         double probSurvival = 0;
         if (stdDev > 0)
         {

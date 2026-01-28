@@ -12,10 +12,10 @@
         body { font-family: 'Inter', sans-serif; }
         [v-cloak] { display: none; }
         .tab-active { @apply border-blue-600 text-blue-600; }
-        .input-field { @apply w-full rounded-xl border-2 border-gray-200 shadow-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-100 bg-white p-3 text-sm font-medium transition-all outline-none; }
-        .label-text { @apply block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-1; }
-        .helper-text { @apply mt-2 text-[10px] text-slate-400 leading-relaxed italic ml-1; }
-        .input-group { @apply bg-slate-50/50 p-5 rounded-2xl border border-slate-100 transition-all hover:bg-white hover:shadow-xl hover:shadow-slate-200/50 hover:border-blue-200; }
+        .input-field { @apply w-full rounded-xl border-2 border-slate-300 shadow-sm focus:border-blue-600 focus:ring-4 focus:ring-blue-100 bg-white p-4 text-sm font-semibold transition-all outline-none text-slate-900 placeholder-slate-400; }
+        .label-text { @apply block text-[12px] font-black text-slate-600 uppercase tracking-widest mb-3 ml-1; }
+        .helper-text { @apply mt-3 text-[11px] text-slate-500 leading-relaxed italic ml-1; }
+        .input-group { @apply bg-white p-8 rounded-3xl border-2 border-slate-100 shadow-sm transition-all hover:border-blue-200 hover:shadow-md mb-6; }
     </style>
 </head>
 <body class="bg-[#f8fafc] text-gray-800">
@@ -202,9 +202,9 @@
                                         </div>
                                         <div class="input-group">
                                             <label class="label-text">Unexpected Payment Trigger (R)</label>
-                                            <div class="relative">
-                                                <span class="absolute left-3 top-2.5 text-gray-400 text-sm font-bold">R</span>
-                                                <input type="number" v-model.number="settings.unexpectedPaymentThreshold" class="input-field pl-7">
+                                            <div class="relative flex items-center">
+                                                <span class="absolute left-4 text-slate-400 text-lg font-black select-none">R</span>
+                                                <input type="number" v-model.number="settings.unexpectedPaymentThreshold" class="input-field pl-10 text-lg">
                                             </div>
                                             <p class="helper-text">Any non-fixed payment above this amount triggers an immediate automated report.</p>
                                         </div>
@@ -225,20 +225,20 @@
                                 </div>
 
                                 <!-- Advanced Experts Only Section -->
-                                <div v-if="showAdvanced" class="mt-12 pt-8 border-t border-dashed border-gray-100 grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in slide-in-from-top-4 duration-500">
-                                    <div class="space-y-6">
+                                <div v-if="showAdvanced" class="mt-12 pt-8 border-t border-dashed border-gray-100 space-y-8 animate-in fade-in slide-in-from-top-4 duration-500">
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                                         <div class="input-group">
                                             <label class="label-text">Fixed Cost Keywords (CSV)</label>
-                                            <textarea v-model="settings.fixedCostKeywords" rows="3" class="input-field text-xs font-mono"></textarea>
+                                            <textarea v-model="settings.fixedCostKeywords" rows="6" class="input-field text-xs font-mono leading-relaxed"></textarea>
                                             <p class="helper-text">Terms that identify "Uncontrollable Overhead" (Bond, Insurance, etc).</p>
                                         </div>
                                         <div class="input-group">
                                             <label class="label-text">Salary Keywords (CSV)</label>
-                                            <input type="text" v-model="settings.salaryKeywords" class="input-field text-xs font-mono">
+                                            <textarea v-model="settings.salaryKeywords" rows="6" class="input-field text-xs font-mono leading-relaxed"></textarea>
                                             <p class="helper-text">Terms identifying income deposits.</p>
                                         </div>
                                     </div>
-                                    <div class="grid grid-cols-2 gap-4">
+                                    <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
                                         <div class="input-group">
                                             <label class="label-text">Salary Fallback (R)</label>
                                             <input type="number" v-model.number="settings.salaryFallbackThreshold" class="input-field">

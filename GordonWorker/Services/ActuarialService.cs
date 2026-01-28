@@ -60,7 +60,7 @@ public class ActuarialService : IActuarialService
         var settings = await _settingsService.GetSettingsAsync();
         var today = DateTime.Today;
 
-        // Salary detection: payment FROM TCP 131
+        // Salary detection: search history for TCP 131. Credits are negative in Investec.
         var salaryPayments = history
             .Where(t => t.Description != null && (t.Description.Contains("TCP 131", StringComparison.OrdinalIgnoreCase) || t.Description.Contains("TCP131", StringComparison.OrdinalIgnoreCase)))
             .OrderByDescending(t => t.TransactionDate)
@@ -85,27 +85,30 @@ public class ActuarialService : IActuarialService
         var compareDateInPrevPeriod = prevPeriodStart.AddDays(daysIntoPeriod);
         if (compareDateInPrevPeriod > prevPeriodEnd) compareDateInPrevPeriod = prevPeriodEnd;
 
-        // Debits only, excluding transfers and credits
-        var expenses = history.Where(t => t.Amount < 0 && !t.IsInternalTransfer()).ToList();
+        // Investec: Debits are POSITIVE (> 0), Credits are NEGATIVE (< 0). 
+        // We filter for spend: amount > 0 and NOT a CREDIT category.
+        var expenses = history.Where(t => t.Amount > 0 && 
+                                        !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase) && 
+                                        !t.IsInternalTransfer()).ToList();
         
         DateTime ToDate(DateTimeOffset dto) => dto.LocalDateTime.Date;
         var thisPeriodExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= periodStart).ToList(); 
         var lastPeriodFullExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= prevPeriodStart && ToDate(t.TransactionDate) < prevPeriodEnd).ToList();
         var lastPeriodPtdExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= prevPeriodStart && ToDate(t.TransactionDate) < compareDateInPrevPeriod).ToList();
 
-        var spendThisPeriod = thisPeriodExpenses.Sum(t => Math.Abs(t.Amount));
-        var spendLastPeriod = lastPeriodFullExpenses.Sum(t => Math.Abs(t.Amount));
+        var spendThisPeriod = thisPeriodExpenses.Sum(t => t.Amount);
+        var spendLastPeriod = lastPeriodFullExpenses.Sum(t => t.Amount);
 
         var topCategories = thisPeriodExpenses
             .GroupBy(t => NormalizeDescription(t.Description))
-            .Select(g => new { Name = g.Key, Amount = g.Sum(t => Math.Abs(t.Amount)) })
+            .Select(g => new { Name = g.Key, Amount = g.Sum(t => t.Amount) })
             .OrderByDescending(x => x.Amount).Take(5).ToList();
 
         var categoryReport = new List<CategorySpend>();
         foreach (var cat in topCategories)
         {
-            var ptdLastSpend = lastPeriodPtdExpenses.Where(t => NormalizeDescription(t.Description) == cat.Name).Sum(t => Math.Abs(t.Amount));
-            var fullLastSpend = lastPeriodFullExpenses.Where(t => NormalizeDescription(t.Description) == cat.Name).Sum(t => Math.Abs(t.Amount));
+            var ptdLastSpend = lastPeriodPtdExpenses.Where(t => NormalizeDescription(t.Description) == cat.Name).Sum(t => t.Amount);
+            var fullLastSpend = lastPeriodFullExpenses.Where(t => NormalizeDescription(t.Description) == cat.Name).Sum(t => t.Amount);
             
             decimal diff = 0; decimal percent = 0;
             if (fullLastSpend > 0 && Math.Abs((cat.Amount - fullLastSpend) / fullLastSpend) * 100 < 15) { diff = cat.Amount - fullLastSpend; percent = (diff / fullLastSpend) * 100; }
@@ -126,7 +129,7 @@ public class ActuarialService : IActuarialService
         var analysisWindowDays = settings.AnalysisWindowDays > 0 ? settings.AnalysisWindowDays : 90;
         var windowStartDate = today.AddDays(-analysisWindowDays);
         var validExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= windowStartDate).OrderBy(t => t.TransactionDate).ToList();
-        var dailyExpensesMap = validExpenses.GroupBy(t => ToDate(t.TransactionDate)).ToDictionary(g => g.Key, g => (double)g.Sum(t => Math.Abs(t.Amount)));
+        var dailyExpensesMap = validExpenses.GroupBy(t => ToDate(t.TransactionDate)).ToDictionary(g => g.Key, g => (double)g.Sum(t => t.Amount));
 
         decimal alpha = settings.ActuarialAlpha > 0 ? settings.ActuarialAlpha : 0.15m;
         double weightedMean = 0; double weightedVar = 0; bool initialized = false;
@@ -149,7 +152,7 @@ public class ActuarialService : IActuarialService
         }
         else { probSurvival = currentBalance > (baseBurn * (decimal)daysUntilNextSalary) ? 100 : 0; }
 
-        var dailyAvgSimple = validExpenses.Any() ? (double)validExpenses.Sum(t => Math.Abs(t.Amount)) / analysisWindowDays : 0;
+        var dailyAvgSimple = validExpenses.Any() ? (double)validExpenses.Sum(t => t.Amount) / analysisWindowDays : 0;
         decimal projectedSpend = (spendThisPeriod / (decimal)daysIntoPeriod) * (decimal)avgCycleDays;
         decimal projectedBalance = currentBalance - (baseBurn * (decimal)daysUntilNextSalary);
 

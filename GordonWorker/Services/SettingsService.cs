@@ -18,6 +18,17 @@ public class AppSettings
     public string AiProvider { get; set; } = "Ollama"; // "Ollama" or "Gemini"
     public string SystemPersona { get; set; } = "Gordon";
     
+    // Actuarial Keywords & Thresholds
+    public string FixedCostKeywords { get; set; } = "SCHOOL,MORTGAGE,LEVIES,HOME LOAN,INSURANCE,BOND,INVESTMENT,LIFE,MEDICAL,NEDBHL,DISC PREM,WILLOWBROOKE,ADAM";
+    public string SalaryKeywords { get; set; } = "TCP 131,TCP131,SALARY";
+    public decimal SalaryFallbackThreshold { get; set; } = 10000m;
+    public int SalaryFallbackDays { get; set; } = 45;
+    public decimal StabilityPercentageThreshold { get; set; } = 15m;
+    public decimal StabilityAmountThreshold { get; set; } = 250m;
+    public decimal TrendSensitivity { get; set; } = 0.1m; // 10% deviation for trend change
+    public string InvestecBaseUrl { get; set; } = "https://openapi.investec.com/";
+    public double SyncBufferDays { get; set; } = 0.05; // ~1 hour
+
     // Data Settings
     public int HistoryDaysBack { get; set; } = 180;
     public string CurrencyCulture { get; set; } = "en-ZA"; // For formatting (e.g. en-ZA, en-US, en-GB)

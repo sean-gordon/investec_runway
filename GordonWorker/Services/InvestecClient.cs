@@ -28,15 +28,19 @@ public class InvestecClient : IInvestecClient
     private readonly HttpClient _httpClient;
     private readonly ILogger<InvestecClient> _logger;
     private readonly IConfiguration _configuration;
+    private readonly ISettingsService _settingsService;
     private string? _accessToken;
     private DateTime _tokenExpiry;
 
-    public InvestecClient(HttpClient httpClient, ILogger<InvestecClient> logger, IConfiguration configuration)
+    public InvestecClient(HttpClient httpClient, ILogger<InvestecClient> logger, IConfiguration configuration, ISettingsService settingsService)
     {
         _httpClient = httpClient;
         _logger = logger;
         _configuration = configuration;
-        _httpClient.BaseAddress = new Uri("https://openapi.investec.com/");
+        _settingsService = settingsService;
+        
+        var settings = _settingsService.GetSettingsAsync().GetAwaiter().GetResult();
+        _httpClient.BaseAddress = new Uri(settings.InvestecBaseUrl);
     }
 
     public async Task<decimal> GetAccountBalanceAsync(string accountId)

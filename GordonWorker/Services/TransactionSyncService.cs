@@ -49,7 +49,7 @@ public class TransactionSyncService : ITransactionSyncService
         var transactionCount = await connection.ExecuteScalarAsync<int>(countSql);
         
         // Use setting for "Deep Sync" depth
-        var daysBack = transactionCount == 0 ? settings.HistoryDaysBack : 0.05; // 0.05 days is ~1 hour buffer
+        var daysBack = transactionCount == 0 ? settings.HistoryDaysBack : settings.SyncBufferDays; 
         var fromDate = DateTimeOffset.UtcNow.AddDays(-daysBack);
 
         if (transactionCount == 0)

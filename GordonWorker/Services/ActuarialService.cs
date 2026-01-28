@@ -58,15 +58,17 @@ public class ActuarialService : IActuarialService
 
     public bool IsFixedCost(string categoryName)
     {
-        string[] fixedKeywords = { "SCHOOL", "MORTGAGE", "LEVIES", "HOME LOAN", "INSURANCE", "BOND", "INVESTMENT", "LIFE", "MEDICAL", "NEDBHL", "DISC PREM", "WILLOWBROOKE", "ADAM" };
-        return fixedKeywords.Any(k => categoryName.Contains(k, StringComparison.OrdinalIgnoreCase));
+        var settings = _settingsService.GetSettingsAsync().GetAwaiter().GetResult();
+        var keywords = settings.FixedCostKeywords.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return keywords.Any(k => categoryName.Contains(k, StringComparison.OrdinalIgnoreCase));
     }
 
     public bool IsSalary(Transaction t)
     {
         if (t.Description == null) return false;
-        return t.Description.Contains("TCP 131", StringComparison.OrdinalIgnoreCase) || 
-               t.Description.Contains("TCP131", StringComparison.OrdinalIgnoreCase);
+        var settings = _settingsService.GetSettingsAsync().GetAwaiter().GetResult();
+        var keywords = settings.SalaryKeywords.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return keywords.Any(k => t.Description.Contains(k, StringComparison.OrdinalIgnoreCase));
     }
 
     public async Task<FinancialHealthReport> AnalyzeHealthAsync(List<Transaction> history, decimal currentBalance)
@@ -84,7 +86,7 @@ public class ActuarialService : IActuarialService
         if (!salaryPayments.Any())
         {
             salaryPayments = history
-                .Where(t => (t.Amount < -10000 || t.Category == "CREDIT") && (t.TransactionDate.LocalDateTime.Date >= today.AddDays(-45)))
+                .Where(t => (t.Amount < -settings.SalaryFallbackThreshold || t.Category == "CREDIT") && (t.TransactionDate.LocalDateTime.Date >= today.AddDays(-settings.SalaryFallbackDays)))
                 .OrderByDescending(t => Math.Abs(t.Amount))
                 .Take(1)
                 .ToList();
@@ -159,7 +161,7 @@ public class ActuarialService : IActuarialService
             decimal diff = cat.Amount - baseline;
             decimal percent = baseline > 0 ? (diff / baseline) * 100 : 100;
 
-            bool isStable = Math.Abs(percent) < 15 || Math.Abs(diff) < 250;
+            bool isStable = Math.Abs(percent) < settings.StabilityPercentageThreshold || Math.Abs(diff) < settings.StabilityAmountThreshold;
             categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent, isStable, IsFixedCost(cat.Name)));                                                                                                           
         }
 
@@ -218,6 +220,10 @@ public class ActuarialService : IActuarialService
 
         var dailyAvgSimple = validVariableExpenses.Any() ? (double)validVariableExpenses.Sum(t => t.Amount) / analysisWindowDays : 0;
 
+        var trendMultiplierUpper = 1.0m + settings.TrendSensitivity;
+        var trendMultiplierLower = 1.0m - settings.TrendSensitivity;
+        string trendDirection = (decimal)weightedMean > (decimal)dailyAvgSimple * trendMultiplierUpper ? "Increasing" : ((decimal)weightedMean < (decimal)dailyAvgSimple * trendMultiplierLower ? "Decreasing" : "Stable");
+
         return new FinancialHealthReport(
             CurrentBalance: currentBalance,
             WeightedDailyBurn: baseBurn,
@@ -227,7 +233,7 @@ public class ActuarialService : IActuarialService
             ExpectedRunwayDays: (currentBalance - upcomingOverhead) / baseBurn,
             OptimisticRunwayDays: (currentBalance - upcomingOverhead) / (decimal)Math.Max((double)baseBurn - stdDev, 1.0),
             ValueAtRisk95: (decimal)(weightedMean + (1.645 * stdDev)),
-            TrendDirection: (decimal)weightedMean > (decimal)dailyAvgSimple * 1.1m ? "Increasing" : ((decimal)weightedMean < (decimal)dailyAvgSimple * 0.9m ? "Decreasing" : "Stable"),
+            TrendDirection: trendDirection,
             SpendThisMonth: spendThisPeriod,
             SpendLastMonth: pulseBaseline,
             ProjectedMonthEndSpend: projectedMonthEndSpend,

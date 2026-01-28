@@ -32,6 +32,8 @@ public interface IActuarialService
 {
     Task<FinancialHealthReport> AnalyzeHealthAsync(List<Transaction> history, decimal currentBalance);
     bool IsSalary(Transaction t);
+    string NormalizeDescription(string? desc);
+    bool IsFixedCost(string categoryName);
 }
 
 public class ActuarialService : IActuarialService
@@ -43,7 +45,7 @@ public class ActuarialService : IActuarialService
         _settingsService = settingsService;
     }
 
-    private string NormalizeDescription(string? desc)
+    public string NormalizeDescription(string? desc)
     {
         if (string.IsNullOrWhiteSpace(desc)) return "Uncategorized";
         string[] months = { "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER", "JAN", "FEB", "MAR", "APR", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC" };
@@ -54,7 +56,7 @@ public class ActuarialService : IActuarialService
         return parts.Length > 0 ? (parts.Length > 1 ? $"{parts[0]} {parts[1]}" : parts[0]).ToUpper() : "Uncategorized";
     }
 
-    private bool IsFixedCost(string categoryName)
+    public bool IsFixedCost(string categoryName)
     {
         string[] fixedKeywords = { "SCHOOL", "MORTGAGE", "LEVIES", "HOME LOAN", "INSURANCE", "BOND", "INVESTMENT", "LIFE", "MEDICAL", "NEDBHL", "DISC PREM", "WILLOWBROOKE", "ADAM" };
         return fixedKeywords.Any(k => categoryName.Contains(k, StringComparison.OrdinalIgnoreCase));

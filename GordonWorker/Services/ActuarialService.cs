@@ -31,6 +31,7 @@ public record CategorySpend(string Name, decimal Amount, decimal ChangeAmount, d
 public interface IActuarialService
 {
     Task<FinancialHealthReport> AnalyzeHealthAsync(List<Transaction> history, decimal currentBalance);
+    bool IsSalary(Transaction t);
 }
 
 public class ActuarialService : IActuarialService
@@ -59,7 +60,7 @@ public class ActuarialService : IActuarialService
         return fixedKeywords.Any(k => categoryName.Contains(k, StringComparison.OrdinalIgnoreCase));
     }
 
-    private bool IsSalary(Transaction t)
+    public bool IsSalary(Transaction t)
     {
         if (t.Description == null) return false;
         return t.Description.Contains("TCP 131", StringComparison.OrdinalIgnoreCase) || 
@@ -174,23 +175,28 @@ public class ActuarialService : IActuarialService
         }
         decimal upcomingOverhead = upcomingFixedCosts.Sum(e => e.ExpectedAmount);
 
+        // ACTUARIAL REFINEMENT: Calculate baseBurn ONLY from variable expenses to prevent double-counting fixed costs
+        var variableExpenses = expenses.Where(t => !IsFixedCost(NormalizeDescription(t.Description))).ToList();
+        
         var analysisWindowDays = settings.AnalysisWindowDays > 0 ? settings.AnalysisWindowDays : 90;
         var windowStartDate = today.AddDays(-analysisWindowDays);
-        var validExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= windowStartDate).OrderBy(t => t.TransactionDate).ToList();
-        var dailyExpensesMap = validExpenses.GroupBy(t => ToDate(t.TransactionDate)).ToDictionary(g => g.Key, g => (double)g.Sum(t => t.Amount));
+        var validVariableExpenses = variableExpenses.Where(t => ToDate(t.TransactionDate) >= windowStartDate).OrderBy(t => t.TransactionDate).ToList();
+        var dailyVariableExpensesMap = validVariableExpenses.GroupBy(t => ToDate(t.TransactionDate)).ToDictionary(g => g.Key, g => (double)g.Sum(t => t.Amount));
 
         decimal alpha = settings.ActuarialAlpha > 0 ? settings.ActuarialAlpha : 0.15m;
         double weightedMean = 0; double weightedVar = 0; bool initialized = false;
         for (int i = 0; i < analysisWindowDays; i++)
         {
             var loopDate = windowStartDate.AddDays(i);
-            double dailySpend = dailyExpensesMap.TryGetValue(loopDate, out var value) ? value : 0.0;
+            double dailySpend = dailyVariableExpensesMap.TryGetValue(loopDate, out var value) ? value : 0.0;
             if (!initialized) { weightedMean = dailySpend; initialized = true; }
             else { double delta = dailySpend - weightedMean; weightedMean += (double)alpha * delta; weightedVar = (1 - (double)alpha) * (weightedVar + (double)alpha * Math.Pow(delta, 2)); }
         }
 
         var stdDev = Math.Sqrt(weightedVar);
         var baseBurn = (decimal)weightedMean > 0 ? (decimal)weightedMean : 1m;
+        
+        // SURVIVAL PROBABILITY: accounts for net balance after discrete overhead hit
         double probSurvival = 0;
         if (stdDev > 0)
         {
@@ -200,9 +206,15 @@ public class ActuarialService : IActuarialService
         }
         else { probSurvival = (currentBalance - upcomingOverhead) > (baseBurn * (decimal)daysUntilNextSalary) ? 100 : 0; }
 
-        var dailyAvgSimple = validExpenses.Any() ? (double)validExpenses.Sum(t => t.Amount) / analysisWindowDays : 0;
-        decimal projectedSpend = (spendThisPeriod / (decimal)daysIntoPeriod) * (decimal)avgCycleDays;
+        // PROJECTED SPEND: Separate linear variable projection + actual/expected fixed costs
+        var variableSpendThisPeriod = thisPeriodExpenses.Where(t => !IsFixedCost(NormalizeDescription(t.Description))).Sum(t => t.Amount);
+        var fixedSpendThisPeriod = thisPeriodExpenses.Where(t => IsFixedCost(NormalizeDescription(t.Description))).Sum(t => t.Amount);
+        
+        decimal projectedVariableSpend = (variableSpendThisPeriod / (decimal)daysIntoPeriod) * (decimal)avgCycleDays;
+        decimal projectedMonthEndSpend = projectedVariableSpend + fixedSpendThisPeriod + upcomingOverhead;
         decimal projectedBalance = currentBalance - upcomingOverhead - (baseBurn * (decimal)daysUntilNextSalary);
+
+        var dailyAvgSimple = validVariableExpenses.Any() ? (double)validVariableExpenses.Sum(t => t.Amount) / analysisWindowDays : 0;
 
         return new FinancialHealthReport(
             CurrentBalance: currentBalance,
@@ -216,7 +228,7 @@ public class ActuarialService : IActuarialService
             TrendDirection: (decimal)weightedMean > (decimal)dailyAvgSimple * 1.1m ? "Increasing" : ((decimal)weightedMean < (decimal)dailyAvgSimple * 0.9m ? "Decreasing" : "Stable"),
             SpendThisMonth: spendThisPeriod,
             SpendLastMonth: pulseBaseline,
-            ProjectedMonthEndSpend: projectedSpend + upcomingOverhead,
+            ProjectedMonthEndSpend: projectedMonthEndSpend,
             ProjectedBalanceAtNextSalary: projectedBalance,
             UpcomingExpectedPayments: upcomingOverhead,
             DaysUntilNextSalary: (int)Math.Round(daysUntilNextSalary),

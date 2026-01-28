@@ -109,7 +109,7 @@ public class InvestecClient : IInvestecClient
                 if (!Guid.TryParse(t.Id, out var id))
                 {
                     // CRITICAL FIX: Use InvariantCulture for stable IDs across re-syncs
-                    var hashKey = $"{accountId}_{t.TransactionDate:O}_{t.Description}_{t.Amount.ToString(CultureInfo.InvariantCulture)}_{t.AccountBalance.ToString(CultureInfo.InvariantCulture)}";
+                    var hashKey = $"{accountId}_{t.TransactionDate:O}_{t.Description}_{t.Amount.ToString("F2", CultureInfo.InvariantCulture)}_{t.AccountBalance.ToString("F2", CultureInfo.InvariantCulture)}";
                     id = GenerateUuidFromString(hashKey);
                 }
                 transactions.Add(new Transaction { Id = id, AccountId = accountId, TransactionDate = t.TransactionDate == default ? DateTimeOffset.UtcNow : t.TransactionDate, Description = t.Description, Amount = t.Amount, Balance = t.AccountBalance, Category = t.Type, IsAiProcessed = false });

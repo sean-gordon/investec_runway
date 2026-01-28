@@ -76,14 +76,14 @@ public class FinancialReportService : IFinancialReportService
             .Where(t => t.Amount > 0 && 
                         !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase) &&      
                         !t.IsInternalTransfer() &&
-                        !(t.Description?.Contains("TCP 131", StringComparison.OrdinalIgnoreCase) ?? false))
+                        !_actuarialService.IsSalary(t))
             .Sum(t => t.Amount);
             
         var lastWeekSpend = lastWeek
             .Where(t => t.Amount > 0 && 
                         !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase) &&      
                         !t.IsInternalTransfer() &&
-                        !(t.Description?.Contains("TCP 131", StringComparison.OrdinalIgnoreCase) ?? false))
+                        !_actuarialService.IsSalary(t))
             .Sum(t => t.Amount);
 
         var stats = new

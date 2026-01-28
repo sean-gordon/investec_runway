@@ -12,10 +12,11 @@
         body { font-family: 'Inter', sans-serif; }
         [v-cloak] { display: none; }
         .input-field { 
-            @apply w-full rounded-xl border-2 border-slate-300 shadow-sm bg-white p-4 text-sm font-semibold transition-all outline-none text-slate-900 placeholder-slate-400;
+            @apply w-full rounded-xl border-2 border-slate-400 shadow-inner bg-white p-4 text-sm font-semibold transition-all outline-none text-slate-900 placeholder-slate-400;
+            border-style: solid;
         }
         .input-field:focus {
-            @apply border-blue-600 ring-4 ring-blue-100;
+            @apply border-blue-600 ring-4 ring-blue-100 shadow-none;
         }
         .label-text { 
             @apply block text-[12px] font-black text-slate-600 uppercase tracking-widest mb-3 ml-1; 

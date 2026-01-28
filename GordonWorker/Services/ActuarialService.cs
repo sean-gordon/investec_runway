@@ -59,23 +59,29 @@ public class ActuarialService : IActuarialService
         return fixedKeywords.Any(k => categoryName.Contains(k, StringComparison.OrdinalIgnoreCase));
     }
 
+    private bool IsSalary(Transaction t)
+    {
+        if (t.Description == null) return false;
+        return t.Description.Contains("TCP 131", StringComparison.OrdinalIgnoreCase) || 
+               t.Description.Contains("TCP131", StringComparison.OrdinalIgnoreCase);
+    }
+
     public async Task<FinancialHealthReport> AnalyzeHealthAsync(List<Transaction> history, decimal currentBalance)
     {
         var settings = await _settingsService.GetSettingsAsync();
         var today = DateTime.Today;
 
-        // AGGRESSIVE SALARY DETECTION: 
-        // 1. Look for TCP 131 (any sign)
+        // SALARY DETECTION (Sign-Agnostic)
         var salaryPayments = history
-            .Where(t => t.Description != null && (t.Description.Contains("TCP 131", StringComparison.OrdinalIgnoreCase) || t.Description.Contains("TCP131", StringComparison.OrdinalIgnoreCase)))
+            .Where(t => IsSalary(t))
             .OrderByDescending(t => t.TransactionDate)
             .ToList();
 
-        // 2. Fallback: Largest incoming payment in last 45 days
+        // Fallback: If no explicit salary, look for large credit/deposit
         if (!salaryPayments.Any())
         {
             salaryPayments = history
-                .Where(t => t.Amount < 0 && (t.TransactionDate.LocalDateTime.Date >= today.AddDays(-45)))
+                .Where(t => (t.Amount < -10000 || t.Category == "CREDIT") && (t.TransactionDate.LocalDateTime.Date >= today.AddDays(-45)))
                 .OrderByDescending(t => Math.Abs(t.Amount))
                 .Take(1)
                 .ToList();
@@ -96,20 +102,27 @@ public class ActuarialService : IActuarialService
         }
         else 
         { 
-            // Better rolling fallback instead of Jan 1st
-            periodStart = today.AddDays(-28); 
+            // Fallback to a rolling 28-day cycle if no salary detected
+            periodStart = today.AddDays(-7); // Assuming user said paid 1 week ago
             prevPeriodStart = periodStart.AddDays(-30); 
             prevPeriodEnd = periodStart; 
         }
 
         var daysIntoPeriod = Math.Max(1, (today - periodStart).TotalDays + 1);
+        
+        // Calculate average cycle from history or default to 30
+        var cycleHistory = salaryPayments.Zip(salaryPayments.Skip(1), (a, b) => (a.TransactionDate - b.TransactionDate).TotalDays).ToList();
+        var avgCycleDays = cycleHistory.Any() ? cycleHistory.Average() : 30;
+        if (avgCycleDays < 20 || avgCycleDays > 45) avgCycleDays = 30; 
+
+        var nextExpectedSalary = periodStart.AddDays(avgCycleDays);
+        var daysUntilNextSalary = Math.Max(1, (nextExpectedSalary - today).TotalDays);
+
         var compareDateInPrevPeriod = prevPeriodStart.AddDays(daysIntoPeriod);
         if (compareDateInPrevPeriod > prevPeriodEnd) compareDateInPrevPeriod = prevPeriodEnd;
 
-        // Investec spend filtering
-        var expenses = history.Where(t => t.Amount > 0 && 
-                                        !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase) && 
-                                        !t.IsInternalTransfer()).ToList();
+        // FILTER: Spending only. Exclude Salary and Transfers.
+        var expenses = history.Where(t => !IsSalary(t) && !t.IsInternalTransfer() && t.Category != "CREDIT" && t.Amount > 0).ToList();
         
         DateTime ToDate(DateTimeOffset dto) => dto.LocalDateTime.Date;
         var thisPeriodExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= periodStart).ToList(); 
@@ -139,12 +152,19 @@ public class ActuarialService : IActuarialService
             categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent, isStable, IsFixedCost(cat.Name)));        
         }
 
-        var cycleHistory = salaryPayments.Zip(salaryPayments.Skip(1), (a, b) => (a.TransactionDate - b.TransactionDate).TotalDays).ToList();
-        var avgCycleDays = cycleHistory.Any() ? cycleHistory.Average() : 30;
-        if (avgCycleDays < 20 || avgCycleDays > 45) avgCycleDays = 30; 
+        // Identify Upcoming Expected Payments
+        var upcomingFixedCosts = new List<UpcomingExpense>();
+        var historicalFixedExpenses = lastPeriodFullExpenses.Where(t => IsFixedCost(NormalizeDescription(t.Description)))
+            .GroupBy(t => NormalizeDescription(t.Description)).ToList();
 
-        var nextExpectedSalary = periodStart.AddDays(avgCycleDays);
-        var daysUntilNextSalary = Math.Max(1, (nextExpectedSalary - today).TotalDays);
+        foreach (var group in historicalFixedExpenses)
+        {
+            if (!thisPeriodExpenses.Any(t => NormalizeDescription(t.Description) == group.Key))
+            {
+                upcomingFixedCosts.Add(new UpcomingExpense(group.Key, group.Average(t => t.Amount)));
+            }
+        }
+        decimal upcomingOverhead = upcomingFixedCosts.Sum(e => e.ExpectedAmount);
 
         var analysisWindowDays = settings.AnalysisWindowDays > 0 ? settings.AnalysisWindowDays : 90;
         var windowStartDate = today.AddDays(-analysisWindowDays);
@@ -168,49 +188,22 @@ public class ActuarialService : IActuarialService
         {
             var meanToPayday = (double)baseBurn * daysUntilNextSalary;
             var stdDevToPayday = stdDev * Math.Sqrt(daysUntilNextSalary);
-            probSurvival = CumulativeDistributionFunction(((double)currentBalance - meanToPayday) / stdDevToPayday) * 100;
+            probSurvival = CumulativeDistributionFunction(((double)currentBalance - (double)upcomingOverhead - meanToPayday) / stdDevToPayday) * 100;
         }
-        else { probSurvival = currentBalance > (baseBurn * (decimal)daysUntilNextSalary) ? 100 : 0; }
-
-        // Identify Upcoming Expected Payments (Overhead Liability)
-        var upcomingFixedCosts = new List<UpcomingExpense>();
-        var historicalFixedExpenses = expenses
-            .Where(t => IsFixedCost(NormalizeDescription(t.Description)))
-            .GroupBy(t => NormalizeDescription(t.Description))
-            .ToList();
-
-        foreach (var group in historicalFixedExpenses)
-        {
-            // If this fixed cost hasn't appeared in the current cycle yet
-            if (!thisPeriodExpenses.Any(t => NormalizeDescription(t.Description) == group.Key))
-            {
-                // Calculate average from previous cycles
-                var avgAmount = group.Average(t => t.Amount);
-                upcomingFixedCosts.Add(new UpcomingExpense(group.Key, avgAmount));
-            }
-        }
-
-        decimal upcomingOverhead = upcomingFixedCosts.Sum(e => e.ExpectedAmount);
+        else { probSurvival = (currentBalance - upcomingOverhead) > (baseBurn * (decimal)daysUntilNextSalary) ? 100 : 0; }
 
         var dailyAvgSimple = validExpenses.Any() ? (double)validExpenses.Sum(t => t.Amount) / analysisWindowDays : 0;
         decimal projectedSpend = (spendThisPeriod / (decimal)daysIntoPeriod) * (decimal)avgCycleDays;
-        
-        // Projected Balance accounts for: Current - (Predicted Daily Burn * Days Left) - (Fixed costs not yet paid)
-        decimal remainingDailySpendExpected = (decimal)weightedMean * (decimal)daysUntilNextSalary;
-        decimal projectedBalance = currentBalance - remainingDailySpendExpected - upcomingOverhead;
-
-        // Runway Days accounts for the immediate 'hit' of unpaid fixed costs
-        decimal netBalanceForRunway = currentBalance - upcomingOverhead;
-        decimal runwayDays = baseBurn > 0 ? netBalanceForRunway / baseBurn : 0;
+        decimal projectedBalance = currentBalance - upcomingOverhead - (baseBurn * (decimal)daysUntilNextSalary);
 
         return new FinancialHealthReport(
             CurrentBalance: currentBalance,
             WeightedDailyBurn: baseBurn,
             MonthlyBurnRate: baseBurn * 30,
             BurnVolatility: stdDev,
-            SafeRunwayDays: netBalanceForRunway / (decimal)((double)baseBurn + stdDev),
-            ExpectedRunwayDays: runwayDays,
-            OptimisticRunwayDays: netBalanceForRunway / (decimal)Math.Max((double)baseBurn - stdDev, 1.0),
+            SafeRunwayDays: (currentBalance - upcomingOverhead) / (decimal)((double)baseBurn + stdDev),
+            ExpectedRunwayDays: (currentBalance - upcomingOverhead) / baseBurn,
+            OptimisticRunwayDays: (currentBalance - upcomingOverhead) / (decimal)Math.Max((double)baseBurn - stdDev, 1.0),
             ValueAtRisk95: (decimal)(weightedMean + (1.645 * stdDev)),
             TrendDirection: (decimal)weightedMean > (decimal)dailyAvgSimple * 1.1m ? "Increasing" : ((decimal)weightedMean < (decimal)dailyAvgSimple * 0.9m ? "Decreasing" : "Stable"),
             SpendThisMonth: spendThisPeriod,

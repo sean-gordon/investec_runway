@@ -12,9 +12,10 @@
         body { font-family: 'Inter', sans-serif; }
         [v-cloak] { display: none; }
         .tab-active { @apply border-blue-600 text-blue-600; }
-        .input-field { @apply w-full rounded-lg border-gray-200 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2.5 text-sm transition-all; }
-        .label-text { @apply block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5; }
-        .helper-text { @apply mt-1.5 text-[10px] text-gray-400 leading-relaxed; }
+        .input-field { @apply w-full rounded-xl border-2 border-gray-200 shadow-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-100 bg-white p-3 text-sm font-medium transition-all outline-none; }
+        .label-text { @apply block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-1; }
+        .helper-text { @apply mt-2 text-[10px] text-slate-400 leading-relaxed italic ml-1; }
+        .input-group { @apply bg-slate-50/50 p-5 rounded-2xl border border-slate-100 transition-all hover:bg-white hover:shadow-xl hover:shadow-slate-200/50 hover:border-blue-200; }
     </style>
 </head>
 <body class="bg-[#f8fafc] text-gray-800">
@@ -88,19 +89,19 @@
                                 
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                                     <div class="space-y-6">
-                                        <div>
+                                        <div class="input-group">
                                             <label class="label-text">Investec API Base URL</label>
                                             <input type="text" v-model="settings.investecBaseUrl" class="input-field">
                                             <p class="helper-text">The official Investec Open API endpoint.</p>
                                         </div>
-                                        <div>
+                                        <div class="input-group">
                                             <label class="label-text">History Depth (Days)</label>
                                             <input type="number" v-model.number="settings.historyDaysBack" class="input-field">
                                             <p class="helper-text">How many days of history to sync on a fresh install.</p>
                                         </div>
                                     </div>
                                     <div class="space-y-6">
-                                        <div>
+                                        <div class="input-group">
                                             <label class="label-text">Currency Culture</label>
                                             <select v-model="settings.currencyCulture" class="input-field">
                                                 <option value="en-ZA">South Africa (ZAR)</option>
@@ -132,14 +133,14 @@
 
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                                     <div class="space-y-6">
-                                        <div>
+                                        <div class="input-group">
                                             <label class="label-text">AI Provider</label>
                                             <select v-model="settings.aiProvider" @change="loadModels(true)" class="input-field">
                                                 <option value="Ollama">Ollama (Local / LAN)</option>
                                                 <option value="Gemini">Google Gemini (Cloud)</option>
                                             </select>
                                         </div>
-                                        <div v-if="settings.aiProvider === 'Ollama'">
+                                        <div v-if="settings.aiProvider === 'Ollama'" class="input-group">
                                             <label class="label-text">Ollama Base URL</label>
                                             <div class="flex gap-2">
                                                 <input type="text" v-model="settings.ollamaBaseUrl" class="input-field" placeholder="http://127.0.0.1:11434">
@@ -148,7 +149,7 @@
                                                 </button>
                                             </div>
                                         </div>
-                                        <div v-if="settings.aiProvider === 'Gemini'">
+                                        <div v-if="settings.aiProvider === 'Gemini'" class="input-group">
                                             <label class="label-text">Gemini API Key</label>
                                             <div class="flex gap-2">
                                                 <input type="password" v-model="settings.geminiApiKey" class="input-field">
@@ -159,7 +160,7 @@
                                         </div>
                                     </div>
                                     <div class="space-y-6">
-                                        <div>
+                                        <div class="input-group">
                                             <label class="label-text">Selected Model</label>
                                             <select v-model="settings.ollamaModelName" class="input-field">
                                                 <option v-if="availableModels.length === 0" :value="settings.ollamaModelName">{{ settings.ollamaModelName }}</option>
@@ -167,7 +168,7 @@
                                             </select>
                                             <p class="helper-text">Select your preferred model. 2.0-Flash or higher recommended for Gemini.</p>
                                         </div>
-                                        <div>
+                                        <div class="input-group">
                                             <label class="label-text">Analyst Persona Name</label>
                                             <input type="text" v-model="settings.systemPersona" class="input-field">
                                             <p class="helper-text">The name your AI analyst uses in reports.</p>
@@ -187,7 +188,7 @@
 
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-12">
                                     <div class="space-y-8">
-                                        <div>
+                                        <div class="input-group">
                                             <div class="flex items-center justify-between mb-2">
                                                 <label class="label-text">EMA Sensitivity (Alpha)</label>
                                                 <span class="text-xs font-black text-blue-600">{{ settings.actuarialAlpha }}</span>
@@ -199,7 +200,7 @@
                                             </div>
                                             <p class="helper-text mt-3">Controls how quickly projections adapt to recent spending changes.</p>
                                         </div>
-                                        <div>
+                                        <div class="input-group">
                                             <label class="label-text">Unexpected Payment Trigger (R)</label>
                                             <div class="relative">
                                                 <span class="absolute left-3 top-2.5 text-gray-400 text-sm font-bold">R</span>
@@ -209,7 +210,7 @@
                                         </div>
                                     </div>
                                     <div class="space-y-6">
-                                        <div>
+                                        <div class="input-group">
                                             <label class="label-text">Analysis Window (Days)</label>
                                             <input type="number" v-model.number="settings.analysisWindowDays" class="input-field">
                                             <p class="helper-text">The sample size used for volatility and risk modelling.</p>
@@ -226,31 +227,31 @@
                                 <!-- Advanced Experts Only Section -->
                                 <div v-if="showAdvanced" class="mt-12 pt-8 border-t border-dashed border-gray-100 grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in slide-in-from-top-4 duration-500">
                                     <div class="space-y-6">
-                                        <div>
+                                        <div class="input-group">
                                             <label class="label-text">Fixed Cost Keywords (CSV)</label>
                                             <textarea v-model="settings.fixedCostKeywords" rows="3" class="input-field text-xs font-mono"></textarea>
                                             <p class="helper-text">Terms that identify "Uncontrollable Overhead" (Bond, Insurance, etc).</p>
                                         </div>
-                                        <div>
+                                        <div class="input-group">
                                             <label class="label-text">Salary Keywords (CSV)</label>
                                             <input type="text" v-model="settings.salaryKeywords" class="input-field text-xs font-mono">
                                             <p class="helper-text">Terms identifying income deposits.</p>
                                         </div>
                                     </div>
                                     <div class="grid grid-cols-2 gap-4">
-                                        <div>
+                                        <div class="input-group">
                                             <label class="label-text">Salary Fallback (R)</label>
                                             <input type="number" v-model.number="settings.salaryFallbackThreshold" class="input-field">
                                         </div>
-                                        <div>
+                                        <div class="input-group">
                                             <label class="label-text">Fallback Depth</label>
                                             <input type="number" v-model.number="settings.salaryFallbackDays" class="input-field">
                                         </div>
-                                        <div>
+                                        <div class="input-group">
                                             <label class="label-text">Stability Var (%)</label>
                                             <input type="number" v-model.number="settings.stabilityPercentageThreshold" class="input-field">
                                         </div>
-                                        <div>
+                                        <div class="input-group">
                                             <label class="label-text">Trend Sens.</label>
                                             <input type="number" step="0.01" v-model.number="settings.trendSensitivity" class="input-field">
                                         </div>
@@ -269,21 +270,21 @@
 
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                                     <div class="space-y-6">
-                                        <div>
+                                        <div class="input-group">
                                             <label class="label-text">Recipient Name</label>
                                             <input type="text" v-model="settings.userName" class="input-field">
                                         </div>
                                         <div class="grid grid-cols-2 gap-4">
-                                            <div>
+                                            <div class="input-group">
                                                 <label class="label-text">SMTP Host</label>
                                                 <input type="text" v-model="settings.smtpHost" class="input-field">
                                             </div>
-                                            <div>
+                                            <div class="input-group">
                                                 <label class="label-text">Port</label>
                                                 <input type="number" v-model.number="settings.smtpPort" class="input-field">
                                             </div>
                                         </div>
-                                        <div>
+                                        <div class="input-group">
                                             <label class="label-text">Recipient Emails</label>
                                             <input type="text" v-model="settings.emailTo" class="input-field" placeholder="sean@example.com; wife@example.com">
                                         </div>

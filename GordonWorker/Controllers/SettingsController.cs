@@ -84,8 +84,8 @@ public class SettingsController : ControllerBase
     [HttpPost("test-ai")]
     public async Task<IActionResult> TestAi()
     {
-        var success = await _ollamaService.TestConnectionAsync();
-        return success ? Ok("Connected to Ollama successfully.") : StatusCode(500, "Failed to connect to Ollama.");
+        var result = await _ollamaService.TestConnectionAsync();
+        return result.Success ? Ok("Connected to AI Brain successfully.") : StatusCode(500, result.Error);
     }
 
     [HttpGet("models")]

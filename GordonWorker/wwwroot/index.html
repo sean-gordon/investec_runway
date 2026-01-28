@@ -410,11 +410,12 @@
                     
                     try {
                         const res = await fetch('/api/settings/test-ai', { method: 'POST' });
+                        const text = await res.text();
                         if (res.ok) {
                             this.showToast("Connected to AI Brain!", 'success');
                             await this.loadModels();
                         } else {
-                            this.showToast("Connection failed.", 'error');
+                            this.showToast(`Connection failed: ${text}`, 'error');
                         }
                     } catch (e) {
                         this.showToast("Error testing AI.", 'error');

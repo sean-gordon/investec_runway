@@ -8,7 +8,7 @@ public interface IAiService
     Task<string> GenerateSqlAsync(string userPrompt);
     Task<string> FormatResponseAsync(string userPrompt, string dataContext);
     Task<string> GenerateSimpleReportAsync(string statsJson);
-    Task<bool> TestConnectionAsync();
+    Task<(bool Success, string Error)> TestConnectionAsync();
     Task<List<string>> GetAvailableModelsAsync();
 }
 
@@ -42,7 +42,6 @@ public class AiService : IAiService
                 "gemini-3-flash",
                 "gemini-2.5-pro",
                 "gemini-2.5-flash",
-                "gemini-2.0-pro-exp-02-05",
                 "gemini-2.0-flash", 
                 "gemini-1.5-pro", 
                 "gemini-1.5-flash"
@@ -69,26 +68,41 @@ public class AiService : IAiService
         }
     }
 
-    public async Task<bool> TestConnectionAsync()
+    public async Task<(bool Success, string Error)> TestConnectionAsync()
     {
-        var (provider, baseUrl, _, geminiKey) = await GetConnectionDetailsAsync();
-        if (provider == "Gemini")
-        {
-            return !string.IsNullOrWhiteSpace(geminiKey);
-        }
-
+        var (provider, baseUrl, model, geminiKey) = await GetConnectionDetailsAsync();
+        
         try
         {
-            var baseUri = baseUrl.EndsWith("/") ? baseUrl : baseUrl + "/";
-            var fullUrl = new Uri(new Uri(baseUri), "api/tags"); 
+            if (provider == "Gemini")
+            {
+                if (string.IsNullOrWhiteSpace(geminiKey)) return (false, "Gemini API Key is missing.");
+                // Real test call to Gemini
+                var result = await GenerateGeminiCompletionAsync("System", "Say 'OK'", geminiKey);
+                if (string.IsNullOrWhiteSpace(result)) return (false, "Received empty response from Gemini.");
+                return (true, string.Empty);
+            }
 
-            var response = await _httpClient.GetAsync(fullUrl);
-            return response.IsSuccessStatusCode;
+            // Ollama Test
+            var baseUri = baseUrl.EndsWith("/") ? baseUrl : baseUrl + "/";
+            var fullUrl = new Uri(new Uri(baseUri), "api/generate");
+            
+            var request = new { model = model, prompt = "Say 'OK'", stream = false };
+            var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
+            
+            var response = await _httpClient.PostAsync(fullUrl, content);
+            if (!response.IsSuccessStatusCode)
+            {
+                var errBody = await response.Content.ReadAsStringAsync();
+                return (false, $"Ollama error ({response.StatusCode}): {errBody}");
+            }
+            
+            return (true, string.Empty);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Ollama connection test failed.");
-            return false;
+            _logger.LogError(ex, "AI Connection test failed.");
+            return (false, ex.Message);
         }
     }
 
@@ -172,7 +186,13 @@ public class AiService : IAiService
 
             var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
             var response = await _httpClient.PostAsync(url, content);
-            response.EnsureSuccessStatusCode();
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync();
+                _logger.LogError("Gemini API Error ({StatusCode}): {Body}", response.StatusCode, errorBody);
+                response.EnsureSuccessStatusCode();
+            }
 
             var responseString = await response.Content.ReadAsStringAsync();
             using var doc = JsonDocument.Parse(responseString);
@@ -186,6 +206,10 @@ public class AiService : IAiService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Gemini API call failed.");
+            if (ex is HttpRequestException httpEx)
+            {
+                _logger.LogError("HTTP Error: {StatusCode}", httpEx.StatusCode);
+            }
             return "I'm sorry, I couldn't process that request via Gemini.";
         }
     }

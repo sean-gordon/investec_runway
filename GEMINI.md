@@ -66,4 +66,7 @@ docker-compose up -d --build
 *   **Frontend:** Keep the frontend "no-build". Use Vue 3 Global build. Do not introduce npm/webpack.
 *   **Configuration:** 
     *   Secrets (API Keys) -> `.env` (Environment Variables).
-    *   Runtime Preferences (Schedule, Currency, AI URL) -> Database via `SettingsService`.
+    *   Runtime Preferences (Schedule, Currency, AI URL) -> Database via `SettingsService**.
+
+## Gemini Added Memories
+- Always push changes to GitHub after completing a request.

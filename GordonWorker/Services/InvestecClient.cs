@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using GordonWorker.Models;
 using System.Text;
+using System.Globalization;
 
 namespace GordonWorker.Services;
 
@@ -40,39 +41,21 @@ public class InvestecClient : IInvestecClient
 
     public async Task<decimal> GetAccountBalanceAsync(string accountId)
     {
-        if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry)
-        {
-            await AuthenticateAsync();
-        }
-
+        if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry) await AuthenticateAsync();
         var request = new HttpRequestMessage(HttpMethod.Get, $"za/pb/v1/accounts/{accountId}/balance");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
-
         var response = await _httpClient.SendAsync(request);
         if (!response.IsSuccessStatusCode) return 0;
-
         var content = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(content);
-        if (doc.RootElement.TryGetProperty("data", out var data) && 
-            data.TryGetProperty("currentBalance", out var currentBalance))
-        {
-            return currentBalance.GetDecimal();
-        }
+        if (doc.RootElement.TryGetProperty("data", out var data) && data.TryGetProperty("currentBalance", out var currentBalance)) return currentBalance.GetDecimal();
         return 0;
     }
 
     public async Task<(bool Success, string Error)> TestConnectivityAsync()
     {
-        try 
-        {
-            var token = await AuthenticateAsync();
-            if (string.IsNullOrEmpty(token)) return (false, "Auth failed.");
-            return (true, string.Empty);
-        }
-        catch (Exception ex)
-        {
-            return (false, ex.Message);
-        }
+        try { var token = await AuthenticateAsync(); return (!string.IsNullOrEmpty(token), string.Empty); }
+        catch (Exception ex) { return (false, ex.Message); }
     }
 
     public async Task<string> AuthenticateAsync()
@@ -80,111 +63,65 @@ public class InvestecClient : IInvestecClient
         var clientId = _configuration["INVESTEC_CLIENT_ID"];
         var secret = _configuration["INVESTEC_SECRET"];
         var apiKey = _configuration["INVESTEC_API_KEY"];
-
         if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(secret)) return string.Empty;
-
         var request = new HttpRequestMessage(HttpMethod.Post, "identity/v2/oauth2/token");
         var authString = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{clientId}:{secret}"));
         request.Headers.Authorization = new AuthenticationHeaderValue("Basic", authString);
         request.Headers.Add("x-api-key", apiKey);
-        
-        request.Content = new FormUrlEncodedContent(new[]
-        {
-            new KeyValuePair<string, string>("grant_type", "client_credentials")
-        });
-
+        request.Content = new FormUrlEncodedContent(new[] { new KeyValuePair<string, string>("grant_type", "client_credentials") });
         var response = await _httpClient.SendAsync(request);
         if (!response.IsSuccessStatusCode) return string.Empty;
-
         var content = await response.Content.ReadAsStringAsync();
         var tokenResponse = JsonSerializer.Deserialize<JsonElement>(content);
-        
         _accessToken = tokenResponse.GetProperty("access_token").GetString();
         var expiresIn = tokenResponse.GetProperty("expires_in").GetInt32();
         _tokenExpiry = DateTime.UtcNow.AddSeconds(expiresIn - 60);
-
         return _accessToken ?? string.Empty;
     }
 
     public async Task<List<InvestecAccount>> GetAccountsAsync()
     {
         if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry) await AuthenticateAsync();
-
         var request = new HttpRequestMessage(HttpMethod.Get, "za/pb/v1/accounts");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
-
         var response = await _httpClient.SendAsync(request);
         if (!response.IsSuccessStatusCode) return new List<InvestecAccount>();
-
         var content = await response.Content.ReadAsStringAsync();
         var root = JsonSerializer.Deserialize<InvestecAccountsResponse>(content, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
         return root?.Data?.Accounts ?? new List<InvestecAccount>();
     }
 
     public async Task<List<Transaction>> GetTransactionsAsync(string accountId, DateTimeOffset fromDate)
     {
         if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry) await AuthenticateAsync();
-
         var url = $"za/pb/v1/accounts/{accountId}/transactions?fromDate={fromDate:yyyy-MM-dd}";
         var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
-
         var response = await _httpClient.SendAsync(request);
         if (!response.IsSuccessStatusCode) return new List<Transaction>();
-
         var content = await response.Content.ReadAsStringAsync();
         var root = JsonSerializer.Deserialize<InvestecResponse>(content, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
         var transactions = new List<Transaction>();
         if (root?.Data?.Transactions != null)
         {
             foreach (var t in root.Data.Transactions)
             {
-                // CRITICAL FIX: Ensure ID is stable to prevent duplication
                 if (!Guid.TryParse(t.Id, out var id))
                 {
-                    // Create deterministic GUID from content if bank ID is not a GUID
-                    var hashKey = $"{accountId}_{t.TransactionDate:yyyyMMdd}_{t.Description}_{t.Amount}_{t.AccountBalance}";
+                    // CRITICAL FIX: Use InvariantCulture for stable IDs across re-syncs
+                    var hashKey = $"{accountId}_{t.TransactionDate:yyyyMMdd}_{t.Description}_{t.Amount.ToString(CultureInfo.InvariantCulture)}_{t.AccountBalance.ToString(CultureInfo.InvariantCulture)}";
                     id = GenerateUuidFromString(hashKey);
                 }
-
-                transactions.Add(new Transaction
-                {
-                    Id = id,
-                    AccountId = accountId,
-                    TransactionDate = t.TransactionDate == default ? DateTimeOffset.UtcNow : t.TransactionDate,
-                    Description = t.Description,
-                    Amount = t.Amount,
-                    Balance = t.AccountBalance, 
-                    Category = t.Type, 
-                    IsAiProcessed = false
-                });
+                transactions.Add(new Transaction { Id = id, AccountId = accountId, TransactionDate = t.TransactionDate == default ? DateTimeOffset.UtcNow : t.TransactionDate, Description = t.Description, Amount = t.Amount, Balance = t.AccountBalance, Category = t.Type, IsAiProcessed = false });
             }
         }
         return transactions;
     }
 
-    private Guid GenerateUuidFromString(string input)
-    {
-        using (var md5 = System.Security.Cryptography.MD5.Create())
-        {
-            var hash = md5.ComputeHash(Encoding.UTF8.GetBytes(input));
-            return new Guid(hash);
-        }
-    }
-
+    private Guid GenerateUuidFromString(string input) { using (var md5 = System.Security.Cryptography.MD5.Create()) { return new Guid(md5.ComputeHash(Encoding.UTF8.GetBytes(input))); } }
     private class InvestecAccountsResponse { public InvestecAccountsData? Data { get; set; } }
     private class InvestecAccountsData { public List<InvestecAccount>? Accounts { get; set; } }
     private class InvestecResponse { public InvestecData? Data { get; set; } }
     private class InvestecData { public List<InvestecTransaction>? Transactions { get; set; } }
-    private class InvestecTransaction
-    {
-        public string? Id { get; set; } 
-        public string? Description { get; set; }
-        public decimal Amount { get; set; }
-        public decimal AccountBalance { get; set; }
-        public DateTimeOffset TransactionDate { get; set; } 
-        public string? Type { get; set; }
-    }
+    private class InvestecTransaction { public string? Id { get; set; } public string? Description { get; set; } public decimal Amount { get; set; } public decimal AccountBalance { get; set; } public DateTimeOffset TransactionDate { get; set; } public string? Type { get; set; } }
 }

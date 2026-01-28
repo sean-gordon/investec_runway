@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gordon Finance Engine</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📈</text></svg>">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+        [v-cloak] { display: none; }
+        .input-field { 
+            @apply w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-medium transition-all outline-none text-slate-900 placeholder-slate-400;
+        }
+        .input-field:focus {
+            @apply border-blue-500 ring-4 ring-blue-50;
+        }
+        .label-text { 
+            @apply block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-2 ml-1; 
+        }
+        .helper-text { 
+            @apply mt-2 text-[11px] text-slate-400 leading-relaxed ml-1 font-medium; 
+        }
+        .input-group { 
+            @apply space-y-1 mb-6; 
+        }
+        .section-card {
+            @apply bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-100;
+        }
+        .nav-btn {
+            @apply flex items-center gap-3 px-5 py-3.5 rounded-2xl text-sm font-bold transition-all;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+    <div id="app" v-cloak class="min-h-screen pb-20">
+        <div class="max-w-6xl mx-auto px-6 pt-12">
+            <div class="flex flex-col lg:flex-row gap-12">
+                
+                <!-- Sidebar -->
+                <aside class="w-full lg:w-72 space-y-8">
+                    <div>
+                        <div class="flex items-center gap-3 mb-2">
+                            <span class="text-3xl">📈</span>
+                            <h1 class="text-2xl font-black text-slate-900 tracking-tighter">GORDON</h1>
+                        </div>
+                        <p class="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] ml-1">Actuarial Analytics</p>
+                    </div>
+                    
+                    <nav class="flex flex-col gap-2">
+                        <button v-for="t in tabs" :key="t.id" @click="activeTab = t.id"
+                            :class="activeTab === t.id ? 'bg-white text-blue-600 shadow-sm border border-slate-100' : 'text-slate-500 hover:bg-white/50'"
+                            class="nav-btn group">
+                            <span class="text-lg" v-html="t.icon"></span>
+                            {{ t.name }}
+                        </button>
+                    </nav>
+
+                    <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+                        <div>
+                            <div class="flex items-center justify-between mb-4">
+                                <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">System Pulse</span>
+                                <span class="w-2 h-2 rounded-full" :class="systemStatus.investecOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'"></span>
+                            </div>
+                            <div class="space-y-3">
+                                <div class="flex items-center justify-between text-xs">
+                                    <span class="font-bold text-slate-500">Investec API</span>
+                                    <span class="font-black" :class="systemStatus.investecOnline ? 'text-green-600' : 'text-red-600'">
+                                        {{ systemStatus.investecOnline ? 'READY' : 'OFFLINE' }}
+                                    </span>
+                                </div>
+                                <div class="flex items-center justify-between text-xs">
+                                    <span class="font-bold text-slate-500">Last Sync</span>
+                                    <span class="font-bold text-slate-400">{{ formatTime(systemStatus.lastCheck) }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="space-y-2">
+                            <button @click="sendReportNow" :disabled="sendingReport"
+                                class="w-full bg-blue-600 hover:bg-blue-700 text-white p-3.5 rounded-2xl text-xs font-black transition-all shadow-lg shadow-blue-100">
+                                {{ sendingReport ? 'GENERATING...' : 'RUN ANALYSIS NOW' }}
+                            </button>
+                            <button @click="saveSettings" :disabled="saving"
+                                class="w-full bg-slate-900 hover:bg-black text-white p-3.5 rounded-2xl text-xs font-black transition-all">
+                                {{ saving ? 'SAVING...' : 'SAVE CONFIG' }}
+                            </button>
+                        </div>
+                    </div>
+                </aside>
+
+                <!-- Main Content Area -->
+                <main class="flex-1">
+                    <form @submit.prevent="saveSettings">
+                        
+                        <!-- TAB: DATA & SYNC -->
+                        <div v-if="activeTab === 'data'" class="animate-in fade-in slide-in-from-right-4 duration-500">
+                            <div class="section-card">
+                                <h2 class="text-2xl font-black text-slate-900 mb-10">Data & Synchronization</h2>
+                                
+                                <div class="space-y-10">
+                                    <div class="input-group">
+                                        <label class="label-text">Investec API Base URL</label>
+                                        <input type="text" v-model="settings.investecBaseUrl" class="input-field" placeholder="https://openapi.investec.com/">
+                                        <p class="helper-text">The official endpoint for Investec Open Banking. Do not change this unless using a proxy.</p>
+                                    </div>
+
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
+                                        <div class="input-group">
+                                            <label class="label-text">History Depth (Days)</label>
+                                            <input type="number" v-model.number="settings.historyDaysBack" class="input-field max-w-[140px]">
+                                            <p class="helper-text">How many days of history Gordon will download during the first-time setup or a full reset.</p>
+                                        </div>
+                                        <div class="input-group">
+                                            <label class="label-text">Currency Culture</label>
+                                            <select v-model="settings.currencyCulture" class="input-field">
+                                                <option value="en-ZA">South Africa (ZAR)</option>
+                                                <option value="en-US">United States (USD)</option>
+                                                <option value="en-GB">United Kingdom (GBP)</option>
+                                            </select>
+                                            <p class="helper-text">Defines how currency (e.g. Rands) and dates are formatted in your reports.</p>
+                                        </div>
+                                    </div>
+
+                                    <div class="p-8 rounded-3xl bg-slate-50 border border-slate-100">
+                                        <label class="label-text text-slate-900 mb-4">Sync Reliability</label>
+                                        <div class="flex flex-col md:flex-row gap-8 items-start md:items-center">
+                                            <div class="flex-1">
+                                                <input type="number" step="0.01" v-model.number="settings.syncBufferDays" class="input-field max-w-[120px]">
+                                                <p class="helper-text"><b>Sync Buffer:</b> A small overlap window (0.05 = 1 hour) to ensure no transactions are missed during polled syncs.</p>
+                                            </div>
+                                            <button type="button" @click="forceRepull" :disabled="repulling"
+                                                class="bg-red-50 text-red-600 hover:bg-red-100 px-6 py-3 rounded-xl text-xs font-black transition-all border border-red-100 uppercase tracking-widest">
+                                                {{ repulling ? 'Wiping...' : 'Force Full Re-Sync' }}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- TAB: AI BRAIN -->
+                        <div v-if="activeTab === 'ai'" class="animate-in fade-in slide-in-from-right-4 duration-500">
+                            <div class="section-card">
+                                <h2 class="text-2xl font-black text-slate-900 mb-10">AI Intelligence</h2>
+
+                                <div class="space-y-10">
+                                    <div class="input-group max-w-md">
+                                        <label class="label-text">Intelligence Provider</label>
+                                        <select v-model="settings.aiProvider" @change="loadModels(true)" class="input-field">
+                                            <option value="Ollama">Ollama (Local LAN)</option>
+                                            <option value="Gemini">Google Gemini (Cloud)</option>
+                                        </select>
+                                        <p class="helper-text">Choose between a private local server or Google's high-performance cloud models.</p>
+                                    </div>
+
+                                    <div class="input-group">
+                                        <label v-if="settings.aiProvider === 'Ollama'" class="label-text">Ollama Network Address</label>
+                                        <label v-else class="label-text">Gemini API Secret Key</label>
+                                        <div class="flex gap-3">
+                                            <input v-if="settings.aiProvider === 'Ollama'" type="text" v-model="settings.ollamaBaseUrl" class="input-field" placeholder="http://192.168.1.x:11434">
+                                            <input v-else type="password" v-model="settings.geminiApiKey" class="input-field" placeholder="Paste API Key here...">
+                                            <button type="button" @click="testAi" :disabled="aiTesting" 
+                                                class="bg-slate-900 text-white px-8 rounded-xl text-xs font-black hover:bg-black transition-all uppercase tracking-widest">
+                                                Test
+                                            </button>
+                                        </div>
+                                        <p class="helper-text" v-if="settings.aiProvider === 'Ollama'">The URL where your Ollama server is reachable (use host.docker.internal if local).</p>
+                                        <p class="helper-text" v-else>Your private key from Google AI Studio. Used for report generation and chat.</p>
+                                    </div>
+
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
+                                        <div class="input-group">
+                                            <label class="label-text">Brain Model</label>
+                                            <select v-model="settings.ollamaModelName" class="input-field">
+                                                <option v-if="availableModels.length === 0" :value="settings.ollamaModelName">{{ settings.ollamaModelName }}</option>
+                                                <option v-for="model in availableModels" :key="model" :value="model">{{ model }}</option>
+                                            </select>
+                                            <p class="helper-text">The specific AI model version used to analyze your data.</p>
+                                        </div>
+                                        <div class="input-group">
+                                            <label class="label-text">Analyst Persona</label>
+                                            <input type="text" v-model="settings.systemPersona" class="input-field">
+                                            <p class="helper-text">The name and personality of your AI financial advisor (e.g. Steve the Finance Guy).</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- TAB: ACTUARIAL -->
+                        <div v-if="activeTab === 'logic'" class="animate-in fade-in slide-in-from-right-4 duration-500">
+                            <div class="section-card">
+                                <h2 class="text-2xl font-black text-slate-900 mb-10">Actuarial Logic & Math</h2>
+
+                                <div class="space-y-10">
+                                    <div class="input-group max-w-2xl">
+                                        <div class="flex items-center justify-between mb-4">
+                                            <label class="label-text mb-0">EMA Sensitivity (Alpha)</label>
+                                            <span class="bg-blue-50 text-blue-700 px-3 py-1 rounded-lg text-xs font-black">{{ settings.actuarialAlpha }}</span>
+                                        </div>
+                                        <input type="range" v-model.number="settings.actuarialAlpha" min="0.01" max="0.5" step="0.01" class="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-blue-600">
+                                        <div class="flex justify-between text-[10px] text-slate-400 mt-3 font-black uppercase tracking-tighter">
+                                            <span>Smooth (Conservative)</span>
+                                            <span>Reactive (Adaptive)</span>
+                                        </div>
+                                        <p class="helper-text mt-4"><b>Alpha:</b> Determines how much recent spending affects your runway. 0.05 treats the last 3 months equally; 0.30 prioritizes the last 48 hours.</p>
+                                    </div>
+
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
+                                        <div class="input-group">
+                                            <label class="label-text">Unexpected Trigger Threshold</label>
+                                            <div class="relative flex items-center max-w-[220px]">
+                                                <span class="absolute left-4 text-slate-400 text-sm font-black">R</span>
+                                                <input type="number" v-model.number="settings.unexpectedPaymentThreshold" class="input-field pl-9 font-black">
+                                            </div>
+                                            <p class="helper-text">If an <b>unplanned</b> payment exceeds this amount, Gordon will automatically alert you with a new report.</p>
+                                        </div>
+                                        <div class="input-group">
+                                            <label class="label-text">Analysis Window</label>
+                                            <div class="relative flex items-center max-w-[220px]">
+                                                <input type="number" v-model.number="settings.analysisWindowDays" class="input-field pr-16 font-black text-center">
+                                                <span class="absolute right-4 text-slate-400 text-[10px] font-black uppercase">Days</span>
+                                            </div>
+                                            <p class="helper-text">The number of historical days used to model your volatility and "Value at Risk" metrics.</p>
+                                        </div>
+                                    </div>
+
+                                    <div class="py-6 border-t border-slate-50 flex justify-center">
+                                        <label class="flex items-center gap-3 cursor-pointer bg-slate-100/50 px-6 py-3 rounded-2xl border border-slate-200 hover:bg-white transition-all group">
+                                            <input type="checkbox" v-model="showAdvanced" class="w-5 h-5 rounded-lg text-blue-600 focus:ring-blue-500 border-slate-300">
+                                            <span class="text-[10px] font-black text-slate-500 uppercase tracking-widest group-hover:text-slate-900 transition-colors">Show Expert Logic Parameters</span>
+                                        </label>
+                                    </div>
+
+                                    <!-- Advanced Experts Only Section -->
+                                    <div v-if="showAdvanced" class="space-y-10 pt-10 border-t-2 border-dashed border-slate-100 animate-in fade-in slide-in-from-top-4 duration-500">
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                            <div class="input-group">
+                                                <label class="label-text">Fixed Cost Keywords (CSV)</label>
+                                                <textarea v-model="settings.fixedCostKeywords" rows="8" class="input-field text-xs font-mono leading-relaxed resize-none p-6"></textarea>
+                                                <p class="helper-text">Comma-separated terms identifying bills that should be ignored for cut-back suggestions.</p>
+                                            </div>
+                                            <div class="input-group">
+                                                <label class="label-text">Salary Keywords (CSV)</label>
+                                                <textarea v-model="settings.salaryKeywords" rows="8" class="input-field text-xs font-mono leading-relaxed resize-none p-6"></textarea>
+                                                <p class="helper-text">Terms used to detect the exact day your income arrives each month.</p>
+                                            </div>
+                                        </div>
+
+                                        <div class="grid grid-cols-2 md:grid-cols-4 gap-6 bg-slate-50 p-8 rounded-[2rem]">
+                                            <div>
+                                                <label class="label-text text-[9px]">Min Salary (R)</label>
+                                                <input type="number" v-model.number="settings.salaryFallbackThreshold" class="input-field p-3 text-xs">
+                                                <p class="helper-text">Minimum fallback deposit amount.</p>
+                                            </div>
+                                            <div>
+                                                <label class="label-text text-[9px]">Lookup Depth</label>
+                                                <input type="number" v-model.number="settings.salaryFallbackDays" class="input-field p-3 text-xs">
+                                                <p class="helper-text">Days to look for fallback income.</p>
+                                            </div>
+                                            <div>
+                                                <label class="label-text text-[9px]">Stability %</label>
+                                                <input type="number" v-model.number="settings.stabilityPercentageThreshold" class="input-field p-3 text-xs">
+                                                <p class="helper-text">Threshold for "Stable" label.</p>
+                                            </div>
+                                            <div>
+                                                <label class="label-text text-[9px]">Trend Sensitivity</label>
+                                                <input type="number" step="0.01" v-model.number="settings.trendSensitivity" class="input-field p-3 text-xs">
+                                                <p class="helper-text">EMA vs Simple Avg threshold.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- TAB: NOTIFICATIONS -->
+                        <div v-if="activeTab === 'email'" class="animate-in fade-in slide-in-from-right-4 duration-500">
+                            <div class="section-card">
+                                <h2 class="text-2xl font-black text-slate-900 mb-10">Email & Reporting</h2>
+
+                                <div class="space-y-10">
+                                    <div class="input-group max-w-md">
+                                        <label class="label-text">Your Display Name</label>
+                                        <input type="text" v-model="settings.userName" class="input-field">
+                                        <p class="helper-text">How the AI addresses you in report greetings.</p>
+                                    </div>
+
+                                    <div class="input-group max-w-2xl bg-slate-50 p-8 rounded-[2rem] border border-slate-100">
+                                        <label class="label-text">SMTP Outbound Server</label>
+                                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                                            <input type="text" v-model="settings.smtpHost" class="input-field md:col-span-2" placeholder="e.g. smtp.gmail.com">
+                                            <input type="number" v-model.number="settings.smtpPort" class="input-field text-center" placeholder="587">
+                                        </div>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <input type="text" v-model="settings.smtpUser" class="input-field" placeholder="Username / Email">
+                                            <input type="password" v-model="settings.smtpPass" class="input-field" placeholder="Password / App Key">
+                                        </div>
+                                        <p class="helper-text mt-4 text-slate-500 italic"><b>Tip:</b> For Gmail, use an "App Password" rather than your main account password.</p>
+                                    </div>
+
+                                    <div class="input-group max-w-2xl">
+                                        <label class="label-text">Recipient List</label>
+                                        <div class="flex gap-3">
+                                            <input type="text" v-model="settings.emailTo" class="input-field" placeholder="user@example.com; alerts@example.com">
+                                            <button type="button" @click="testEmail" :disabled="emailTesting" 
+                                                class="bg-slate-900 text-white px-8 rounded-xl text-xs font-black hover:bg-black transition-all uppercase tracking-widest">
+                                                Test
+                                            </button>
+                                        </div>
+                                        <p class="helper-text">Separate multiple recipients with a semicolon (;).</p>
+                                    </div>
+
+                                    <div class="input-group max-w-md bg-blue-50/30 p-8 rounded-[2rem] border border-blue-100">
+                                        <label class="label-text text-blue-600">Weekly Schedule</label>
+                                        <div class="flex gap-4">
+                                            <select v-model="settings.reportDayOfWeek" class="input-field flex-1">
+                                                <option v-for="day in days" :key="day" :value="day">{{ day }}</option>
+                                            </select>
+                                            <select v-model.number="settings.reportHour" class="input-field flex-1 text-center">
+                                                <option v-for="h in 24" :key="h-1" :value="h-1">{{ formatHour(h-1) }}</option>
+                                            </select>
+                                        </div>
+                                        <p class="helper-text text-blue-500/70">When your primary financial check-in will be sent each week.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- TAB: WHATSAPP -->
+                        <div v-if="activeTab === 'whatsapp'" class="animate-in fade-in slide-in-from-right-4 duration-500">
+                            <div class="section-card">
+                                <h2 class="text-2xl font-black text-slate-900 mb-10">WhatsApp Integration (Twilio)</h2>
+
+                                <div class="space-y-10">
+                                    <div class="input-group max-w-2xl bg-slate-50 p-8 rounded-[2rem] border border-slate-100">
+                                        <label class="label-text">Twilio Account Credentials</label>
+                                        <div class="space-y-4">
+                                            <div class="input-group">
+                                                <label class="label-text text-[9px]">Account SID</label>
+                                                <input type="text" v-model="settings.twilioAccountSid" class="input-field" placeholder="AC...">
+                                            </div>
+                                            <div class="input-group">
+                                                <label class="label-text text-[9px]">Auth Token</label>
+                                                <input type="password" v-model="settings.twilioAuthToken" class="input-field" placeholder="Twilio Auth Token">
+                                            </div>
+                                        </div>
+                                        <p class="helper-text mt-4">Required to send outbound WhatsApp messages from Gordon.</p>
+                                    </div>
+
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
+                                        <div class="input-group">
+                                            <label class="label-text">Twilio WhatsApp Number</label>
+                                            <input type="text" v-model="settings.twilioWhatsAppNumber" class="input-field" placeholder="whatsapp:+14155238886">
+                                            <p class="helper-text">The Twilio Sandbox or Production WhatsApp number (include 'whatsapp:' prefix).</p>
+                                        </div>
+                                        <div class="input-group">
+                                            <label class="label-text">Authorized Phone Number</label>
+                                            <div class="flex gap-3">
+                                                <input type="text" v-model="settings.authorizedWhatsAppNumber" class="input-field" placeholder="whatsapp:+27...">
+                                                <button type="button" @click="testWhatsApp" :disabled="whatsappTesting" 
+                                                    class="bg-slate-900 text-white px-8 rounded-xl text-xs font-black hover:bg-black transition-all uppercase tracking-widest">
+                                                    Test
+                                                </button>
+                                            </div>
+                                            <p class="helper-text">Only messages from this number will be processed (include 'whatsapp:' prefix).</p>
+                                        </div>
+                                    </div>
+
+                                    <div class="p-8 rounded-3xl bg-blue-50 border border-blue-100">
+                                        <h3 class="text-sm font-black text-blue-900 mb-2 uppercase tracking-widest">Webhook Configuration</h3>
+                                        <p class="text-xs text-blue-700 leading-relaxed mb-4">
+                                            Configure your Twilio WhatsApp Sandbox/Number with this Webhook URL for incoming messages:
+                                        </p>
+                                        <div class="bg-white p-4 rounded-xl border border-blue-200 font-mono text-[10px] break-all text-blue-800">
+                                            {{ locationOrigin }}/api/whatsapp/webhook
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </form>
+                </main>
+            </div>
+        </div>
+
+        <!-- Animated Toast -->
+        <transition enter-active-class="transform transition duration-500 cubic-bezier(0.175, 0.885, 0.32, 1.275)" enter-from-class="translate-y-20 scale-90 opacity-0" enter-to-class="translate-y-0 scale-100 opacity-100" leave-active-class="transition duration-300 ease-in" leave-from-class="opacity-100" leave-to-class="opacity-0">
+            <div v-if="message" class="fixed bottom-10 left-1/2 -translate-x-1/2 text-white px-10 py-5 rounded-full shadow-2xl font-black z-50 flex items-center gap-4 text-xs tracking-widest border border-white/10" 
+                 :class="messageType === 'error' ? 'bg-red-600' : 'bg-slate-900'">
+                <span>{{ messageType === 'success' ? '✅' : '⚠️' }}</span>
+                {{ message.toUpperCase() }}
+            </div>
+        </transition>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+        createApp({
+            data() {
+                return {
+                    activeTab: 'data', showAdvanced: false,
+                    locationOrigin: window.location.origin,
+                    tabs: [
+                        { id: 'data', name: 'Data & Sync', icon: '📊' },
+                        { id: 'ai', name: 'AI Intelligence', icon: '🧠' },
+                        { id: 'logic', name: 'Actuarial Math', icon: '🧪' },
+                        { id: 'email', name: 'Email Alerts', icon: '✉️' },
+                        { id: 'whatsapp', name: 'WhatsApp', icon: '📱' }
+                    ],
+                    settings: {
+                        userName: '', reportDayOfWeek: 'Monday', reportHour: 9, actuarialAlpha: 0.15,
+                        analysisWindowDays: 90, unexpectedPaymentThreshold: 3000,
+                        ollamaBaseUrl: '', ollamaModelName: '', geminiApiKey: '', aiProvider: 'Ollama',
+                                                fixedCostKeywords: '', salaryKeywords: '', salaryFallbackThreshold: 10000,       
+                                                salaryFallbackDays: 45, stabilityPercentageThreshold: 15, stabilityAmountThreshold: 250, trendSensitivity: 0.1,
+                                                investecBaseUrl: '', syncBufferDays: 0.05, systemPersona: '',
+                        
+                        smtpHost: '', smtpPort: 587, smtpUser: '', smtpPass: '', emailTo: '',
+                        historyDaysBack: 180, currencyCulture: 'en-ZA',
+                        twilioAccountSid: '', twilioAuthToken: '', twilioWhatsAppNumber: '', authorizedWhatsAppNumber: ''
+                    },
+                    availableModels: [],
+                    systemStatus: { investecOnline: false, lastCheck: '', lastError: '' },
+                    days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+                    saving: false, emailTesting: false, aiTesting: false, whatsappTesting: false, sendingReport: false, repulling: false,
+                    message: '', messageType: 'success'
+                }
+            },
+            mounted() { this.loadSettings(); this.loadStatus(); this.loadModels(); setInterval(this.loadStatus, 15000); },
+            methods: {
+                formatHour(h) { return h.toString().padStart(2, '0') + ':00'; },
+                formatTime(dateStr) { if (!dateStr || dateStr.startsWith('0001')) return 'Never'; return new Date(dateStr).toLocaleTimeString(); },
+                showToast(msg, type = 'success') { this.message = msg; this.messageType = type; setTimeout(() => this.message = '', 5000); },
+                async loadSettings() { try { const res = await fetch('/api/settings'); if (res.ok) { this.settings = await res.json(); } } catch (e) {} },
+                async loadStatus() { try { const res = await fetch('/api/settings/status'); if (res.ok) { this.systemStatus = await res.json(); } } catch (e) {} },
+                async saveSettings() {
+                    this.saving = true;
+                    try {
+                        const res = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.settings) });
+                        if (res.ok) { this.showToast("Configuration Persisted Successfully"); } else { this.showToast("Persistence Failed", 'error'); }
+                    } catch (e) { this.showToast("Engine Connectivity Error", 'error'); } finally { this.saving = false; }
+                },
+                async testEmail() {
+                    this.emailTesting = true;
+                    try {
+                        const res = await fetch('/api/settings/test-email', { method: 'POST' });
+                        if (res.ok) { this.showToast("Test Dispatched via SMTP"); } else { this.showToast("Test Delivery Failed", 'error'); }
+                    } catch (e) { this.showToast("SMTP Relay Error", 'error'); } finally { this.emailTesting = false; }
+                },
+                async testWhatsApp() {
+                    this.whatsappTesting = true; await this.saveSettings();
+                    try {
+                        const res = await fetch('/api/settings/test-whatsapp', { method: 'POST' });
+                        if (res.ok) { this.showToast("WhatsApp Ping Dispatched"); } else { this.showToast("Twilio Dispatch Failed", 'error'); }
+                    } catch (e) { this.showToast("Twilio Gateway Error", 'error'); } finally { this.whatsappTesting = false; }
+                },
+                async sendReportNow() {
+                    this.sendingReport = true;
+                    try {
+                        const res = await fetch('/api/settings/send-report-now', { method: 'POST' });
+                        if (res.ok) { this.showToast("Report Pipeline Triggered"); } else { this.showToast("Report Generation Failed", 'error'); }
+                    } catch (e) { this.showToast("Pipeline Error", 'error'); } finally { this.sendingReport = false; }
+                },
+                async forceRepull() {
+                    if (!confirm("This will permanently delete local cache and re-sync from Investec. Continue?")) return;
+                    this.repulling = true; await this.saveSettings();
+                    try { const res = await fetch('/api/settings/force-repull', { method: 'POST' }); if (res.ok) { this.showToast("Database Re-Sync Active"); } else { this.showToast("Re-Sync Start Failed", 'error'); }
+                    } catch (e) { this.showToast("Engine Sync Error", 'error'); } finally { this.repulling = false; }
+                },
+                async loadModels(saveFirst = false) {
+                    if (saveFirst) await this.saveSettings();
+                    try { const res = await fetch('/api/settings/models'); if (res.ok) { this.availableModels = await res.json(); } } catch (e) {}
+                },
+                async testAi() {
+                    this.aiTesting = true; await this.saveSettings(); 
+                    try {
+                        const res = await fetch('/api/settings/test-ai', { method: 'POST' });
+                        if (res.ok) { this.showToast("AI Brain Active & Synced"); await this.loadModels(); } else { this.showToast(`AI Authentication Error`, 'error'); }
+                    } catch (e) { this.showToast("AI Communication Error", 'error'); } finally { this.aiTesting = false; }
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

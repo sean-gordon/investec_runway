@@ -1,0 +1,6 @@
+@GordonWorker_HostAddress = http://localhost:5268
+
+GET {{GordonWorker_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

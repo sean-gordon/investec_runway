@@ -17,10 +17,14 @@ public record FinancialHealthReport(
     decimal SpendLastMonth,
     decimal ProjectedMonthEndSpend,
     decimal ProjectedBalanceAtNextSalary,
+    decimal UpcomingExpectedPayments,
     int DaysUntilNextSalary,
     double RunwayProbability,
-    List<CategorySpend> TopCategories
+    List<CategorySpend> TopCategories,
+    List<UpcomingExpense> UpcomingFixedCosts
 );
+
+public record UpcomingExpense(string Name, decimal ExpectedAmount);
 
 public record CategorySpend(string Name, decimal Amount, decimal ChangeAmount, decimal ChangePercentage, bool IsStable, bool IsFixedCost);
 
@@ -168,27 +172,56 @@ public class ActuarialService : IActuarialService
         }
         else { probSurvival = currentBalance > (baseBurn * (decimal)daysUntilNextSalary) ? 100 : 0; }
 
+        // Identify Upcoming Expected Payments (Overhead Liability)
+        var upcomingFixedCosts = new List<UpcomingExpense>();
+        var historicalFixedExpenses = expenses
+            .Where(t => IsFixedCost(NormalizeDescription(t.Description)))
+            .GroupBy(t => NormalizeDescription(t.Description))
+            .ToList();
+
+        foreach (var group in historicalFixedExpenses)
+        {
+            // If this fixed cost hasn't appeared in the current cycle yet
+            if (!thisPeriodExpenses.Any(t => NormalizeDescription(t.Description) == group.Key))
+            {
+                // Calculate average from previous cycles
+                var avgAmount = group.Average(t => t.Amount);
+                upcomingFixedCosts.Add(new UpcomingExpense(group.Key, avgAmount));
+            }
+        }
+
+        decimal upcomingOverhead = upcomingFixedCosts.Sum(e => e.ExpectedAmount);
+
         var dailyAvgSimple = validExpenses.Any() ? (double)validExpenses.Sum(t => t.Amount) / analysisWindowDays : 0;
         decimal projectedSpend = (spendThisPeriod / (decimal)daysIntoPeriod) * (decimal)avgCycleDays;
-        decimal projectedBalance = currentBalance - (baseBurn * (decimal)daysUntilNextSalary);
+        
+        // Projected Balance accounts for: Current - (Predicted Daily Burn * Days Left) - (Fixed costs not yet paid)
+        decimal remainingDailySpendExpected = (decimal)weightedMean * (decimal)daysUntilNextSalary;
+        decimal projectedBalance = currentBalance - remainingDailySpendExpected - upcomingOverhead;
+
+        // Runway Days accounts for the immediate 'hit' of unpaid fixed costs
+        decimal netBalanceForRunway = currentBalance - upcomingOverhead;
+        decimal runwayDays = baseBurn > 0 ? netBalanceForRunway / baseBurn : 0;
 
         return new FinancialHealthReport(
             CurrentBalance: currentBalance,
             WeightedDailyBurn: baseBurn,
             MonthlyBurnRate: baseBurn * 30,
             BurnVolatility: stdDev,
-            SafeRunwayDays: currentBalance / (decimal)((double)baseBurn + stdDev),
-            ExpectedRunwayDays: currentBalance / baseBurn,
-            OptimisticRunwayDays: currentBalance / (decimal)Math.Max((double)baseBurn - stdDev, 1.0),
+            SafeRunwayDays: netBalanceForRunway / (decimal)((double)baseBurn + stdDev),
+            ExpectedRunwayDays: runwayDays,
+            OptimisticRunwayDays: netBalanceForRunway / (decimal)Math.Max((double)baseBurn - stdDev, 1.0),
             ValueAtRisk95: (decimal)(weightedMean + (1.645 * stdDev)),
             TrendDirection: (decimal)weightedMean > (decimal)dailyAvgSimple * 1.1m ? "Increasing" : ((decimal)weightedMean < (decimal)dailyAvgSimple * 0.9m ? "Decreasing" : "Stable"),
             SpendThisMonth: spendThisPeriod,
             SpendLastMonth: spendLastPeriod,
-            ProjectedMonthEndSpend: projectedSpend,
+            ProjectedMonthEndSpend: projectedSpend + upcomingOverhead,
             ProjectedBalanceAtNextSalary: projectedBalance,
+            UpcomingExpectedPayments: upcomingOverhead,
             DaysUntilNextSalary: (int)Math.Round(daysUntilNextSalary),
             RunwayProbability: Math.Min(Math.Max(probSurvival, 0), 100),
-            TopCategories: categoryReport.OrderByDescending(c => c.Amount).Take(3).ToList()
+            TopCategories: categoryReport.OrderByDescending(c => c.Amount).Take(3).ToList(),
+            UpcomingFixedCosts: upcomingFixedCosts
         );
     }
 

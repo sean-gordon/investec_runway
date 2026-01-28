@@ -93,10 +93,12 @@ public class FinancialReportService : IFinancialReportService
             SpendThisPeriod = healthReport.SpendThisMonth.ToString("F2"),
             SpendLastPeriod = healthReport.SpendLastMonth.ToString("F2"),
             ProjectedTotalSpendForCycle = healthReport.ProjectedMonthEndSpend.ToString("F2"),
+            UpcomingExpectedPaymentsTotal = healthReport.UpcomingExpectedPayments.ToString("F2"),
             RunwayDays = healthReport.ExpectedRunwayDays.ToString("F1"),
             ProbabilityToReachPayday = healthReport.RunwayProbability.ToString("F1") + "%",
             CurrencySymbol = "R",
             AllTopCategoriesAreStable = healthReport.TopCategories.All(c => c.IsStable),
+            UpcomingFixedCosts = healthReport.UpcomingFixedCosts.Select(e => new { e.Name, Amount = e.ExpectedAmount.ToString("F2") }).ToList(),
             TopCategoriesWithIncreases = healthReport.TopCategories
                 .Where(c => !c.IsStable) 
                 .Select(c => new { 
@@ -127,6 +129,17 @@ public class FinancialReportService : IFinancialReportService
                     <td>{cat.Name}</td>
                     <td style='text-align: right;' class='amount'>{cat.Amount.ToString("C", culture)}</td>
                     <td style='text-align: right; color: {changeColor}; font-size: 12px; font-weight: 600;'>{changeSign} {changeText}</td>
+                </tr>";
+        }
+
+        var upcomingRows = "";
+        foreach (var cost in healthReport.UpcomingFixedCosts)
+        {
+            upcomingRows += $@"
+                <tr>
+                    <td>{cost.Name}</td>
+                    <td style='text-align: right;' class='amount'>{cost.ExpectedAmount.ToString("C", culture)}</td>
+                    <td style='text-align: right; color: #6b7280; font-size: 12px;'>Expected</td>
                 </tr>";
         }
 
@@ -179,6 +192,20 @@ public class FinancialReportService : IFinancialReportService
                         <tr><td>Projected Cycle Spend</td><td style='text-align: right;' class='amount highlight-warn'>{healthReport.ProjectedMonthEndSpend.ToString("C", culture)}</td></tr>
                         <tr><td>Projected Payday Balance</td><td style='text-align: right;' class='amount highlight-good'>{healthReport.ProjectedBalanceAtNextSalary.ToString("C", culture)}</td></tr>
                     </table>
+                    
+                    <div style='display: {(healthReport.UpcomingFixedCosts.Any() ? "block" : "none")};'>
+                        <div class='stats-header'>Upcoming Expected Payments</div>
+                        <table class='stats-table'>
+                            <tr><th>Description</th><th style='text-align: right;'>Avg Amount</th><th style='text-align: right;'>Status</th></tr>
+                            {upcomingRows}
+                            <tr style='background-color: #f9fafb; font-weight: 700;'>
+                                <td>TOTAL UPCOMING</td>
+                                <td style='text-align: right;' class='amount'>{healthReport.UpcomingExpectedPayments.ToString("C", culture)}</td>
+                                <td></td>
+                            </tr>
+                        </table>
+                    </div>
+
                     <div class='stats-header'>Top Spending Categories</div>
                     <table class='stats-table'>
                         <tr><th>Category</th><th style='text-align: right;'>Amount</th><th style='text-align: right;'>Vs Last Period</th></tr>

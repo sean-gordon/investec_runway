@@ -6,7 +6,7 @@ namespace GordonWorker.Services;
 public interface IAiService
 {
     Task<string> GenerateSqlAsync(string userPrompt);
-    Task<string> FormatResponseAsync(string userPrompt, string dataContext);
+    Task<string> FormatResponseAsync(string userPrompt, string dataContext, bool isWhatsApp = false);
     Task<string> GenerateSimpleReportAsync(string statsJson);
     Task<(bool Success, string Error)> TestConnectionAsync();
     Task<List<string>> GetAvailableModelsAsync();
@@ -99,11 +99,15 @@ Return ONLY the SQL query. Use standard PostgreSQL syntax.";
         return await GenerateCompletionAsync(systemPrompt, userPrompt);
     }
 
-    public async Task<string> FormatResponseAsync(string userPrompt, string dataContext)
+    public async Task<string> FormatResponseAsync(string userPrompt, string dataContext, bool isWhatsApp = false)
     {
         var settings = await _settingsService.GetSettingsAsync();
         var persona = settings.SystemPersona;
         var userName = settings.UserName;
+
+        var formattingRule = isWhatsApp 
+            ? "4. **Formatting:** Use WhatsApp formatting: *bold* for bold, _italics_ for italics, and - for bullet points. Do NOT use HTML or standard Markdown bold (**)."
+            : "4. **Formatting:** Use standard Markdown (bold, lists) for readability. Do NOT use HTML.";
 
         var systemPrompt = $@"You are {persona}, a senior actuarial financial advisor for {userName}.
         
@@ -111,7 +115,7 @@ Return ONLY the SQL query. Use standard PostgreSQL syntax.";
 1. **Currency:** ALWAYS use R symbol for ZAR (e.g. R1,500.00). 
 2. **Sign Convention:** In this database, POSITIVE numbers are Expenses (Debits) and NEGATIVE numbers are Income/Credits (Deposits).
 3. **Math Accuracy:** If you are provided with an Actuarial Report or Summary, PRIORITIZE those calculated values over doing your own math on raw transactions.
-4. **Formatting:** Use clear Markdown (bold, lists) for readability. Do NOT use HTML.
+{formattingRule}
 5. **Tone:** Professional, concise, and helpful.
 
 Context Information:

@@ -65,7 +65,7 @@ If the summary does NOT contain the specific information needed (e.g. specific t
 USER QUESTION:
 {Body}";
 
-            var aiResponse = await _aiService.FormatResponseAsync(promptForSummary, summaryJson);
+            var aiResponse = await _aiService.FormatResponseAsync(promptForSummary, summaryJson, isWhatsApp: true);
 
             string finalAnswer;
 
@@ -90,7 +90,7 @@ USER QUESTION:
                     {
                         var result = await connection.QueryAsync(sql);
                         var dataContext = JsonSerializer.Serialize(result);
-                        finalAnswer = await _aiService.FormatResponseAsync(Body, dataContext);
+                        finalAnswer = await _aiService.FormatResponseAsync(Body, dataContext, isWhatsApp: true);
                     }
                 }
                 catch (Exception ex)

@@ -38,13 +38,20 @@ public class InvestecClient : IInvestecClient
         _logger = logger;
         _configuration = configuration;
         _settingsService = settingsService;
-        
-        var settings = _settingsService.GetSettingsAsync().GetAwaiter().GetResult();
-        _httpClient.BaseAddress = new Uri(settings.InvestecBaseUrl);
+    }
+
+    private async Task EnsureBaseAddressAsync()
+    {
+        if (_httpClient.BaseAddress == null)
+        {
+            var settings = await _settingsService.GetSettingsAsync();
+            _httpClient.BaseAddress = new Uri(settings.InvestecBaseUrl);
+        }
     }
 
     public async Task<decimal> GetAccountBalanceAsync(string accountId)
     {
+        await EnsureBaseAddressAsync();
         if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry) await AuthenticateAsync();
         var request = new HttpRequestMessage(HttpMethod.Get, $"za/pb/v1/accounts/{accountId}/balance");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
@@ -64,6 +71,7 @@ public class InvestecClient : IInvestecClient
 
     public async Task<string> AuthenticateAsync()
     {
+        await EnsureBaseAddressAsync();
         var clientId = _configuration["INVESTEC_CLIENT_ID"];
         var secret = _configuration["INVESTEC_SECRET"];
         var apiKey = _configuration["INVESTEC_API_KEY"];
@@ -85,6 +93,7 @@ public class InvestecClient : IInvestecClient
 
     public async Task<List<InvestecAccount>> GetAccountsAsync()
     {
+        await EnsureBaseAddressAsync();
         if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry) await AuthenticateAsync();
         var request = new HttpRequestMessage(HttpMethod.Get, "za/pb/v1/accounts");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
@@ -97,6 +106,7 @@ public class InvestecClient : IInvestecClient
 
     public async Task<List<Transaction>> GetTransactionsAsync(string accountId, DateTimeOffset fromDate)
     {
+        await EnsureBaseAddressAsync();
         if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry) await AuthenticateAsync();
         var url = $"za/pb/v1/accounts/{accountId}/transactions?fromDate={fromDate:yyyy-MM-dd}";
         var request = new HttpRequestMessage(HttpMethod.Get, url);

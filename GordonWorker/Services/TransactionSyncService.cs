@@ -84,8 +84,8 @@ public class TransactionSyncService : ITransactionSyncService
                     if (tx.Amount >= settings.UnexpectedPaymentThreshold)
                     {
                         var normalizedDesc = _actuarialService.NormalizeDescription(tx.Description);
-                        bool isFixed = _actuarialService.IsFixedCost(normalizedDesc);
-                        bool isSalary = _actuarialService.IsSalary(tx);
+                        bool isFixed = _actuarialService.IsFixedCost(normalizedDesc, settings);
+                        bool isSalary = _actuarialService.IsSalary(tx, settings);
 
                         if (!isFixed && !isSalary)
                         {

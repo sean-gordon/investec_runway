@@ -72,16 +72,16 @@ public class FinancialReportService : IFinancialReportService
         var healthReport = await _actuarialService.AnalyzeHealthAsync(fullHistory, currentBalance);
 
         var thisWeekSpend = thisWeek
-            .Where(t => t.Amount < 0 && 
+            .Where(t => t.Amount > 0 && 
                         !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase) &&      
                         !t.IsInternalTransfer())
-            .Sum(t => Math.Abs(t.Amount));
+            .Sum(t => t.Amount);
             
         var lastWeekSpend = lastWeek
-            .Where(t => t.Amount < 0 && 
+            .Where(t => t.Amount > 0 && 
                         !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase) &&      
                         !t.IsInternalTransfer())
-            .Sum(t => Math.Abs(t.Amount));
+            .Sum(t => t.Amount);
 
         var stats = new
         {

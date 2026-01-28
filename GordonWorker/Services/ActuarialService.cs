@@ -60,9 +60,9 @@ public class ActuarialService : IActuarialService
         var settings = await _settingsService.GetSettingsAsync();
         var today = DateTime.Today;
 
-        // Salary detection: search history for TCP 131. Credits are negative in Investec.
+        // Salary detection: payment FROM TCP 131. Credits are NEGATIVE in Investec.
         var salaryPayments = history
-            .Where(t => t.Description != null && (t.Description.Contains("TCP 131", StringComparison.OrdinalIgnoreCase) || t.Description.Contains("TCP131", StringComparison.OrdinalIgnoreCase)))
+            .Where(t => t.Amount < 0 && t.Description != null && (t.Description.Contains("TCP 131", StringComparison.OrdinalIgnoreCase) || t.Description.Contains("TCP131", StringComparison.OrdinalIgnoreCase)))
             .OrderByDescending(t => t.TransactionDate)
             .ToList();
 
@@ -86,7 +86,6 @@ public class ActuarialService : IActuarialService
         if (compareDateInPrevPeriod > prevPeriodEnd) compareDateInPrevPeriod = prevPeriodEnd;
 
         // Investec: Debits are POSITIVE (> 0), Credits are NEGATIVE (< 0). 
-        // We filter for spend: amount > 0 and NOT a CREDIT category.
         var expenses = history.Where(t => t.Amount > 0 && 
                                         !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase) && 
                                         !t.IsInternalTransfer()).ToList();

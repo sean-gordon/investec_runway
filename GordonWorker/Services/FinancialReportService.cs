@@ -15,7 +15,7 @@ public class FinancialReportService : IFinancialReportService
     private readonly IConfiguration _configuration;
     private readonly IEmailService _emailService;
     private readonly IActuarialService _actuarialService;
-    private readonly IOllamaService _ollamaService;
+    private readonly IAiService _ollamaService;
     private readonly ISettingsService _settingsService;
     private readonly IInvestecClient _investecClient;
     private readonly ILogger<FinancialReportService> _logger;
@@ -24,7 +24,7 @@ public class FinancialReportService : IFinancialReportService
         IConfiguration configuration,
         IEmailService emailService,
         IActuarialService actuarialService,
-        IOllamaService ollamaService,
+        IAiService ollamaService,
         ISettingsService settingsService,
         IInvestecClient investecClient,
         ILogger<FinancialReportService> logger)
@@ -42,6 +42,14 @@ public class FinancialReportService : IFinancialReportService
     {
         var settings = await _settingsService.GetSettingsAsync();
         
+        var culture = (System.Globalization.CultureInfo)System.Globalization.CultureInfo.InvariantCulture.Clone();
+        culture.NumberFormat.CurrencySymbol = "R";
+        culture.NumberFormat.CurrencyGroupSeparator = ",";
+        culture.NumberFormat.CurrencyDecimalSeparator = ".";
+        culture.NumberFormat.CurrencyDecimalDigits = 2;
+        culture.NumberFormat.CurrencyPositivePattern = 0; 
+        culture.NumberFormat.CurrencyNegativePattern = 1; 
+
         var accounts = await _investecClient.GetAccountsAsync();
         decimal currentBalance = 0;
         foreach (var acc in accounts)
@@ -58,64 +66,82 @@ public class FinancialReportService : IFinancialReportService
         var thisWeek = transactions.Where(t => t.TransactionDate >= DateTimeOffset.UtcNow.AddDays(-7)).ToList();
         var lastWeek = transactions.Where(t => t.TransactionDate < DateTimeOffset.UtcNow.AddDays(-7)).ToList();
 
+        // CRITICAL FIX: Use fullHistorySql instead of sql
         var fullHistorySql = "SELECT * FROM transactions WHERE transaction_date >= NOW() - INTERVAL '90 days'";
         var fullHistory = (await connection.QueryAsync<Transaction>(fullHistorySql)).ToList();
         
-        var healthReport = _actuarialService.AnalyzeHealth(fullHistory, currentBalance);
+        var healthReport = await _actuarialService.AnalyzeHealthAsync(fullHistory, currentBalance);
 
         var thisWeekSpend = thisWeek
-            .Where(t => t.Amount > 0 && !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase))
+            .Where(t => t.Amount > 0 && 
+                        !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase) &&      
+                        !t.IsInternalTransfer() &&
+                        !_actuarialService.IsSalary(t, settings))
             .Sum(t => t.Amount);
             
         var lastWeekSpend = lastWeek
-            .Where(t => t.Amount > 0 && !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase))
+            .Where(t => t.Amount > 0 && 
+                        !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase) &&      
+                        !t.IsInternalTransfer() &&
+                        !_actuarialService.IsSalary(t, settings))
             .Sum(t => t.Amount);
 
         var stats = new
         {
             UserName = settings.UserName,
             CurrentBalance = currentBalance.ToString("F2"),
-            SpendThisWeek = Math.Abs(thisWeekSpend).ToString("F2"),
-            SpendLastWeek = Math.Abs(lastWeekSpend).ToString("F2"),
+            DaysUntilNextSalary = healthReport.DaysUntilNextSalary,
+            ProjectedBalanceAtPayday = healthReport.ProjectedBalanceAtNextSalary.ToString("F2"),
+            SpendThisPeriod = healthReport.SpendThisMonth.ToString("F2"),
+            SpendLastPeriod = healthReport.SpendLastMonth.ToString("F2"),
+            ProjectedTotalSpendForCycle = healthReport.ProjectedMonthEndSpend.ToString("F2"),
+            UpcomingExpectedPaymentsTotal = healthReport.UpcomingExpectedPayments.ToString("F2"),
             RunwayDays = healthReport.ExpectedRunwayDays.ToString("F1"),
-            Volatility = healthReport.BurnVolatility.ToString("F2"),
-            Currency = "ZAR",
-            SpendThisMonth = healthReport.SpendThisMonth.ToString("F2"),
-            SpendLastMonth = healthReport.SpendLastMonth.ToString("F2"),
-            ProjectedMonthEnd = healthReport.ProjectedMonthEndSpend.ToString("F2"),
-            Probability30DaySurvival = healthReport.RunwayProbability.ToString("F1") + "%",
-            TopCategories = healthReport.TopCategories.Select(c => new { 
-                Name = c.Name, 
-                Amount = c.Amount.ToString("F2"), 
-                PercentChange = c.ChangePercentage.ToString("F0") + "%" 
-            }).ToList()
+            ProbabilityToReachPayday = healthReport.RunwayProbability.ToString("F1") + "%",
+            CurrencySymbol = "R",
+            AllTopCategoriesAreStable = healthReport.TopCategories.All(c => c.IsStable),
+            UpcomingFixedCosts = healthReport.UpcomingFixedCosts.Select(e => new { e.Name, Amount = e.ExpectedAmount.ToString("F2") }).ToList(),
+            TopCategoriesWithIncreases = healthReport.TopCategories
+                .Where(c => !c.IsStable) 
+                .Select(c => new { 
+                    CategoryName = c.Name, 
+                    TotalAmountSpentThisPeriod = c.Amount.ToString("F2"), 
+                    IncreasePercentFromLastPeriod = c.ChangePercentage,
+                    IsFixedUncontrollableCost = c.IsFixedCost
+                }).ToList()
         };
 
         var jsonStats = JsonSerializer.Serialize(stats);
         var aiExplanation = await _ollamaService.GenerateSimpleReportAsync(jsonStats);
 
         var subject = $"Weekly Financial Report - {DateTime.Now:dd MMM yyyy}";
-        
-        var culture = (System.Globalization.CultureInfo)System.Globalization.CultureInfo.InvariantCulture.Clone();
-        culture.NumberFormat.CurrencySymbol = "R";
-        culture.NumberFormat.CurrencyGroupSeparator = ",";
-        culture.NumberFormat.CurrencyDecimalSeparator = ".";
-        culture.NumberFormat.CurrencyDecimalDigits = 2;
-        culture.NumberFormat.CurrencyPositivePattern = 0; 
-        culture.NumberFormat.CurrencyNegativePattern = 1; 
-
         var personaName = !string.IsNullOrWhiteSpace(settings.SystemPersona) ? settings.SystemPersona : "Gordon";
 
         var categoryRows = "";
         foreach (var cat in healthReport.TopCategories)
         {
-            var changeColor = cat.ChangePercentage > 0 ? "#dc2626" : (cat.ChangePercentage < 0 ? "#059669" : "#6b7280"); 
-            var changeSign = cat.ChangePercentage > 0 ? "▲" : (cat.ChangePercentage < 0 ? "▼" : "•");
+            bool isGrowing = !cat.IsStable && cat.ChangePercentage > 0.01m;
+            bool isShrinking = !cat.IsStable && cat.ChangePercentage < -0.01m;
+            var changeColor = isGrowing ? "#dc2626" : (isShrinking ? "#059669" : "#6b7280");
+            var changeSign = isGrowing ? "▲" : (isShrinking ? "▼" : "•");
+            var changeText = cat.IsStable ? "Stable" : $"{Math.Abs(cat.ChangePercentage):F0}%";
+
             categoryRows += $@"
                 <tr>
                     <td>{cat.Name}</td>
-                    <td style='text-align: right;' class='amount'>{string.Format(culture, "{{0:C}}", cat.Amount)}</td>
-                    <td style='text-align: right; color: {changeColor}; font-size: 12px; font-weight: 600;'>{changeSign} {Math.Abs(cat.ChangePercentage):F0}%</td>
+                    <td style='text-align: right;' class='amount'>{cat.Amount.ToString("C", culture)}</td>
+                    <td style='text-align: right; color: {changeColor}; font-size: 12px; font-weight: 600;'>{changeSign} {changeText}</td>
+                </tr>";
+        }
+
+        var upcomingRows = "";
+        foreach (var cost in healthReport.UpcomingFixedCosts)
+        {
+            upcomingRows += $@"
+                <tr>
+                    <td>{cost.Name}</td>
+                    <td style='text-align: right;' class='amount'>{cost.ExpectedAmount.ToString("C", culture)}</td>
+                    <td style='text-align: right; color: #6b7280; font-size: 12px;'>Expected</td>
                 </tr>";
         }
 
@@ -156,28 +182,44 @@ public class FinancialReportService : IFinancialReportService
             <tr><td class='header'><h1>Gordon Finance Engine</h1></td></tr>
             <tr>
                 <td class='content'>
-                    <div class='ai-box'>
+                    <div class='ai-box' style='display: {(string.IsNullOrWhiteSpace(aiExplanation) ? "none" : "block")};'>
                         <h3>💡 Insights from {personaName}</h3>
                         {aiExplanation}
                     </div>
-                    <div class='stats-header'>Monthly Pulse (MTD)</div>
+                    <div class='stats-header'>Financial Pulse (Salary Period)</div>
                     <table class='stats-table'>
                         <tr><th>Metric</th><th style='text-align: right;'>Value</th></tr>
-                        <tr><td>Spend This Month</td><td style='text-align: right;' class='amount'>{string.Format(culture, "{{0:C}}", healthReport.SpendThisMonth)}</td></tr>
-                        <tr><td>Spend Last Month</td><td style='text-align: right;' class='amount'>{string.Format(culture, "{{0:C}}", healthReport.SpendLastMonth)}</td></tr>
-                        <tr><td>Projected Month End</td><td style='text-align: right;' class='amount highlight-warn'>{string.Format(culture, "{{0:C}}", healthReport.ProjectedMonthEndSpend)}</td></tr>
+                        <tr><td>Spend This Period</td><td style='text-align: right;' class='amount'>{healthReport.SpendThisMonth.ToString("C", culture)}</td></tr>
+                        <tr><td>Spend Last Period</td><td style='text-align: right;' class='amount'>{healthReport.SpendLastMonth.ToString("C", culture)}</td></tr>
+                        <tr><td>Projected Cycle Spend</td><td style='text-align: right;' class='amount highlight-warn'>{healthReport.ProjectedMonthEndSpend.ToString("C", culture)}</td></tr>
+                        <tr><td>Projected Payday Balance</td><td style='text-align: right;' class='amount highlight-good'>{healthReport.ProjectedBalanceAtNextSalary.ToString("C", culture)}</td></tr>
                     </table>
+                    
+                    <div style='display: {(healthReport.UpcomingFixedCosts.Any() ? "block" : "none")};'>
+                        <div class='stats-header'>Upcoming Expected Payments</div>
+                        <table class='stats-table'>
+                            <tr><th>Description</th><th style='text-align: right;'>Avg Amount</th><th style='text-align: right;'>Status</th></tr>
+                            {upcomingRows}
+                            <tr style='background-color: #f9fafb; font-weight: 700;'>
+                                <td>TOTAL UPCOMING</td>
+                                <td style='text-align: right;' class='amount'>{healthReport.UpcomingExpectedPayments.ToString("C", culture)}</td>
+                                <td></td>
+                            </tr>
+                        </table>
+                    </div>
+
                     <div class='stats-header'>Top Spending Categories</div>
                     <table class='stats-table'>
-                        <tr><th>Category</th><th style='text-align: right;'>Amount</th><th style='text-align: right;'>Vs Last Month</th></tr>
+                        <tr><th>Category</th><th style='text-align: right;'>Amount</th><th style='text-align: right;'>Vs Last Period</th></tr>
                         {categoryRows}
                     </table>
                     <div class='stats-header'>Runway & Risk</div>
                     <table class='stats-table'>
                         <tr><th>Metric</th><th style='text-align: right;'>Value</th></tr>
-                        <tr><td>Current Balance</td><td style='text-align: right;' class='amount'>{string.Format(culture, "{{0:C}}", currentBalance)}</td></tr>
+                        <tr><td>Current Balance</td><td style='text-align: right;' class='amount'>{currentBalance.ToString("C", culture)}</td></tr>
+                        <tr><td>Next Salary In</td><td style='text-align: right;'>{healthReport.DaysUntilNextSalary} Days</td></tr>
                         <tr><td>Projected Runway</td><td style='text-align: right;' class='{(healthReport.ExpectedRunwayDays < 30 ? "highlight-bad" : "highlight-good")}'>{healthReport.ExpectedRunwayDays:F0} Days</td></tr>
-                        <tr><td>30-Day Survival Probability</td><td style='text-align: right;' class='{(healthReport.RunwayProbability < 80 ? "highlight-bad" : "highlight-good")}'>{healthReport.RunwayProbability:F1}%</td></tr>
+                        <tr><td>Survival Probability (To Payday)</td><td style='text-align: right;' class='{(healthReport.RunwayProbability < 80 ? "highlight-bad" : "highlight-good")}'>{healthReport.RunwayProbability:F1}%</td></tr>
                         <tr><td>Spending Trend</td><td style='text-align: right;'>{healthReport.TrendDirection}</td></tr>
                     </table>
                 </td>

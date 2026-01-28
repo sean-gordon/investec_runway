@@ -16,15 +16,24 @@ public record FinancialHealthReport(
     decimal SpendThisMonth,
     decimal SpendLastMonth,
     decimal ProjectedMonthEndSpend,
+    decimal ProjectedBalanceAtNextSalary,
+    decimal UpcomingExpectedPayments,
+    int DaysUntilNextSalary,
     double RunwayProbability,
-    List<CategorySpend> TopCategories
+    List<CategorySpend> TopCategories,
+    List<UpcomingExpense> UpcomingFixedCosts
 );
 
-public record CategorySpend(string Name, decimal Amount, decimal ChangeAmount, decimal ChangePercentage);
+public record UpcomingExpense(string Name, decimal ExpectedAmount);
+
+public record CategorySpend(string Name, decimal Amount, decimal ChangeAmount, decimal ChangePercentage, bool IsStable, bool IsFixedCost);
 
 public interface IActuarialService
 {
-    FinancialHealthReport AnalyzeHealth(List<Transaction> history, decimal currentBalance);
+    Task<FinancialHealthReport> AnalyzeHealthAsync(List<Transaction> history, decimal currentBalance);
+    bool IsSalary(Transaction t, AppSettings settings);
+    string NormalizeDescription(string? desc);
+    bool IsFixedCost(string categoryName, AppSettings settings);
 }
 
 public class ActuarialService : IActuarialService
@@ -36,110 +45,202 @@ public class ActuarialService : IActuarialService
         _settingsService = settingsService;
     }
 
-    private string NormalizeDescription(string? desc)
+    public string NormalizeDescription(string? desc)
     {
         if (string.IsNullOrWhiteSpace(desc)) return "Uncategorized";
-        // Remove numbers, special chars, and common noisy banking words
-        var clean = Regex.Replace(desc, @"\d|ZA|CPT|JHB|GP|GAUTENG|PTY|LTD|\*|'|&apos;", "").Trim();
+        string[] months = { "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER", "JAN", "FEB", "MAR", "APR", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC" };
+        var clean = desc.ToUpper();
+        clean = Regex.Replace(clean, @"\d|ZA|CPT|JHB|GP|GAUTENG|PTY|LTD|\*|'|&APOS;|DEBIT|ORDER|PAYMENT|INSTALMENT|EFT|MAG|TAPE|ELECTRONIC|FUNDS|TRANSFER|INT-ACC|INTERNAL", " ").Trim();
+        foreach (var m in months) clean = Regex.Replace(clean, $@"\b{m}\b", " ");
         var parts = clean.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        // Return first 2 words for broad grouping
         return parts.Length > 0 ? (parts.Length > 1 ? $"{parts[0]} {parts[1]}" : parts[0]).ToUpper() : "Uncategorized";
     }
 
-    public FinancialHealthReport AnalyzeHealth(List<Transaction> history, decimal currentBalance)
+    public bool IsFixedCost(string categoryName, AppSettings settings)
     {
-        var settings = _settingsService.GetSettingsAsync().GetAwaiter().GetResult();
+        var keywords = settings.FixedCostKeywords.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return keywords.Any(k => categoryName.Contains(k, StringComparison.OrdinalIgnoreCase));
+    }
 
-        var expenses = history.Where(t => t.Amount > 0 && !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase)).ToList();
-        
+    public bool IsSalary(Transaction t, AppSettings settings)
+    {
+        if (t.Description == null) return false;
+        var keywords = settings.SalaryKeywords.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return keywords.Any(k => t.Description.Contains(k, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public async Task<FinancialHealthReport> AnalyzeHealthAsync(List<Transaction> history, decimal currentBalance)
+    {
+        var settings = await _settingsService.GetSettingsAsync();
         var today = DateTime.Today;
-        var startOfThisMonth = new DateTime(today.Year, today.Month, 1);
-        var startOfLastMonth = startOfThisMonth.AddMonths(-1);
+
+        // SALARY DETECTION (Sign-Agnostic)
+        var salaryPayments = history
+            .Where(t => IsSalary(t, settings))
+            .OrderByDescending(t => t.TransactionDate)
+            .ToList();
+
+        // Fallback: If no explicit salary, look for large credit/deposit
+        if (!salaryPayments.Any())
+        {
+            salaryPayments = history
+                .Where(t => (t.Amount < -settings.SalaryFallbackThreshold || t.Category == "CREDIT") && (t.TransactionDate.LocalDateTime.Date >= today.AddDays(-settings.SalaryFallbackDays)))
+                .OrderByDescending(t => Math.Abs(t.Amount))
+                .Take(1)
+                .ToList();
+        }
+
+        DateTime periodStart; DateTime prevPeriodStart; DateTime prevPeriodEnd;
+
+        if (salaryPayments.Any())
+        {
+            periodStart = salaryPayments[0].TransactionDate.LocalDateTime.Date;
+            if (salaryPayments.Count >= 2)
+            {
+                var prevSalary = salaryPayments.FirstOrDefault(s => s.TransactionDate.LocalDateTime.Date < periodStart);
+                if (prevSalary != null) { prevPeriodStart = prevSalary.TransactionDate.LocalDateTime.Date; prevPeriodEnd = periodStart; }
+                else { prevPeriodStart = periodStart.AddDays(-30); prevPeriodEnd = periodStart; }
+            }
+            else { prevPeriodStart = periodStart.AddDays(-30); prevPeriodEnd = periodStart; }
+        }
+        else 
+        { 
+            // Fallback to a rolling 28-day cycle if no salary detected
+            periodStart = today.AddDays(-7); // Assuming user said paid 1 week ago
+            prevPeriodStart = periodStart.AddDays(-30); 
+            prevPeriodEnd = periodStart; 
+        }
+
+        var daysIntoPeriod = Math.Max(1, (today - periodStart).TotalDays + 1);
+        
+        // Calculate average cycle from history or default to 30
+        var cycleHistory = salaryPayments.Zip(salaryPayments.Skip(1), (a, b) => (a.TransactionDate - b.TransactionDate).TotalDays).ToList();
+        var avgCycleDays = cycleHistory.Any() ? cycleHistory.Average() : 30;
+        if (avgCycleDays < 20 || avgCycleDays > 45) avgCycleDays = 30; 
+
+        var nextExpectedSalary = periodStart.AddDays(avgCycleDays);
+        var daysUntilNextSalary = Math.Max(1, (nextExpectedSalary - today).TotalDays);
+
+        var compareDateInPrevPeriod = prevPeriodStart.AddDays(daysIntoPeriod);
+        if (compareDateInPrevPeriod > prevPeriodEnd) compareDateInPrevPeriod = prevPeriodEnd;
+
+        // Investec: Debits are POSITIVE (> 0), Credits are NEGATIVE (< 0). 
+        var expenses = history.Where(t => t.Amount > 0 && 
+                                        !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase) && 
+                                        !t.IsInternalTransfer()).ToList();
         
         DateTime ToDate(DateTimeOffset dto) => dto.LocalDateTime.Date;
+        var thisPeriodExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= periodStart).ToList(); 
+        var lastPeriodFullExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= prevPeriodStart && ToDate(t.TransactionDate) < prevPeriodEnd).ToList();
+        var lastPeriodPtdExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= prevPeriodStart && ToDate(t.TransactionDate) < compareDateInPrevPeriod).ToList();
 
-        var thisMonthExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= startOfThisMonth).ToList();
-        var lastMonthExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= startOfLastMonth && ToDate(t.TransactionDate) < startOfThisMonth).ToList();
+        var spendThisPeriod = thisPeriodExpenses.Sum(t => t.Amount);
+        var spendLastPeriodFull = lastPeriodFullExpenses.Sum(t => t.Amount);
+        var spendLastPeriodPtd = lastPeriodPtdExpenses.Sum(t => t.Amount);
+        
+        // Pulse Comparison: If PTD spend is suspiciously low (< 10% of full), use Full month as baseline to avoid "700% increase" errors
+        var pulseBaseline = (spendLastPeriodPtd < (spendLastPeriodFull * 0.1m)) ? spendLastPeriodFull : spendLastPeriodPtd;
 
-        var spendThisMonth = thisMonthExpenses.Sum(t => t.Amount);
-        var spendLastMonth = lastMonthExpenses.Sum(t => t.Amount);
-
-        // Category Analysis
-        var topCategories = thisMonthExpenses
+        var topCategories = thisPeriodExpenses
+            .Where(t => !IsFixedCost(NormalizeDescription(t.Description), settings))
             .GroupBy(t => NormalizeDescription(t.Description))
             .Select(g => new { Name = g.Key, Amount = g.Sum(t => t.Amount) })
-            .OrderByDescending(x => x.Amount)
-            .Take(3)
-            .ToList();
+            .OrderByDescending(x => x.Amount).Take(5).ToList();
 
         var categoryReport = new List<CategorySpend>();
         foreach (var cat in topCategories)
         {
-            var lastMonthCatSpend = lastMonthExpenses
-                .Where(t => NormalizeDescription(t.Description) == cat.Name)
-                .Sum(t => t.Amount);
+            var ptdLastSpend = lastPeriodPtdExpenses.Where(t => NormalizeDescription(t.Description) == cat.Name).Sum(t => t.Amount);
+            var fullLastSpend = lastPeriodFullExpenses.Where(t => NormalizeDescription(t.Description) == cat.Name).Sum(t => t.Amount);
             
-            decimal diff = cat.Amount - lastMonthCatSpend;
-            decimal percent = lastMonthCatSpend == 0 ? 100 : (diff / lastMonthCatSpend) * 100;
-            categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent));
+            // Hybrid Baseline: If it's a significant amount and PTD is zero, use full month to avoid spike hallucinations
+            decimal baseline = (ptdLastSpend < (fullLastSpend * 0.1m)) ? fullLastSpend : ptdLastSpend;
+            
+            decimal diff = cat.Amount - baseline;
+            decimal percent = baseline > 0 ? (diff / baseline) * 100 : 100;
+
+            bool isStable = Math.Abs(percent) < settings.StabilityPercentageThreshold || Math.Abs(diff) < settings.StabilityAmountThreshold;
+            categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent, isStable, IsFixedCost(cat.Name, settings)));                                                                                                           
         }
 
-        // Stats
-        decimal projectedMonthEnd = spendThisMonth;
-        var daysPassed = (today - startOfThisMonth).TotalDays + 1;
-        var daysInMonth = DateTime.DaysInMonth(today.Year, today.Month);
-        if (daysPassed >= 1) projectedMonthEnd = (spendThisMonth / (decimal)daysPassed) * daysInMonth;
+        // Identify Upcoming Expected Payments
+        var upcomingFixedCosts = new List<UpcomingExpense>();
+        var historicalFixedExpenses = lastPeriodFullExpenses.Where(t => IsFixedCost(NormalizeDescription(t.Description), settings))
+            .GroupBy(t => NormalizeDescription(t.Description)).ToList();
 
+        foreach (var group in historicalFixedExpenses)
+        {
+            if (!thisPeriodExpenses.Any(t => NormalizeDescription(t.Description) == group.Key))
+            {
+                upcomingFixedCosts.Add(new UpcomingExpense(group.Key, group.Average(t => t.Amount)));    
+            }
+        }
+        decimal upcomingOverhead = upcomingFixedCosts.Sum(e => e.ExpectedAmount);
+
+        // ACTUARIAL REFINEMENT: Calculate baseBurn ONLY from variable expenses to prevent double-counting fixed costs
+        var variableExpenses = expenses.Where(t => !IsFixedCost(NormalizeDescription(t.Description), settings)).ToList();
+        
         var analysisWindowDays = settings.AnalysisWindowDays > 0 ? settings.AnalysisWindowDays : 90;
         var windowStartDate = today.AddDays(-analysisWindowDays);
-        var validExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= windowStartDate).ToList();
-        var totalWindowSpend = validExpenses.Sum(t => t.Amount);
-        var avgDailySpend = (double)totalWindowSpend / analysisWindowDays;
+        var validVariableExpenses = variableExpenses.Where(t => ToDate(t.TransactionDate) >= windowStartDate).OrderBy(t => t.TransactionDate).ToList();
+        var dailyVariableExpensesMap = validVariableExpenses.GroupBy(t => ToDate(t.TransactionDate)).ToDictionary(g => g.Key, g => (double)g.Sum(t => t.Amount));
 
-        var dailyExpensesMap = validExpenses
-            .GroupBy(t => ToDate(t.TransactionDate))
-            .ToDictionary(g => g.Key, g => (double)g.Sum(t => t.Amount));
-
-        double sumSquaredDiff = 0;
-        decimal weightedBurn = (decimal)avgDailySpend;
-        decimal alpha = settings.ActuarialAlpha; 
+        decimal alpha = settings.ActuarialAlpha > 0 ? settings.ActuarialAlpha : 0.15m;
+        double weightedMean = 0; double weightedVar = 0; bool initialized = false;
         for (int i = 0; i < analysisWindowDays; i++)
         {
             var loopDate = windowStartDate.AddDays(i);
-            var dailySpend = dailyExpensesMap.ContainsKey(loopDate) ? dailyExpensesMap[loopDate] : 0.0;
-            sumSquaredDiff += Math.Pow(dailySpend - avgDailySpend, 2);
-            weightedBurn = ((decimal)dailySpend * alpha) + (weightedBurn * (1 - alpha));
+            double dailySpend = dailyVariableExpensesMap.TryGetValue(loopDate, out var value) ? value : 0.0;
+            if (!initialized) { weightedMean = dailySpend; initialized = true; }
+            else { double delta = dailySpend - weightedMean; weightedMean += (double)alpha * delta; weightedVar = (1 - (double)alpha) * (weightedVar + (double)alpha * Math.Pow(delta, 2)); }
         }
-        var stdDev = Math.Sqrt(sumSquaredDiff / analysisWindowDays);
 
-        var baseBurn = weightedBurn > 0 ? weightedBurn : (decimal)avgDailySpend;
-        if (baseBurn <= 0) baseBurn = 1; 
-
+        var stdDev = Math.Sqrt(weightedVar);
+        var baseBurn = (decimal)weightedMean > 0 ? (decimal)weightedMean : 1m;
+        
+        // SURVIVAL PROBABILITY: accounts for net balance after discrete overhead hit
         double probSurvival = 0;
         if (stdDev > 0)
         {
-            var mean30 = (double)baseBurn * 30;
-            var stdDev30 = stdDev * Math.Sqrt(30);
-            var zScore = ((double)currentBalance - mean30) / stdDev30;
-            probSurvival = CumulativeDistributionFunction(zScore) * 100;
+            var meanToPayday = (double)baseBurn * daysUntilNextSalary;
+            var stdDevToPayday = stdDev * Math.Sqrt(daysUntilNextSalary);
+            probSurvival = CumulativeDistributionFunction(((double)currentBalance - (double)upcomingOverhead - meanToPayday) / stdDevToPayday) * 100;
         }
-        else { probSurvival = currentBalance > (baseBurn * 30) ? 100 : 0; }
+        else { probSurvival = (currentBalance - upcomingOverhead) > (baseBurn * (decimal)daysUntilNextSalary) ? 100 : 0; }
+
+        // PROJECTED SPEND: Separate linear variable projection + actual/expected fixed costs
+        var variableSpendThisPeriod = thisPeriodExpenses.Where(t => !IsFixedCost(NormalizeDescription(t.Description), settings)).Sum(t => t.Amount);
+        var fixedSpendThisPeriod = thisPeriodExpenses.Where(t => IsFixedCost(NormalizeDescription(t.Description), settings)).Sum(t => t.Amount);
+        
+        decimal projectedVariableSpend = (variableSpendThisPeriod / (decimal)daysIntoPeriod) * (decimal)avgCycleDays;
+        decimal projectedMonthEndSpend = projectedVariableSpend + fixedSpendThisPeriod + upcomingOverhead;
+        decimal projectedBalance = currentBalance - upcomingOverhead - (baseBurn * (decimal)daysUntilNextSalary);
+
+        var dailyAvgSimple = validVariableExpenses.Any() ? (double)validVariableExpenses.Sum(t => t.Amount) / analysisWindowDays : 0;
+
+        var trendMultiplierUpper = 1.0m + settings.TrendSensitivity;
+        var trendMultiplierLower = 1.0m - settings.TrendSensitivity;
+        string trendDirection = (decimal)weightedMean > (decimal)dailyAvgSimple * trendMultiplierUpper ? "Increasing" : ((decimal)weightedMean < (decimal)dailyAvgSimple * trendMultiplierLower ? "Decreasing" : "Stable");
 
         return new FinancialHealthReport(
             CurrentBalance: currentBalance,
-            WeightedDailyBurn: weightedBurn,
-            MonthlyBurnRate: weightedBurn * 30,
+            WeightedDailyBurn: baseBurn,
+            MonthlyBurnRate: baseBurn * 30,
             BurnVolatility: stdDev,
-            SafeRunwayDays: currentBalance / (decimal)((double)baseBurn + stdDev),
-            ExpectedRunwayDays: currentBalance / baseBurn,
-            OptimisticRunwayDays: currentBalance / (decimal)Math.Max((double)baseBurn - stdDev, 1.0),
-            ValueAtRisk95: (decimal)(avgDailySpend + (1.645 * stdDev)),
-            TrendDirection: "Stable",
-            SpendThisMonth: spendThisMonth,
-            SpendLastMonth: spendLastMonth,
-            ProjectedMonthEndSpend: projectedMonthEnd,
+            SafeRunwayDays: (currentBalance - upcomingOverhead) / (decimal)((double)baseBurn + stdDev),
+            ExpectedRunwayDays: (currentBalance - upcomingOverhead) / baseBurn,
+            OptimisticRunwayDays: (currentBalance - upcomingOverhead) / (decimal)Math.Max((double)baseBurn - stdDev, 1.0),
+            ValueAtRisk95: (decimal)(weightedMean + (1.645 * stdDev)),
+            TrendDirection: trendDirection,
+            SpendThisMonth: spendThisPeriod,
+            SpendLastMonth: pulseBaseline,
+            ProjectedMonthEndSpend: projectedMonthEndSpend,
+            ProjectedBalanceAtNextSalary: projectedBalance,
+            UpcomingExpectedPayments: upcomingOverhead,
+            DaysUntilNextSalary: (int)Math.Round(daysUntilNextSalary),
             RunwayProbability: Math.Min(Math.Max(probSurvival, 0), 100),
-            TopCategories: categoryReport
+            TopCategories: categoryReport.OrderByDescending(c => c.Amount).Take(3).ToList(),
+            UpcomingFixedCosts: upcomingFixedCosts
         );
     }
 

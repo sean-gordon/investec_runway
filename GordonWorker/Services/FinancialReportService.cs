@@ -61,7 +61,7 @@ public class FinancialReportService : IFinancialReportService
         var fullHistorySql = "SELECT * FROM transactions WHERE transaction_date >= NOW() - INTERVAL '90 days'";
         var fullHistory = (await connection.QueryAsync<Transaction>(fullHistorySql)).ToList();
         
-        var healthReport = _actuarialService.AnalyzeHealth(fullHistory, currentBalance);
+        var healthReport = await _actuarialService.AnalyzeHealthAsync(fullHistory, currentBalance);
 
         var thisWeekSpend = thisWeek
             .Where(t => t.Amount > 0 && !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase))
@@ -87,7 +87,9 @@ public class FinancialReportService : IFinancialReportService
             TopCategories = healthReport.TopCategories.Select(c => new { 
                 Name = c.Name, 
                 Amount = c.Amount.ToString("F2"), 
-                PercentChange = c.ChangePercentage.ToString("F0") + "%" 
+                PercentChangeFormatted = c.ChangePercentage.ToString("F0") + "%",
+                ChangePercent = c.ChangePercentage,
+                IsStable = c.IsStable
             }).ToList()
         };
 
@@ -106,19 +108,22 @@ public class FinancialReportService : IFinancialReportService
 
         var personaName = !string.IsNullOrWhiteSpace(settings.SystemPersona) ? settings.SystemPersona : "Gordon";
 
-        var categoryRows = "";
-        foreach (var cat in healthReport.TopCategories)
-        {
-            var changeColor = cat.ChangePercentage > 0 ? "#dc2626" : (cat.ChangePercentage < 0 ? "#059669" : "#6b7280"); 
-            var changeSign = cat.ChangePercentage > 0 ? "▲" : (cat.ChangePercentage < 0 ? "▼" : "•");
-            categoryRows += $@"
-                <tr>
-                    <td>{cat.Name}</td>
-                    <td style='text-align: right;' class='amount'>{string.Format(culture, "{{0:C}}", cat.Amount)}</td>
-                    <td style='text-align: right; color: {changeColor}; font-size: 12px; font-weight: 600;'>{changeSign} {Math.Abs(cat.ChangePercentage):F0}%</td>
-                </tr>";
-        }
-
+                var categoryRows = "";
+                foreach (var cat in healthReport.TopCategories)
+                {
+                    bool isGrowing = !cat.IsStable && cat.ChangePercentage > 0.01m;
+                    bool isShrinking = !cat.IsStable && cat.ChangePercentage < -0.01m;
+                    var changeColor = isGrowing ? "#dc2626" : (isShrinking ? "#059669" : "#6b7280");
+                    var changeSign = isGrowing ? "▲" : (isShrinking ? "▼" : "•");
+                    var changeText = cat.IsStable ? "Stable" : $"{Math.Abs(cat.ChangePercentage):F0}%";
+        
+                    categoryRows += $@"
+                        <tr>
+                            <td>{cat.Name}</td>
+                            <td style='text-align: right;' class='amount'>{string.Format(culture, "{{0:C}}", cat.Amount)}</td>
+                            <td style='text-align: right; color: {changeColor}; font-size: 12px; font-weight: 600;'>{changeSign} {changeText}</td>
+                        </tr>";
+                }
         var body = $@"
 <!DOCTYPE html>
 <html>

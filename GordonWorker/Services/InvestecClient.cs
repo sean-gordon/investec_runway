@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using GordonWorker.Models;
+using System.Text;
 
 namespace GordonWorker.Services;
 
@@ -48,21 +49,15 @@ public class InvestecClient : IInvestecClient
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
 
         var response = await _httpClient.SendAsync(request);
-        if (!response.IsSuccessStatusCode)
-        {
-            _logger.LogError("Failed to fetch balance for account {AccountId}: {StatusCode}", accountId, response.StatusCode);
-            return 0;
-        }
+        if (!response.IsSuccessStatusCode) return 0;
 
         var content = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(content);
-        // Navigate to data.currentBalance
         if (doc.RootElement.TryGetProperty("data", out var data) && 
             data.TryGetProperty("currentBalance", out var currentBalance))
         {
             return currentBalance.GetDecimal();
         }
-        
         return 0;
     }
 
@@ -71,18 +66,12 @@ public class InvestecClient : IInvestecClient
         try 
         {
             var token = await AuthenticateAsync();
-            if (string.IsNullOrEmpty(token)) return (false, "Authentication failed (Empty Token). Check Credentials.");
+            if (string.IsNullOrEmpty(token)) return (false, "Auth failed.");
             return (true, string.Empty);
-        }
-        catch (HttpRequestException httpEx)
-        {
-            _logger.LogError(httpEx, "Investec HTTP error.");
-            return (false, $"HTTP Error: {httpEx.StatusCode} - {httpEx.Message}");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Investec connectivity check failed.");
-            return (false, $"Error: {ex.Message}");
+            return (false, ex.Message);
         }
     }
 
@@ -92,17 +81,10 @@ public class InvestecClient : IInvestecClient
         var secret = _configuration["INVESTEC_SECRET"];
         var apiKey = _configuration["INVESTEC_API_KEY"];
 
-        if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(secret) || string.IsNullOrEmpty(apiKey))
-        {
-            _logger.LogError("Investec credentials missing. ClientID: {IdSet}, Secret: {SecretSet}, ApiKey: {KeySet}", 
-                !string.IsNullOrEmpty(clientId), !string.IsNullOrEmpty(secret), !string.IsNullOrEmpty(apiKey));
-            return string.Empty;
-        }
-
-        _logger.LogInformation("Authenticating with Investec... ClientID ends in: ...{IdSuffix}", clientId.Length > 4 ? clientId.Substring(clientId.Length - 4) : "short");
+        if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(secret)) return string.Empty;
 
         var request = new HttpRequestMessage(HttpMethod.Post, "identity/v2/oauth2/token");
-        var authString = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes($"{clientId}:{secret}"));
+        var authString = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{clientId}:{secret}"));
         request.Headers.Authorization = new AuthenticationHeaderValue("Basic", authString);
         request.Headers.Add("x-api-key", apiKey);
         
@@ -112,86 +94,59 @@ public class InvestecClient : IInvestecClient
         });
 
         var response = await _httpClient.SendAsync(request);
-        
-        if (!response.IsSuccessStatusCode)
-        {
-            var errorContent = await response.Content.ReadAsStringAsync();
-            _logger.LogError("Investec Auth Failed. Status: {Status}. Response: {Content}", response.StatusCode, errorContent);
-            response.EnsureSuccessStatusCode(); // Throw to trigger catch block in caller
-        }
+        if (!response.IsSuccessStatusCode) return string.Empty;
 
         var content = await response.Content.ReadAsStringAsync();
         var tokenResponse = JsonSerializer.Deserialize<JsonElement>(content);
         
         _accessToken = tokenResponse.GetProperty("access_token").GetString();
         var expiresIn = tokenResponse.GetProperty("expires_in").GetInt32();
-        _tokenExpiry = DateTime.UtcNow.AddSeconds(expiresIn - 60); // Buffer
+        _tokenExpiry = DateTime.UtcNow.AddSeconds(expiresIn - 60);
 
         return _accessToken ?? string.Empty;
     }
 
     public async Task<List<InvestecAccount>> GetAccountsAsync()
     {
-        if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry)
-        {
-            await AuthenticateAsync();
-        }
+        if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry) await AuthenticateAsync();
 
         var request = new HttpRequestMessage(HttpMethod.Get, "za/pb/v1/accounts");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
 
         var response = await _httpClient.SendAsync(request);
+        if (!response.IsSuccessStatusCode) return new List<InvestecAccount>();
+
         var content = await response.Content.ReadAsStringAsync();
-
-        if (!response.IsSuccessStatusCode)
-        {
-            _logger.LogError("Failed to fetch accounts: {StatusCode}. Response: {Content}", response.StatusCode, content);
-            return new List<InvestecAccount>();
-        }
-
-        _logger.LogInformation("GetAccounts Raw Response: {Content}", content); // DEBUG LOG
-
-        var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-        var root = JsonSerializer.Deserialize<InvestecAccountsResponse>(content, jsonOptions);
+        var root = JsonSerializer.Deserialize<InvestecAccountsResponse>(content, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
         return root?.Data?.Accounts ?? new List<InvestecAccount>();
     }
 
     public async Task<List<Transaction>> GetTransactionsAsync(string accountId, DateTimeOffset fromDate)
     {
-        if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry)
-        {
-            await AuthenticateAsync();
-        }
+        if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry) await AuthenticateAsync();
 
-        var fromDateStr = fromDate.ToString("yyyy-MM-dd"); 
-        var url = $"za/pb/v1/accounts/{accountId}/transactions?fromDate={fromDateStr}";
-        
+        var url = $"za/pb/v1/accounts/{accountId}/transactions?fromDate={fromDate:yyyy-MM-dd}";
         var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
 
         var response = await _httpClient.SendAsync(request);
+        if (!response.IsSuccessStatusCode) return new List<Transaction>();
+
         var content = await response.Content.ReadAsStringAsync();
-
-        if (!response.IsSuccessStatusCode)
-        {
-            _logger.LogError("Failed to fetch transactions for account {AccountId}: {StatusCode}. Response: {Content}", accountId, response.StatusCode, content);
-            return new List<Transaction>();
-        }
-
-        // _logger.LogInformation("GetTransactions Raw Response (First 500 chars): {Content}", content.Length > 500 ? content.Substring(0, 500) : content); // DEBUG LOG - uncomment if needed
-
-        var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-        var root = JsonSerializer.Deserialize<InvestecResponse>(content, jsonOptions);
+        var root = JsonSerializer.Deserialize<InvestecResponse>(content, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
         var transactions = new List<Transaction>();
         if (root?.Data?.Transactions != null)
         {
             foreach (var t in root.Data.Transactions)
             {
+                // CRITICAL FIX: Ensure ID is stable to prevent duplication
                 if (!Guid.TryParse(t.Id, out var id))
                 {
-                    id = GenerateUuidFromString(t.Id ?? Guid.NewGuid().ToString());
+                    // Create deterministic GUID from content if bank ID is not a GUID
+                    var hashKey = $"{accountId}_{t.TransactionDate:yyyyMMdd}_{t.Description}_{t.Amount}_{t.AccountBalance}";
+                    id = GenerateUuidFromString(hashKey);
                 }
 
                 transactions.Add(new Transaction
@@ -207,7 +162,6 @@ public class InvestecClient : IInvestecClient
                 });
             }
         }
-
         return transactions;
     }
 
@@ -215,31 +169,15 @@ public class InvestecClient : IInvestecClient
     {
         using (var md5 = System.Security.Cryptography.MD5.Create())
         {
-            var hash = md5.ComputeHash(System.Text.Encoding.Default.GetBytes(input));
+            var hash = md5.ComputeHash(Encoding.UTF8.GetBytes(input));
             return new Guid(hash);
         }
     }
 
-    private class InvestecAccountsResponse
-    {
-        public InvestecAccountsData? Data { get; set; }
-    }
-
-    private class InvestecAccountsData
-    {
-        public List<InvestecAccount>? Accounts { get; set; }
-    }
-
-    private class InvestecResponse
-    {
-        public InvestecData? Data { get; set; }
-    }
-
-    private class InvestecData
-    {
-        public List<InvestecTransaction>? Transactions { get; set; }
-    }
-
+    private class InvestecAccountsResponse { public InvestecAccountsData? Data { get; set; } }
+    private class InvestecAccountsData { public List<InvestecAccount>? Accounts { get; set; } }
+    private class InvestecResponse { public InvestecData? Data { get; set; } }
+    private class InvestecData { public List<InvestecTransaction>? Transactions { get; set; } }
     private class InvestecTransaction
     {
         public string? Id { get; set; } 

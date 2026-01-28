@@ -376,7 +376,7 @@
                                             Configure your Twilio WhatsApp Sandbox/Number with this Webhook URL for incoming messages:
                                         </p>
                                         <div class="bg-white p-4 rounded-xl border border-blue-200 font-mono text-[10px] break-all text-blue-800">
-                                            {{ window.location.origin }}/api/whatsapp/webhook
+                                            {{ locationOrigin }}/api/whatsapp/webhook
                                         </div>
                                     </div>
                                 </div>
@@ -404,6 +404,7 @@
             data() {
                 return {
                     activeTab: 'data', showAdvanced: false,
+                    locationOrigin: window.location.origin,
                     tabs: [
                         { id: 'data', name: 'Data & Sync', icon: '📊' },
                         { id: 'ai', name: 'AI Intelligence', icon: '🧠' },

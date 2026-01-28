@@ -39,20 +39,42 @@ public class ActuarialService : IActuarialService
     private string NormalizeDescription(string? desc)
     {
         if (string.IsNullOrWhiteSpace(desc)) return "Uncategorized";
-        // Remove numbers, special chars, and common noisy banking words
-        var clean = Regex.Replace(desc, @"\d|ZA|CPT|JHB|GP|GAUTENG|PTY|LTD|\*|'|&apos;", "").Trim();
+        
+        // Remove months (full and short)
+        string[] months = { "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER", "JAN", "FEB", "MAR", "APR", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC" };
+        
+        var clean = desc.ToUpper();
+        // Remove numbers and common noise
+        clean = Regex.Replace(clean, @"\d|ZA|CPT|JHB|GP|GAUTENG|PTY|LTD|\*|'|&APOS;|DEBIT|ORDER|PAYMENT|INSTALMENT|EFT|MAG|TAPE|ELECTRONIC|FUNDS|TRANSFER|INT-ACC|INTERNAL", " ").Trim();
+        
+        foreach (var m in months) {
+            clean = Regex.Replace(clean, $@"\b{m}\b", " ");
+        }
+
         var parts = clean.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        // Return first 2 words for broad grouping
+        // Return first 2 words for grouping
         return parts.Length > 0 ? (parts.Length > 1 ? $"{parts[0]} {parts[1]}" : parts[0]).ToUpper() : "Uncategorized";
+    }
+
+    private bool IsInternalTransfer(Transaction t)
+    {
+        if (string.Equals(t.Category, "TRANSFER", StringComparison.OrdinalIgnoreCase)) return true;
+        if (t.Description != null && (
+            t.Description.Contains("INT-ACC", StringComparison.OrdinalIgnoreCase) || 
+            t.Description.Contains("INTERNAL TRANSFER", StringComparison.OrdinalIgnoreCase) ||
+            t.Description.Contains("SAVINGS TO", StringComparison.OrdinalIgnoreCase) ||
+            t.Description.Contains("TO SAVINGS", StringComparison.OrdinalIgnoreCase))) 
+            return true;
+        return false;
     }
 
     public async Task<FinancialHealthReport> AnalyzeHealthAsync(List<Transaction> history, decimal currentBalance)
     {
         var settings = await _settingsService.GetSettingsAsync();
 
-        // Identify Salary Dates (TCP 131)
+        // Identify Salary Dates (TCP 131 or TCP131)
         var salaryPayments = history
-            .Where(t => t.Description != null && t.Description.Contains("TCP 131", StringComparison.OrdinalIgnoreCase))
+            .Where(t => t.Description != null && (t.Description.Contains("TCP 131", StringComparison.OrdinalIgnoreCase) || t.Description.Contains("TCP131", StringComparison.OrdinalIgnoreCase)))
             .OrderByDescending(t => t.TransactionDate)
             .ToList();
 
@@ -62,119 +84,114 @@ public class ActuarialService : IActuarialService
 
         var today = DateTime.Today;
 
-                if (salaryPayments.Count >= 1)
+        if (salaryPayments.Count >= 1)
+        {
+            // Current period starts at the last salary date
+            periodStart = salaryPayments[0].TransactionDate.LocalDateTime.Date;
+            
+            if (salaryPayments.Count >= 2)
+            {
+                // Previous period is between the two most recent distinct salary dates
+                var prevSalary = salaryPayments.FirstOrDefault(s => s.TransactionDate.LocalDateTime.Date < periodStart);
+                if (prevSalary != null)
                 {
-                    // Current period starts at the last salary date
-                    periodStart = salaryPayments[0].TransactionDate.LocalDateTime.Date;
-                    
-                    if (salaryPayments.Count >= 2)
-                    {
-                        // Previous period is between the two most recent distinct salary dates
-                        var prevSalary = salaryPayments.FirstOrDefault(s => s.TransactionDate.LocalDateTime.Date < periodStart);
-                        if (prevSalary != null)
-                        {
-                            prevPeriodStart = prevSalary.TransactionDate.LocalDateTime.Date;
-                            prevPeriodEnd = periodStart;
-                        }
-                        else
-                        {
-                            // Fallback if all salaries are on the same day
-                            prevPeriodStart = periodStart.AddDays(-30);
-                            prevPeriodEnd = periodStart;
-                        }
-                    }
-                    else
-                    {
-                        // Fallback if only one salary found
-                        prevPeriodStart = periodStart.AddDays(-30);
-                        prevPeriodEnd = periodStart;
-                    }
+                    prevPeriodStart = prevSalary.TransactionDate.LocalDateTime.Date;
+                    prevPeriodEnd = periodStart;
                 }
                 else
                 {
-                    // Fallback to calendar month if no salary detected yet
-                    periodStart = new DateTime(today.Year, today.Month, 1);
-                    prevPeriodStart = periodStart.AddDays(-30);
+                    prevPeriodStart = periodStart.AddMonths(-1);
                     prevPeriodEnd = periodStart;
                 }
+            }
+            else
+            {
+                prevPeriodStart = periodStart.AddMonths(-1);
+                prevPeriodEnd = periodStart;
+            }
+        }
+        else
+        {
+            periodStart = new DateTime(today.Year, today.Month, 1);
+            prevPeriodStart = periodStart.AddMonths(-1);
+            prevPeriodEnd = periodStart;
+        }
+
+        // Period-To-Date logic
+        var daysIntoPeriod = (today - periodStart).TotalDays + 1;
+        if (daysIntoPeriod < 1) daysIntoPeriod = 1;
+
+        var compareDateInPrevPeriod = prevPeriodStart.AddDays(daysIntoPeriod);
+        if (compareDateInPrevPeriod > prevPeriodEnd) compareDateInPrevPeriod = prevPeriodEnd;
+
+        // FILTER: amount > 0 (Debit), Not Credit, and NOT Internal Transfer
+        var expenses = history
+            .Where(t => t.Amount > 0 && 
+                        !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase) &&
+                        !IsInternalTransfer(t))
+            .ToList();
         
-                // Period-To-Date logic: How many days into the current salary cycle are we?
-                var daysIntoPeriod = (today - periodStart).TotalDays + 1;
-                if (daysIntoPeriod < 1) daysIntoPeriod = 1;
-        
-                // Compare to the same number of days into the previous salary cycle
-                var compareDateInPrevPeriod = prevPeriodStart.AddDays(daysIntoPeriod);
-                if (compareDateInPrevPeriod > prevPeriodEnd) compareDateInPrevPeriod = prevPeriodEnd;
-        
-                var expenses = history.Where(t => t.Amount > 0 && !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase)).ToList();
-                
-                DateTime ToDate(DateTimeOffset dto) => dto.LocalDateTime.Date;
-        
-                var thisPeriodExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= periodStart).ToList(); 
-                var lastPeriodFullExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= prevPeriodStart && ToDate(t.TransactionDate) < prevPeriodEnd).ToList();
-                var lastPeriodPtdExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= prevPeriodStart && ToDate(t.TransactionDate) < compareDateInPrevPeriod).ToList();
-        
-                var spendThisMonth = thisPeriodExpenses.Sum(t => t.Amount);
-                var spendLastMonth = lastPeriodFullExpenses.Sum(t => t.Amount);
-        
-                // Category Analysis
-                var topCategories = thisPeriodExpenses
-                    .GroupBy(t => NormalizeDescription(t.Description))
-                    .Select(g => new { Name = g.Key, Amount = g.Sum(t => t.Amount) })
-                    .OrderByDescending(x => x.Amount)
-                    .Take(5)
-                    .ToList();
-        
-                                var categoryReport = new List<CategorySpend>();
-                                foreach (var cat in topCategories)
-                                {
-                                    var ptdLastPeriodCatSpend = lastPeriodPtdExpenses
-                                        .Where(t => NormalizeDescription(t.Description) == cat.Name)
-                                        .Sum(t => t.Amount);
-                                    
-                                    var fullLastPeriodCatSpend = lastPeriodFullExpenses
-                                        .Where(t => NormalizeDescription(t.Description) == cat.Name)
-                                        .Sum(t => t.Amount);
-                                    
-                                    decimal diff = 0;
-                                    decimal percent = 0;
-                        
-                                    if (ptdLastPeriodCatSpend > 0)
-                                    {
-                                        diff = cat.Amount - ptdLastPeriodCatSpend;
-                                        percent = (diff / ptdLastPeriodCatSpend) * 100;
-                                    }
-                                    else if (fullLastPeriodCatSpend > 0)
-                                    {
-                                        // If nothing in PTD but hit in FULL last period, it's a timing shift.
-                                        // We compare current amount vs the full amount from last period.
-                                        diff = cat.Amount - fullLastPeriodCatSpend;
-                                        percent = (diff / fullLastPeriodCatSpend) * 100;
-                                    }
-                                    else
-                                    {
-                                        // Truly new category this period
-                                        diff = cat.Amount;
-                                        percent = 100;
-                                    }
-                        
-                                    // A category is 'stable' if:
-                                    // 1. The PTD or Full-Period change is small (< 5%)
-                                    // 2. OR the current amount is within a small margin of the full last period total
-                                    bool isStable = (ptdLastPeriodCatSpend > 0 && Math.Abs((cat.Amount - ptdLastPeriodCatSpend) / ptdLastPeriodCatSpend) * 100 < 5) || 
-                                                    (fullLastPeriodCatSpend > 0 && Math.Abs((cat.Amount - fullLastPeriodCatSpend) / fullLastPeriodCatSpend) * 100 < 5);
-                        
-                                    categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent, isStable));        
-                                }                // Stats - Projecting to 30 days or next salary (assume 30 day cycle for projection)
-                var estimatedCycleDays = (salaryPayments.Count >= 2) ? (salaryPayments[0].TransactionDate - salaryPayments[1].TransactionDate).TotalDays : 30;
-                if (estimatedCycleDays < 1) estimatedCycleDays = 30;
-        
-                decimal projectedMonthEnd = spendThisMonth;
-                if (daysIntoPeriod >= 1) projectedMonthEnd = (spendThisMonth / (decimal)daysIntoPeriod) * (decimal)estimatedCycleDays;
-        // Stats - Projecting to 30 days or next salary
+        DateTime ToDate(DateTimeOffset dto) => dto.LocalDateTime.Date;
+
+        var thisPeriodExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= periodStart).ToList(); 
+        var lastPeriodFullExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= prevPeriodStart && ToDate(t.TransactionDate) < prevPeriodEnd).ToList();
+        var lastPeriodPtdExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= prevPeriodStart && ToDate(t.TransactionDate) < compareDateInPrevPeriod).ToList();
+
+        var spendThisMonth = thisPeriodExpenses.Sum(t => t.Amount);
+        var spendLastMonth = lastPeriodFullExpenses.Sum(t => t.Amount);
+
+        // Category Analysis
+        var topCategories = thisPeriodExpenses
+            .GroupBy(t => NormalizeDescription(t.Description))
+            .Select(g => new { Name = g.Key, Amount = g.Sum(t => t.Amount) })
+            .OrderByDescending(x => x.Amount)
+            .Take(5)
+            .ToList();
+
+        var categoryReport = new List<CategorySpend>();
+        foreach (var cat in topCategories)
+        {
+            var ptdLastPeriodCatSpend = lastPeriodPtdExpenses
+                .Where(t => NormalizeDescription(t.Description) == cat.Name)
+                .Sum(t => t.Amount);
+            
+            var fullLastPeriodCatSpend = lastPeriodFullExpenses
+                .Where(t => NormalizeDescription(t.Description) == cat.Name)
+                .Sum(t => t.Amount);
+            
+            decimal diff = 0;
+            decimal percent = 0;
+
+            if (ptdLastPeriodCatSpend > 0)
+            {
+                diff = cat.Amount - ptdLastPeriodCatSpend;
+                percent = (diff / ptdLastPeriodCatSpend) * 100;
+            }
+            else if (fullLastPeriodCatSpend > 0)
+            {
+                diff = cat.Amount - fullLastPeriodCatSpend;
+                percent = (diff / fullLastPeriodCatSpend) * 100;
+            }
+            else
+            {
+                diff = cat.Amount;
+                percent = 100;
+            }
+
+            // A category is 'stable' if:
+            // 1. The PTD or Full-Period change is small (< 5%)
+            // 2. OR the absolute difference is very small (< R50)
+            bool isStable = (fullLastPeriodCatSpend > 0 && Math.Abs((cat.Amount - fullLastPeriodCatSpend) / fullLastPeriodCatSpend) * 100 < 5) || 
+                            (ptdLastPeriodCatSpend > 0 && Math.Abs((cat.Amount - ptdLastPeriodCatSpend) / ptdLastPeriodCatSpend) * 100 < 5) ||
+                            (Math.Abs(diff) < 50);
+
+            categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent, isStable));        
+        }
+
+        // Stats - Projecting to next payday
         var cycleHistory = salaryPayments.Zip(salaryPayments.Skip(1), (a, b) => (a.TransactionDate - b.TransactionDate).TotalDays).ToList();
         var avgCycleDays = cycleHistory.Any() ? cycleHistory.Average() : 30;
-        if (avgCycleDays < 20) avgCycleDays = 30; // Sanity check for frequent payments
+        if (avgCycleDays < 20 || avgCycleDays > 45) avgCycleDays = 30; 
 
         var nextExpectedSalary = periodStart.AddDays(avgCycleDays);
         var daysUntilNextSalary = (nextExpectedSalary - today).TotalDays;
@@ -215,7 +232,7 @@ public class ActuarialService : IActuarialService
         var stdDev = Math.Sqrt(weightedVar);
         var baseBurn = (decimal)weightedMean > 0 ? (decimal)weightedMean : 1m;
 
-        // Survival Probability targeting the NEXT Payday
+        // Survival Probability
         double probSurvival = 0;
         if (stdDev > 0)
         {
@@ -227,6 +244,8 @@ public class ActuarialService : IActuarialService
         else { probSurvival = currentBalance > (baseBurn * (decimal)daysUntilNextSalary) ? 100 : 0; }
 
         var dailyAvgSimple = validExpenses.Any() ? (double)validExpenses.Sum(t => t.Amount) / analysisWindowDays : 0;
+        decimal projectedMonthEnd = spendThisMonth;
+        if (daysIntoPeriod >= 1) projectedMonthEnd = (spendThisMonth / (decimal)daysIntoPeriod) * (decimal)avgCycleDays;
 
         return new FinancialHealthReport(
             CurrentBalance: currentBalance,

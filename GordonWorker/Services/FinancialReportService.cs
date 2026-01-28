@@ -124,21 +124,21 @@ public class FinancialReportService : IFinancialReportService
 
                     Probability30DaySurvival = healthReport.RunwayProbability.ToString("F1") + "%",
 
-                    TopCategories = healthReport.TopCategories.Select(c => new { 
+                                TopCategories = healthReport.TopCategories.Select(c => new { 
 
-                        Name = c.Name, 
+                                    Name = c.Name, 
 
-                        AmountFormatted = c.Amount.ToString("C", culture),
+                                    AmountFormatted = c.Amount.ToString("C", culture),
 
-                        AmountRaw = c.Amount,
+                                    AmountRaw = c.Amount,
 
-                        PercentChangeFormatted = c.ChangePercentage.ToString("F0") + "%",
+                                    PercentChangeFormatted = c.IsStable ? "Stable" : c.ChangePercentage.ToString("F0") + "%",
 
-                        ChangePercent = c.ChangePercentage,
+                                    ChangePercent = c.IsStable ? 0 : c.ChangePercentage,
 
-                        IsStable = c.IsStable
+                                    IsStable = c.IsStable
 
-                    }).ToList()
+                                }).ToList()
 
                 };
 

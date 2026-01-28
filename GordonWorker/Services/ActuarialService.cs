@@ -162,28 +162,29 @@ public class ActuarialService : IActuarialService
             decimal diff = 0;
             decimal percent = 0;
 
-            if (ptdLastPeriodCatSpend > 0)
-            {
-                diff = cat.Amount - ptdLastPeriodCatSpend;
-                percent = (diff / ptdLastPeriodCatSpend) * 100;
-            }
-            else if (fullLastPeriodCatSpend > 0)
-            {
-                diff = cat.Amount - fullLastPeriodCatSpend;
-                percent = (diff / fullLastPeriodCatSpend) * 100;
-            }
-            else
-            {
-                diff = cat.Amount;
-                percent = 100;
-            }
+            decimal ptdPercent = ptdLastPeriodCatSpend > 0 ? ((cat.Amount - ptdLastPeriodCatSpend) / ptdLastPeriodCatSpend) * 100 : 100;
+            decimal fullPercent = fullLastPeriodCatSpend > 0 ? ((cat.Amount - fullLastPeriodCatSpend) / fullLastPeriodCatSpend) * 100 : 100;
 
             // A category is 'stable' if:
             // 1. The PTD or Full-Period change is small (< 5%)
             // 2. OR the absolute difference is very small (< R50)
-            bool isStable = (fullLastPeriodCatSpend > 0 && Math.Abs((cat.Amount - fullLastPeriodCatSpend) / fullLastPeriodCatSpend) * 100 < 5) || 
-                            (ptdLastPeriodCatSpend > 0 && Math.Abs((cat.Amount - ptdLastPeriodCatSpend) / ptdLastPeriodCatSpend) * 100 < 5) ||
-                            (Math.Abs(diff) < 50);
+            bool isStable = (fullLastPeriodCatSpend > 0 && Math.Abs(fullPercent) < 5) || 
+                            (ptdLastPeriodCatSpend > 0 && Math.Abs(ptdPercent) < 5) ||
+                            (Math.Abs(cat.Amount - ptdLastPeriodCatSpend) < 50) ||
+                            (fullLastPeriodCatSpend > 0 && Math.Abs(cat.Amount - fullLastPeriodCatSpend) < 50);
+
+            if (isStable)
+            {
+                // If stable, use the smaller percentage to avoid "100% increase" confusion
+                percent = Math.Abs(fullPercent) < Math.Abs(ptdPercent) ? fullPercent : ptdPercent;
+                diff = Math.Abs(fullPercent) < Math.Abs(ptdPercent) ? (cat.Amount - fullLastPeriodCatSpend) : (cat.Amount - ptdLastPeriodCatSpend);
+            }
+            else
+            {
+                // If truly not stable, prefer PTD comparison for accuracy
+                diff = cat.Amount - ptdLastPeriodCatSpend;
+                percent = ptdPercent;
+            }
 
             categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent, isStable));        
         }

@@ -141,7 +141,7 @@ Your client is '{userName}'.
 **INSIGHT LOGIC:**
 - **Currency Context:** The data is in {userName}'s local currency ({settings.CurrencyCulture}), specifically ZAR (R).
 - **TopCategories:** Look for categories where 'IsStable' is false and 'ChangePercent' is positive. Suggest a specific cut-back action for the highest non-stable increase.
-- **Stable Categories:** If a category is 'IsStable: true', acknowledge it as a fixed cost (e.g., insurance, loan) and do NOT suggest cutting it back as an issue.
+- **Strict Stability:** If a category is marked 'IsStable: true', you MUST ignore its 'ChangePercent' and treat it as a consistent fixed cost. Do NOT report it as an increase or a concern.
 - **Runway:** Explain 'RunwayDays' and 'Probability30DaySurvival' in plain English. Use the exact percentages provided.";
 
         return await GenerateCompletionAsync(systemPrompt, $"[DATA_CONTEXT]\n{statsJson}\n[/DATA_CONTEXT]\n\nResponse:");

@@ -121,8 +121,10 @@ public class ActuarialService : IActuarialService
         var compareDateInPrevPeriod = prevPeriodStart.AddDays(daysIntoPeriod);
         if (compareDateInPrevPeriod > prevPeriodEnd) compareDateInPrevPeriod = prevPeriodEnd;
 
-        // FILTER: Spending only. Exclude Salary and Transfers.
-        var expenses = history.Where(t => !IsSalary(t) && !t.IsInternalTransfer() && t.Category != "CREDIT" && t.Amount > 0).ToList();
+        // Investec: Debits are POSITIVE (> 0), Credits are NEGATIVE (< 0). 
+        var expenses = history.Where(t => t.Amount > 0 && 
+                                        !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase) && 
+                                        !t.IsInternalTransfer()).ToList();
         
         DateTime ToDate(DateTimeOffset dto) => dto.LocalDateTime.Date;
         var thisPeriodExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= periodStart).ToList(); 
@@ -130,9 +132,10 @@ public class ActuarialService : IActuarialService
         var lastPeriodPtdExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= prevPeriodStart && ToDate(t.TransactionDate) < compareDateInPrevPeriod).ToList();
 
         var spendThisPeriod = thisPeriodExpenses.Sum(t => t.Amount);
-        var spendLastPeriod = lastPeriodFullExpenses.Sum(t => t.Amount);
+        var spendLastPeriodPtd = lastPeriodPtdExpenses.Sum(t => t.Amount); // Use PTD forPulse comparison
 
         var topCategories = thisPeriodExpenses
+            .Where(t => !IsFixedCost(NormalizeDescription(t.Description))) // ONLY show unexpected/variable categories
             .GroupBy(t => NormalizeDescription(t.Description))
             .Select(g => new { Name = g.Key, Amount = g.Sum(t => t.Amount) })
             .OrderByDescending(x => x.Amount).Take(5).ToList();
@@ -141,15 +144,13 @@ public class ActuarialService : IActuarialService
         foreach (var cat in topCategories)
         {
             var ptdLastSpend = lastPeriodPtdExpenses.Where(t => NormalizeDescription(t.Description) == cat.Name).Sum(t => t.Amount);
-            var fullLastSpend = lastPeriodFullExpenses.Where(t => NormalizeDescription(t.Description) == cat.Name).Sum(t => t.Amount);
             
-            decimal diff = 0; decimal percent = 0;
-            if (fullLastSpend > 0 && Math.Abs((cat.Amount - fullLastSpend) / fullLastSpend) * 100 < 15) { diff = cat.Amount - fullLastSpend; percent = (diff / fullLastSpend) * 100; }
-            else if (ptdLastSpend > 0) { diff = cat.Amount - ptdLastSpend; percent = (diff / ptdLastSpend) * 100; }
-            else { diff = cat.Amount; percent = 100; }
+            // Strictly like-for-like PTD comparison
+            decimal diff = cat.Amount - ptdLastSpend;
+            decimal percent = ptdLastSpend > 0 ? (diff / ptdLastSpend) * 100 : 100;
 
             bool isStable = Math.Abs(percent) < 10 || Math.Abs(diff) < 100;
-            categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent, isStable, IsFixedCost(cat.Name)));        
+            categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent, isStable, false));        
         }
 
         // Identify Upcoming Expected Payments
@@ -207,7 +208,7 @@ public class ActuarialService : IActuarialService
             ValueAtRisk95: (decimal)(weightedMean + (1.645 * stdDev)),
             TrendDirection: (decimal)weightedMean > (decimal)dailyAvgSimple * 1.1m ? "Increasing" : ((decimal)weightedMean < (decimal)dailyAvgSimple * 0.9m ? "Decreasing" : "Stable"),
             SpendThisMonth: spendThisPeriod,
-            SpendLastMonth: spendLastPeriod,
+            SpendLastMonth: spendLastPeriodPtd,
             ProjectedMonthEndSpend: projectedSpend + upcomingOverhead,
             ProjectedBalanceAtNextSalary: projectedBalance,
             UpcomingExpectedPayments: upcomingOverhead,

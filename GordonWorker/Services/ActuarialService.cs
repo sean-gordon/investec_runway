@@ -132,10 +132,14 @@ public class ActuarialService : IActuarialService
         var lastPeriodPtdExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= prevPeriodStart && ToDate(t.TransactionDate) < compareDateInPrevPeriod).ToList();
 
         var spendThisPeriod = thisPeriodExpenses.Sum(t => t.Amount);
-        var spendLastPeriodPtd = lastPeriodPtdExpenses.Sum(t => t.Amount); // Use PTD forPulse comparison
+        var spendLastPeriodFull = lastPeriodFullExpenses.Sum(t => t.Amount);
+        var spendLastPeriodPtd = lastPeriodPtdExpenses.Sum(t => t.Amount);
+        
+        // Pulse Comparison: If PTD spend is suspiciously low (< 10% of full), use Full month as baseline to avoid "700% increase" errors
+        var pulseBaseline = (spendLastPeriodPtd < (spendLastPeriodFull * 0.1m)) ? spendLastPeriodFull : spendLastPeriodPtd;
 
         var topCategories = thisPeriodExpenses
-            .Where(t => !IsFixedCost(NormalizeDescription(t.Description))) // ONLY show unexpected/variable categories
+            .Where(t => !IsFixedCost(NormalizeDescription(t.Description)))
             .GroupBy(t => NormalizeDescription(t.Description))
             .Select(g => new { Name = g.Key, Amount = g.Sum(t => t.Amount) })
             .OrderByDescending(x => x.Amount).Take(5).ToList();
@@ -144,14 +148,18 @@ public class ActuarialService : IActuarialService
         foreach (var cat in topCategories)
         {
             var ptdLastSpend = lastPeriodPtdExpenses.Where(t => NormalizeDescription(t.Description) == cat.Name).Sum(t => t.Amount);
+            var fullLastSpend = lastPeriodFullExpenses.Where(t => NormalizeDescription(t.Description) == cat.Name).Sum(t => t.Amount);
             
-            // Strictly like-for-like PTD comparison
-            decimal diff = cat.Amount - ptdLastSpend;
-            decimal percent = ptdLastSpend > 0 ? (diff / ptdLastSpend) * 100 : 100;
+            // Hybrid Baseline: If it's a significant amount and PTD is zero, use full month to avoid spike hallucinations
+            decimal baseline = (ptdLastSpend < (fullLastSpend * 0.1m)) ? fullLastSpend : ptdLastSpend;
+            
+            decimal diff = cat.Amount - baseline;
+            decimal percent = baseline > 0 ? (diff / baseline) * 100 : 100;
 
-                        bool isStable = Math.Abs(percent) < 10 || Math.Abs(diff) < 100;
-                        categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent, isStable, IsFixedCost(cat.Name)));                                                                                                           
-                    }
+            bool isStable = Math.Abs(percent) < 15 || Math.Abs(diff) < 250;
+            categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent, isStable, IsFixedCost(cat.Name)));                                                                                                           
+        }
+
         // Identify Upcoming Expected Payments
         var upcomingFixedCosts = new List<UpcomingExpense>();
         var historicalFixedExpenses = lastPeriodFullExpenses.Where(t => IsFixedCost(NormalizeDescription(t.Description)))
@@ -161,7 +169,7 @@ public class ActuarialService : IActuarialService
         {
             if (!thisPeriodExpenses.Any(t => NormalizeDescription(t.Description) == group.Key))
             {
-                upcomingFixedCosts.Add(new UpcomingExpense(group.Key, group.Average(t => t.Amount)));
+                upcomingFixedCosts.Add(new UpcomingExpense(group.Key, group.Average(t => t.Amount)));    
             }
         }
         decimal upcomingOverhead = upcomingFixedCosts.Sum(e => e.ExpectedAmount);
@@ -207,7 +215,7 @@ public class ActuarialService : IActuarialService
             ValueAtRisk95: (decimal)(weightedMean + (1.645 * stdDev)),
             TrendDirection: (decimal)weightedMean > (decimal)dailyAvgSimple * 1.1m ? "Increasing" : ((decimal)weightedMean < (decimal)dailyAvgSimple * 0.9m ? "Decreasing" : "Stable"),
             SpendThisMonth: spendThisPeriod,
-            SpendLastMonth: spendLastPeriodPtd,
+            SpendLastMonth: pulseBaseline,
             ProjectedMonthEndSpend: projectedSpend + upcomingOverhead,
             ProjectedBalanceAtNextSalary: projectedBalance,
             UpcomingExpectedPayments: upcomingOverhead,

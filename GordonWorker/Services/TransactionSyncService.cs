@@ -79,9 +79,9 @@ public class TransactionSyncService : ITransactionSyncService
                 {
                     totalNew++;
 
-                    // Check for Unexpected Large Payment Trigger (>= R3000)
+                    // Check for Unexpected Large Payment Trigger
                     // Large debits are positive in Investec API
-                    if (tx.Amount >= 3000)
+                    if (tx.Amount >= settings.UnexpectedPaymentThreshold)
                     {
                         var normalizedDesc = _actuarialService.NormalizeDescription(tx.Description);
                         bool isFixed = _actuarialService.IsFixedCost(normalizedDesc);

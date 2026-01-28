@@ -171,21 +171,34 @@
                                 </div>
 
                                 <!-- Actuarial -->
-                                <div class="space-y-4 md:border-l md:border-gray-100 md:pl-6">
+                                <div class="space-y-6 md:border-l md:border-gray-100 md:pl-6">
                                     <h3 class="text-sm font-bold text-gray-900">Actuarial Logic</h3>
                                     <div>
                                         <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Analysis Window (Days)</label>
                                         <input type="number" v-model.number="settings.analysisWindowDays" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2 text-sm">
+                                        <p class="mt-1.5 text-[10px] text-gray-400 leading-tight">
+                                            The number of historical days used to calculate your average burn rate and volatility. 90 days is standard for actuarial stability.
+                                        </p>
                                     </div>
                                     <div>
                                         <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
                                             Sensitivity (Alpha): <span class="text-blue-600">{{ settings.actuarialAlpha }}</span>
                                         </label>
-                                        <input type="range" v-model.number="settings.actuarialAlpha" min="0.01" max="1.0" step="0.01" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                                        <input type="range" v-model.number="settings.actuarialAlpha" min="0.01" max="0.5" step="0.01" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
                                         <div class="flex justify-between text-[10px] text-gray-400 mt-1">
-                                            <span>Smooth</span>
-                                            <span>Reactive</span>
+                                            <span>Smooth (0.05)</span>
+                                            <span>Reactive (0.30)</span>
                                         </div>
+                                        <p class="mt-1.5 text-[10px] text-gray-400 leading-tight">
+                                            Controls how quickly the engine reacts to recent changes. Lower values are more stable; higher values prioritise your most recent spending.
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Unexpected Payment Trigger (R)</label>
+                                        <input type="number" v-model.number="settings.unexpectedPaymentThreshold" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2 text-sm">
+                                        <p class="mt-1.5 text-[10px] text-gray-400 leading-tight">
+                                            If a single non-fixed transaction exceeds this amount, Gordon will automatically trigger a new report. Fixed costs like Bonds are ignored.
+                                        </p>
                                     </div>
                                 </div>
                             </div>
@@ -254,6 +267,7 @@
                         reportHour: 9,
                         actuarialAlpha: 0.15,
                         analysisWindowDays: 90,
+                        unexpectedPaymentThreshold: 3000,
                         ollamaBaseUrl: 'http://host.docker.internal:11434',
                         ollamaModelName: 'deepseek-coder',
                         geminiApiKey: '',

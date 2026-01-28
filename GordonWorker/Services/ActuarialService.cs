@@ -60,11 +60,21 @@ public class ActuarialService : IActuarialService
         var settings = await _settingsService.GetSettingsAsync();
         var today = DateTime.Today;
 
-        // Salary detection: payment FROM TCP 131. Credits are NEGATIVE in Investec.
+        // Salary detection: search history for TCP 131. Credits are NEGATIVE in Investec.
         var salaryPayments = history
             .Where(t => t.Amount < 0 && t.Description != null && (t.Description.Contains("TCP 131", StringComparison.OrdinalIgnoreCase) || t.Description.Contains("TCP131", StringComparison.OrdinalIgnoreCase)))
             .OrderByDescending(t => t.TransactionDate)
             .ToList();
+
+        // Fallback: If no explicit salary payment found, look for any large incoming payment (> R10,000) in the last 40 days
+        if (!salaryPayments.Any())
+        {
+            salaryPayments = history
+                .Where(t => t.Amount < -10000 && (t.TransactionDate.LocalDateTime.Date >= today.AddDays(-40)))
+                .OrderByDescending(t => Math.Abs(t.Amount)) // Get the largest one
+                .Take(1)
+                .ToList();
+        }
 
         DateTime periodStart; DateTime prevPeriodStart; DateTime prevPeriodEnd;
 

@@ -66,6 +66,7 @@ public class FinancialReportService : IFinancialReportService
         var thisWeek = transactions.Where(t => t.TransactionDate >= DateTimeOffset.UtcNow.AddDays(-7)).ToList();
         var lastWeek = transactions.Where(t => t.TransactionDate < DateTimeOffset.UtcNow.AddDays(-7)).ToList();
 
+        // CRITICAL FIX: Use fullHistorySql instead of sql
         var fullHistorySql = "SELECT * FROM transactions WHERE transaction_date >= NOW() - INTERVAL '90 days'";
         var fullHistory = (await connection.QueryAsync<Transaction>(fullHistorySql)).ToList();
         

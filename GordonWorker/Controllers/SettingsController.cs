@@ -88,6 +88,13 @@ public class SettingsController : ControllerBase
         return success ? Ok("Connected to Ollama successfully.") : StatusCode(500, "Failed to connect to Ollama.");
     }
 
+    [HttpGet("models")]
+    public async Task<IActionResult> GetModels()
+    {
+        var models = await _ollamaService.GetAvailableModelsAsync();
+        return Ok(models);
+    }
+
     [HttpGet("status")]
     public IActionResult GetStatus()
     {

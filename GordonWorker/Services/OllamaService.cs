@@ -9,6 +9,7 @@ public interface IOllamaService
     Task<string> FormatResponseAsync(string userPrompt, string dataContext);
     Task<string> GenerateSimpleReportAsync(string statsJson);
     Task<bool> TestConnectionAsync();
+    Task<List<string>> GetAvailableModelsAsync();
 }
 
 public class OllamaService : IOllamaService
@@ -28,6 +29,29 @@ public class OllamaService : IOllamaService
     {
         var settings = await _settingsService.GetSettingsAsync();
         return (settings.OllamaBaseUrl, settings.OllamaModelName);
+    }
+
+    public async Task<List<string>> GetAvailableModelsAsync()
+    {
+        try
+        {
+            var (baseUrl, _) = await GetConnectionDetailsAsync();
+            var baseUri = baseUrl.EndsWith("/") ? baseUrl : baseUrl + "/";
+            var fullUrl = new Uri(new Uri(baseUri), "api/tags");
+
+            var response = await _httpClient.GetAsync(fullUrl);
+            if (!response.IsSuccessStatusCode) return new List<string>();
+
+            var responseString = await response.Content.ReadAsStringAsync();
+            var tagsResponse = JsonSerializer.Deserialize<OllamaTagsResponse>(responseString);
+            
+            return tagsResponse?.Models?.Select(m => m.Name).Where(n => !string.IsNullOrEmpty(n)).Cast<string>().ToList() ?? new List<string>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to fetch models from Ollama.");
+            return new List<string>();
+        }
     }
 
     public async Task<bool> TestConnectionAsync()
@@ -159,5 +183,17 @@ Your client is '{userName}'.
     {
         [System.Text.Json.Serialization.JsonPropertyName("response")]
         public string? Response { get; set; }
+    }
+
+    private class OllamaTagsResponse
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("models")]
+        public List<OllamaModelTag>? Models { get; set; }
+    }
+
+    private class OllamaModelTag
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("name")]
+        public string? Name { get; set; }
     }
 }

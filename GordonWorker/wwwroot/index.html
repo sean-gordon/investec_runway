@@ -143,7 +143,10 @@
                                     </div>
                                     <div>
                                         <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Model Name</label>
-                                        <input type="text" v-model="settings.ollamaModelName" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2 text-sm">
+                                        <select v-model="settings.ollamaModelName" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2 text-sm">
+                                            <option v-if="availableModels.length === 0" :value="settings.ollamaModelName">{{ settings.ollamaModelName }} (Not found)</option>
+                                            <option v-for="model in availableModels" :key="model" :value="model">{{ model }}</option>
+                                        </select>
                                     </div>
                                     <div>
                                         <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Persona Name</label>
@@ -246,6 +249,7 @@
                         historyDaysBack: 180,
                         currencyCulture: 'en-ZA'
                     },
+                    availableModels: [],
                     systemStatus: {
                         investecOnline: false,
                         lastCheck: '',
@@ -264,6 +268,7 @@
             mounted() {
                 this.loadSettings();
                 this.loadStatus();
+                this.loadModels();
                 setInterval(this.loadStatus, 15000);
             },
             methods: {
@@ -370,6 +375,16 @@
                         this.repulling = false;
                     }
                 },
+                async loadModels() {
+                    try {
+                        const res = await fetch('/api/settings/models');
+                        if (res.ok) {
+                            this.availableModels = await res.json();
+                        }
+                    } catch (e) {
+                        console.error("Failed to load models", e);
+                    }
+                },
                 async testAi() {
                     this.aiTesting = true;
                     await this.saveSettings(); 
@@ -378,6 +393,7 @@
                         const res = await fetch('/api/settings/test-ai', { method: 'POST' });
                         if (res.ok) {
                             this.showToast("Connected to AI Brain!", 'success');
+                            await this.loadModels();
                         } else {
                             this.showToast("Connection failed.", 'error');
                         }

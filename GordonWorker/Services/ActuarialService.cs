@@ -125,20 +125,28 @@ public class ActuarialService : IActuarialService
                     .Take(5)
                     .ToList();
         
-                var categoryReport = new List<CategorySpend>();
-                foreach (var cat in topCategories)
-                {
-                    var ptdLastPeriodCatSpend = lastPeriodPtdExpenses
-                        .Where(t => NormalizeDescription(t.Description) == cat.Name)
-                        .Sum(t => t.Amount);
-                    
-                    decimal diff = cat.Amount - ptdLastPeriodCatSpend;
-                    decimal percent = ptdLastPeriodCatSpend == 0 ? 100 : (diff / ptdLastPeriodCatSpend) * 100;   
-        
-                    bool isStable = ptdLastPeriodCatSpend > 0 && Math.Abs(percent) < 2;
-                    categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent, isStable));        
-                }
-        
+                        var categoryReport = new List<CategorySpend>();
+                        foreach (var cat in topCategories)
+                        {
+                            var ptdLastPeriodCatSpend = lastPeriodPtdExpenses
+                                .Where(t => NormalizeDescription(t.Description) == cat.Name)
+                                .Sum(t => t.Amount);
+                            
+                            var fullLastPeriodCatSpend = lastPeriodFullExpenses
+                                .Where(t => NormalizeDescription(t.Description) == cat.Name)
+                                .Sum(t => t.Amount);
+                            
+                            decimal diff = cat.Amount - ptdLastPeriodCatSpend;
+                            decimal percent = ptdLastPeriodCatSpend == 0 ? 100 : (diff / ptdLastPeriodCatSpend) * 100;   
+                
+                            // A category is 'stable' if:
+                            // 1. The Period-To-Date change is negligible (< 2%)
+                            // 2. OR the current amount matches the FULL previous period total (fixed costs hitting at slightly different times)
+                            bool isStable = (ptdLastPeriodCatSpend > 0 && Math.Abs(percent) < 2) || 
+                                            (fullLastPeriodCatSpend > 0 && Math.Abs((cat.Amount - fullLastPeriodCatSpend) / fullLastPeriodCatSpend) * 100 < 5);
+                
+                            categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent, isStable));        
+                        }        
                 // Stats - Projecting to 30 days or next salary (assume 30 day cycle for projection)
                 var estimatedCycleDays = (salaryPayments.Count >= 2) ? (salaryPayments[0].TransactionDate - salaryPayments[1].TransactionDate).TotalDays : 30;
                 if (estimatedCycleDays < 1) estimatedCycleDays = 30;

@@ -12,25 +12,26 @@
         body { font-family: 'Inter', sans-serif; }
         [v-cloak] { display: none; }
         .input-field { 
-            @apply w-full rounded-xl border-2 border-slate-400 shadow-inner bg-white p-4 text-sm font-semibold transition-all outline-none text-slate-900 placeholder-slate-400;
-            border-style: solid;
+            @apply w-full rounded-xl border border-slate-200 bg-white p-3.5 text-sm font-medium transition-all outline-none text-slate-900 placeholder-slate-400;
         }
         .input-field:focus {
-            @apply border-blue-600 ring-4 ring-blue-100 shadow-none;
+            @apply border-blue-500 ring-4 ring-blue-50;
         }
         .label-text { 
-            @apply block text-[12px] font-black text-slate-600 uppercase tracking-widest mb-3 ml-1; 
+            @apply block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-2 ml-1; 
         }
         .helper-text { 
-            @apply mt-3 text-[11px] text-slate-500 leading-relaxed italic ml-1; 
+            @apply mt-2 text-[11px] text-slate-400 leading-relaxed ml-1; 
         }
-        /* Every input must be in one of these boxes */
         .input-group { 
-            @apply bg-white p-8 rounded-3xl border-2 border-slate-200 shadow-sm transition-all hover:border-blue-300 mb-6; 
+            @apply bg-white p-6 rounded-2xl border border-slate-100 shadow-sm transition-all hover:border-slate-200; 
+        }
+        .card-container {
+            @apply bg-white p-8 rounded-[2rem] shadow-xl shadow-slate-200/40 border border-white;
         }
     </style>
 </head>
-<body class="bg-[#f1f5f9] text-slate-800">
+<body class="bg-[#f8fafc] text-slate-800">
     <div id="app" v-cloak class="min-h-screen pb-20">
         <div class="max-w-6xl mx-auto px-4 pt-8">
             <div class="flex flex-col md:flex-row gap-8">
@@ -56,13 +57,13 @@
                         <div class="mt-8 pt-6 border-t border-slate-100">
                             <div class="flex items-center justify-between mb-4">
                                 <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">System Status</span>
-                                <span class="w-2.5 h-2.5 rounded-full animate-pulse" :class="systemStatus.investecOnline ? 'bg-green-500' : 'bg-red-500'"></span>
+                                <span class="w-2 h-2 rounded-full animate-pulse" :class="systemStatus.investecOnline ? 'bg-green-500' : 'bg-red-500'"></span>
                             </div>
                             <div class="space-y-3">
                                 <div class="flex items-center justify-between">
                                     <span class="text-xs font-semibold text-slate-500">Investec API</span>
                                     <span class="text-xs font-black" :class="systemStatus.investecOnline ? 'text-green-600' : 'text-red-600'">
-                                        {{ systemStatus.investecOnline ? 'CONNECTED' : 'OFFLINE' }}
+                                        {{ systemStatus.investecOnline ? 'Online' : 'Offline' }}
                                     </span>
                                 </div>
                                 <div class="flex items-center justify-between">
@@ -76,12 +77,12 @@
                     <!-- Global Actions -->
                     <div class="bg-slate-900 p-5 rounded-3xl shadow-xl space-y-3">
                         <button @click="sendReportNow" :disabled="sendingReport"
-                            class="w-full bg-blue-600 hover:bg-blue-500 text-white p-3.5 rounded-2xl text-xs font-black shadow-lg shadow-blue-900/20 transition-all flex items-center justify-center gap-2">
-                            <span>{{ sendingReport ? 'PROCESSING...' : 'RUN ANALYSIS NOW' }}</span>
+                            class="w-full bg-blue-600 hover:bg-blue-500 text-white p-3 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2">
+                            <span>{{ sendingReport ? 'Generating...' : 'Run Analysis Now' }}</span>
                         </button>
                         <button @click="saveSettings" :disabled="saving"
-                            class="w-full bg-white/10 hover:bg-white/20 text-white p-3.5 rounded-2xl text-xs font-black transition-all border border-white/5">
-                            {{ saving ? 'SAVING...' : 'SAVE CONFIG' }}
+                            class="w-full bg-white/10 hover:bg-white/20 text-white p-3 rounded-2xl text-xs font-black transition-all border border-white/5">
+                            {{ saving ? 'Saving...' : 'Save Config' }}
                         </button>
                     </div>
                 </aside>
@@ -92,24 +93,24 @@
                         
                         <!-- TAB: DATA & SYNC -->
                         <div v-if="activeTab === 'data'" class="space-y-6">
-                            <div class="bg-white p-10 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-white">
+                            <div class="card-container">
                                 <h2 class="text-2xl font-black text-slate-900 mb-8 flex items-center gap-4">
-                                    <span class="w-12 h-12 flex items-center justify-center bg-blue-50 text-blue-600 rounded-2xl text-xl">📊</span>
+                                    <span class="w-10 h-10 flex items-center justify-center bg-blue-50 text-blue-600 rounded-xl text-lg">📊</span>
                                     Data & Sync
                                 </h2>
                                 
-                                <div class="grid grid-cols-1 gap-8">
-                                    <div class="input-group">
+                                <div class="space-y-6">
+                                    <div class="input-group max-w-2xl">
                                         <label class="label-text">Investec API Base URL</label>
                                         <input type="text" v-model="settings.investecBaseUrl" class="input-field" placeholder="https://openapi.investec.com/">
-                                        <p class="helper-text">The base URL for all banking API requests.</p>
+                                        <p class="helper-text">Official Investec Open API endpoint.</p>
                                     </div>
 
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div class="input-group">
                                             <label class="label-text">History Depth (Days)</label>
-                                            <input type="number" v-model.number="settings.historyDaysBack" class="input-field">
-                                            <p class="helper-text">Initial lookback window for new installs.</p>
+                                            <input type="number" v-model.number="settings.historyDaysBack" class="input-field max-w-[120px]">
+                                            <p class="helper-text">Lookback window for new installs.</p>
                                         </div>
                                         <div class="input-group">
                                             <label class="label-text">Currency Culture</label>
@@ -118,17 +119,22 @@
                                                 <option value="en-US">United States (USD)</option>
                                                 <option value="en-GB">United Kingdom (GBP)</option>
                                             </select>
-                                            <p class="helper-text">Determines currency symbols and date formats.</p>
+                                            <p class="helper-text">Rands, Dates and Number formats.</p>
                                         </div>
                                     </div>
 
-                                    <div class="input-group border-red-100 bg-red-50/10">
-                                        <label class="label-text text-red-600">Danger Zone</label>
-                                        <button type="button" @click="forceRepull" :disabled="repulling"
-                                            class="w-full bg-red-600 hover:bg-red-700 text-white p-4 rounded-2xl text-sm font-black shadow-lg shadow-red-200 transition-all flex items-center justify-center gap-3">
-                                            🗑️ {{ repulling ? 'WIPING DATA...' : 'FORCE FULL RE-SYNC' }}
-                                        </button>
-                                        <p class="helper-text text-center text-red-500 font-bold mt-4">This deletes all local data and re-downloads history from the bank.</p>
+                                    <div class="input-group bg-red-50/20 border-red-100 max-w-2xl">
+                                        <label class="label-text text-red-600">Sync Buffer & Reset</label>
+                                        <div class="flex flex-col md:flex-row gap-6 items-start md:items-center">
+                                            <div class="flex-1">
+                                                <input type="number" step="0.01" v-model.number="settings.syncBufferDays" class="input-field max-w-[120px]">
+                                                <p class="helper-text">0.05 is ~1 hour overlap.</p>
+                                            </div>
+                                            <button type="button" @click="forceRepull" :disabled="repulling"
+                                                class="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-xl text-xs font-black shadow-lg shadow-red-200 transition-all">
+                                                {{ repulling ? 'Wiping...' : 'Force Full Re-Sync' }}
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -136,14 +142,14 @@
 
                         <!-- TAB: INTELLIGENCE -->
                         <div v-if="activeTab === 'ai'" class="space-y-6">
-                            <div class="bg-white p-10 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-white">
+                            <div class="card-container">
                                 <h2 class="text-2xl font-black text-slate-900 mb-8 flex items-center gap-4">
-                                    <span class="w-12 h-12 flex items-center justify-center bg-purple-50 text-purple-600 rounded-2xl text-xl">🧠</span>
+                                    <span class="w-10 h-10 flex items-center justify-center bg-purple-50 text-purple-600 rounded-xl text-lg">🧠</span>
                                     AI Brain
                                 </h2>
 
-                                <div class="grid grid-cols-1 gap-8">
-                                    <div class="input-group">
+                                <div class="space-y-6">
+                                    <div class="input-group max-w-md">
                                         <label class="label-text">AI Provider</label>
                                         <select v-model="settings.aiProvider" @change="loadModels(true)" class="input-field">
                                             <option value="Ollama">Ollama (Local)</option>
@@ -151,15 +157,15 @@
                                         </select>
                                     </div>
 
-                                    <div class="input-group">
+                                    <div class="input-group max-w-2xl">
                                         <label v-if="settings.aiProvider === 'Ollama'" class="label-text">Ollama Base URL</label>
                                         <label v-else class="label-text">Gemini API Key</label>
                                         <div class="flex gap-3">
                                             <input v-if="settings.aiProvider === 'Ollama'" type="text" v-model="settings.ollamaBaseUrl" class="input-field" placeholder="http://127.0.0.1:11434">
                                             <input v-else type="password" v-model="settings.geminiApiKey" class="input-field" placeholder="sk-...">
                                             <button type="button" @click="testAi" :disabled="aiTesting" 
-                                                class="bg-slate-900 text-white px-8 rounded-2xl text-xs font-black hover:bg-black transition-all">
-                                                {{ aiTesting ? '...' : 'TEST' }}
+                                                class="bg-slate-900 text-white px-6 rounded-xl text-xs font-black hover:bg-black transition-all">
+                                                {{ aiTesting ? '...' : 'Test' }}
                                             </button>
                                         </div>
                                     </div>
@@ -183,85 +189,79 @@
 
                         <!-- TAB: ACTUARIAL -->
                         <div v-if="activeTab === 'logic'" class="space-y-6">
-                            <div class="bg-white p-10 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-white">
+                            <div class="card-container">
                                 <h2 class="text-2xl font-black text-slate-900 mb-8 flex items-center gap-4">
-                                    <span class="w-12 h-12 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded-2xl text-xl">🧪</span>
+                                    <span class="w-10 h-10 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded-xl text-lg">🧪</span>
                                     Actuarial Logic
                                 </h2>
 
-                                <div class="grid grid-cols-1 gap-8">
-                                    <!-- Primary Actuarial Group -->
-                                    <div class="input-group">
+                                <div class="space-y-6">
+                                    <div class="input-group max-w-2xl">
                                         <div class="flex items-center justify-between mb-4">
                                             <label class="label-text mb-0">EMA Sensitivity (Alpha)</label>
-                                            <span class="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-black">{{ settings.actuarialAlpha }}</span>
+                                            <span class="bg-blue-50 text-blue-700 px-3 py-1 rounded-lg text-xs font-black">{{ settings.actuarialAlpha }}</span>
                                         </div>
                                         <input type="range" v-model.number="settings.actuarialAlpha" min="0.01" max="0.5" step="0.01" class="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-blue-600">
-                                        <div class="flex justify-between text-[10px] text-slate-400 mt-3 font-black uppercase tracking-tighter">
-                                            <span>Smooth (0.05)</span>
-                                            <span>Reactive (0.30)</span>
+                                        <div class="flex justify-between text-[10px] text-slate-400 mt-3 font-black uppercase">
+                                            <span>Smooth</span>
+                                            <span>Reactive</span>
                                         </div>
-                                        <p class="helper-text mt-4">Adjusts how fast projections react to recent spending spikes.</p>
                                     </div>
 
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div class="input-group">
                                             <label class="label-text">Unexpected Trigger (R)</label>
-                                            <div class="relative flex items-center">
-                                                <span class="absolute left-4 text-slate-400 text-lg font-black select-none">R</span>
-                                                <input type="number" v-model.number="settings.unexpectedPaymentThreshold" class="input-field pl-10 text-lg font-black">
+                                            <div class="relative flex items-center max-w-[200px]">
+                                                <span class="absolute left-4 text-slate-400 text-sm font-black">R</span>
+                                                <input type="number" v-model.number="settings.unexpectedPaymentThreshold" class="input-field pl-9 font-black">
                                             </div>
-                                            <p class="helper-text">Non-fixed payments above this trigger a report.</p>
+                                            <p class="helper-text">Trigger automated report for spend above this.</p>
                                         </div>
                                         <div class="input-group">
                                             <label class="label-text">Analysis Window</label>
-                                            <div class="relative flex items-center">
-                                                <input type="number" v-model.number="settings.analysisWindowDays" class="input-field pr-16 font-black">
-                                                <span class="absolute right-4 text-slate-400 text-xs font-bold uppercase">Days</span>
+                                            <div class="relative flex items-center max-w-[200px]">
+                                                <input type="number" v-model.number="settings.analysisWindowDays" class="input-field pr-12 font-black">
+                                                <span class="absolute right-4 text-slate-400 text-[10px] font-black uppercase">Days</span>
                                             </div>
-                                            <p class="helper-text">History used for volatility modelling.</p>
+                                            <p class="helper-text">Sample size for risk modelling.</p>
                                         </div>
                                     </div>
 
-                                    <!-- Expert Settings Toggle -->
-                                    <div class="flex items-center justify-center py-4">
-                                        <label class="flex items-center gap-4 cursor-pointer bg-slate-50 px-6 py-3 rounded-2xl border-2 border-slate-100 hover:border-slate-200 transition-all group">
-                                            <input type="checkbox" v-model="showAdvanced" class="w-5 h-5 rounded-lg text-blue-600 focus:ring-blue-500 border-slate-300">
-                                            <span class="text-xs font-black text-slate-500 uppercase tracking-widest group-hover:text-slate-700">Show Advanced Expert Logic</span>
+                                    <div class="py-4 border-t border-slate-50">
+                                        <label class="flex items-center gap-3 cursor-pointer bg-slate-50/50 w-fit px-5 py-2.5 rounded-xl border border-slate-100 hover:border-slate-200 transition-all">
+                                            <input type="checkbox" v-model="showAdvanced" class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300">
+                                            <span class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Expert Settings</span>
                                         </label>
                                     </div>
 
-                                    <!-- Advanced Section -->
-                                    <div v-if="showAdvanced" class="space-y-8 pt-8 border-t-2 border-dashed border-slate-100 animate-in fade-in slide-in-from-top-4 duration-500">
+                                    <div v-if="showAdvanced" class="space-y-6 pt-6 animate-in fade-in slide-in-from-top-4 duration-500">
                                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                            <div class="input-group bg-slate-50/30">
+                                            <div class="input-group">
                                                 <label class="label-text">Fixed Cost Keywords (CSV)</label>
-                                                <textarea v-model="settings.fixedCostKeywords" rows="8" class="input-field text-xs font-mono leading-relaxed resize-none p-6"></textarea>
-                                                <p class="helper-text">Terms that mark transactions as uncontrollable overhead.</p>
+                                                <textarea v-model="settings.fixedCostKeywords" rows="8" class="input-field text-xs font-mono leading-relaxed resize-none p-5"></textarea>
                                             </div>
-                                            <div class="input-group bg-slate-50/30">
+                                            <div class="input-group">
                                                 <label class="label-text">Salary Keywords (CSV)</label>
-                                                <textarea v-model="settings.salaryKeywords" rows="8" class="input-field text-xs font-mono leading-relaxed resize-none p-6"></textarea>
-                                                <p class="helper-text">Terms that identify income cycle starts.</p>
+                                                <textarea v-model="settings.salaryKeywords" rows="8" class="input-field text-xs font-mono leading-relaxed resize-none p-5"></textarea>
                                             </div>
                                         </div>
 
                                         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                            <div class="input-group bg-slate-50/30 p-6">
-                                                <label class="label-text text-[10px]">Salary Fallback (R)</label>
-                                                <input type="number" v-model.number="settings.salaryFallbackThreshold" class="input-field p-3 text-xs">
+                                            <div class="input-group !p-4">
+                                                <label class="label-text text-[9px] mb-1">Salary Fallback (R)</label>
+                                                <input type="number" v-model.number="settings.salaryFallbackThreshold" class="input-field !p-2 text-xs">
                                             </div>
-                                            <div class="input-group bg-slate-50/30 p-6">
-                                                <label class="label-text text-[10px]">Fallback Days</label>
-                                                <input type="number" v-model.number="settings.salaryFallbackDays" class="input-field p-3 text-xs">
+                                            <div class="input-group !p-4">
+                                                <label class="label-text text-[9px] mb-1">Fallback Depth</label>
+                                                <input type="number" v-model.number="settings.salaryFallbackDays" class="input-field !p-2 text-xs">
                                             </div>
-                                            <div class="input-group bg-slate-50/30 p-6">
-                                                <label class="label-text text-[10px]">Stability Var %</label>
-                                                <input type="number" v-model.number="settings.stabilityPercentageThreshold" class="input-field p-3 text-xs">
+                                            <div class="input-group !p-4">
+                                                <label class="label-text text-[9px] mb-1">Stability %</label>
+                                                <input type="number" v-model.number="settings.stabilityPercentageThreshold" class="input-field !p-2 text-xs">
                                             </div>
-                                            <div class="input-group bg-slate-50/30 p-6">
-                                                <label class="label-text text-[10px]">Trend Sensitivity</label>
-                                                <input type="number" step="0.01" v-model.number="settings.trendSensitivity" class="input-field p-3 text-xs">
+                                            <div class="input-group !p-4">
+                                                <label class="label-text text-[9px] mb-1">Trend Sensitivity</label>
+                                                <input type="number" step="0.01" v-model.number="settings.trendSensitivity" class="input-field !p-2 text-xs">
                                             </div>
                                         </div>
                                     </div>
@@ -271,52 +271,48 @@
 
                         <!-- TAB: NOTIFICATIONS -->
                         <div v-if="activeTab === 'email'" class="space-y-6">
-                            <div class="bg-white p-10 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-white">
+                            <div class="card-container">
                                 <h2 class="text-2xl font-black text-slate-900 mb-8 flex items-center gap-4">
-                                    <span class="w-12 h-12 flex items-center justify-center bg-amber-50 text-amber-600 rounded-2xl text-xl">✉️</span>
+                                    <span class="w-10 h-10 flex items-center justify-center bg-amber-50 text-amber-600 rounded-xl text-lg">✉️</span>
                                     Notifications
                                 </h2>
 
-                                <div class="grid grid-cols-1 gap-8">
-                                    <div class="input-group">
+                                <div class="space-y-6">
+                                    <div class="input-group max-w-md">
                                         <label class="label-text">Recipient Name</label>
                                         <input type="text" v-model="settings.userName" class="input-field">
                                     </div>
 
-                                    <div class="input-group">
-                                        <label class="label-text">SMTP Relay Settings</label>
+                                    <div class="input-group max-w-2xl">
+                                        <label class="label-text">SMTP Settings</label>
                                         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                            <div class="md:col-span-2">
-                                                <input type="text" v-model="settings.smtpHost" class="input-field" placeholder="smtp.gmail.com">
-                                            </div>
-                                            <div>
-                                                <input type="number" v-model.number="settings.smtpPort" class="input-field" placeholder="587">
-                                            </div>
+                                            <input type="text" v-model="settings.smtpHost" class="input-field md:col-span-2" placeholder="Host">
+                                            <input type="number" v-model.number="settings.smtpPort" class="input-field" placeholder="Port">
                                         </div>
                                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                                            <input type="text" v-model="settings.smtpUser" class="input-field" placeholder="Username">
-                                            <input type="password" v-model="settings.smtpPass" class="input-field" placeholder="Password">
+                                            <input type="text" v-model="settings.smtpUser" class="input-field" placeholder="User">
+                                            <input type="password" v-model="settings.smtpPass" class="input-field" placeholder="Pass">
                                         </div>
                                     </div>
 
-                                    <div class="input-group">
-                                        <label class="label-text">Delivery Targets</label>
+                                    <div class="input-group max-w-2xl">
+                                        <label class="label-text">Target Emails</label>
                                         <div class="flex gap-3">
-                                            <input type="text" v-model="settings.emailTo" class="input-field" placeholder="sean@example.com; alerts@example.com">
+                                            <input type="text" v-model="settings.emailTo" class="input-field" placeholder="List emails...">
                                             <button type="button" @click="testEmail" :disabled="emailTesting" 
-                                                class="bg-slate-900 text-white px-8 rounded-2xl text-xs font-black hover:bg-black transition-all">
-                                                {{ emailTesting ? '...' : 'SEND TEST' }}
+                                                class="bg-slate-900 text-white px-6 rounded-xl text-xs font-black hover:bg-black transition-all">
+                                                Test
                                             </button>
                                         </div>
                                     </div>
 
-                                    <div class="input-group bg-slate-50/50 border-slate-200">
-                                        <label class="label-text">Weekly Schedule</label>
-                                        <div class="grid grid-cols-2 gap-6">
-                                            <select v-model="settings.reportDayOfWeek" class="input-field">
+                                    <div class="input-group max-w-md">
+                                        <label class="label-text">Schedule</label>
+                                        <div class="flex gap-4">
+                                            <select v-model="settings.reportDayOfWeek" class="input-field flex-1">
                                                 <option v-for="day in days" :key="day" :value="day">{{ day }}</option>
                                             </select>
-                                            <select v-model.number="settings.reportHour" class="input-field">
+                                            <select v-model.number="settings.reportHour" class="input-field flex-1">
                                                 <option v-for="h in 24" :key="h-1" :value="h-1">{{ formatHour(h-1) }}</option>
                                             </select>
                                         </div>
@@ -332,11 +328,8 @@
 
         <!-- Toast Notification -->
         <transition enter-active-class="transform transition duration-300 ease-out" enter-from-class="translate-y-10 opacity-0" enter-to-class="translate-y-0 opacity-100" leave-active-class="transition duration-200 ease-in" leave-from-class="opacity-100" leave-to-class="opacity-0">
-            <div v-if="message" class="fixed bottom-10 left-1/2 -translate-x-1/2 text-white px-10 py-5 rounded-[2rem] shadow-2xl font-black z-50 flex items-center gap-4 text-sm tracking-tight border border-white/10" 
+            <div v-if="message" class="fixed bottom-10 left-1/2 -translate-x-1/2 text-white px-8 py-4 rounded-2xl shadow-2xl font-black z-50 flex items-center gap-3 border border-white/10" 
                  :class="messageType === 'error' ? 'bg-red-600' : 'bg-slate-900'">
-                <span class="w-8 h-8 flex items-center justify-center bg-white/20 rounded-full text-lg">
-                    {{ messageType === 'success' ? '✅' : '⚠️' }}
-                </span>
                 {{ message.toUpperCase() }}
             </div>
         </transition>
@@ -344,12 +337,10 @@
 
     <script>
         const { createApp } = Vue;
-
         createApp({
             data() {
                 return {
-                    activeTab: 'data',
-                    showAdvanced: false,
+                    activeTab: 'data', showAdvanced: false,
                     tabs: [
                         { id: 'data', name: 'Data & Sync', icon: '📊' },
                         { id: 'ai', name: 'AI Brain', icon: '🧠' },
@@ -357,15 +348,13 @@
                         { id: 'email', name: 'Notifications', icon: '✉️' }
                     ],
                     settings: {
-                        userName: 'Sir/Madam', reportDayOfWeek: 'Monday', reportHour: 9,
-                        actuarialAlpha: 0.15, analysisWindowDays: 90, unexpectedPaymentThreshold: 3000,
-                        ollamaBaseUrl: 'http://host.docker.internal:11434', ollamaModelName: 'deepseek-coder',
-                        geminiApiKey: '', aiProvider: 'Ollama',
-                        fixedCostKeywords: 'SCHOOL,MORTGAGE,LEVIES,HOME LOAN,INSURANCE,BOND,INVESTMENT,LIFE,MEDICAL,NEDBHL,DISC PREM,WILLOWBROOKE,ADAM',
-                        salaryKeywords: 'TCP 131,TCP131,SALARY',
-                        salaryFallbackThreshold: 10000, salaryFallbackDays: 45, stabilityPercentageThreshold: 15,
-                        trendSensitivity: 0.1, investecBaseUrl: 'https://openapi.investec.com/', syncBufferDays: 0.05,
-                        systemPersona: 'Gordon', smtpHost: '', smtpPort: 587, smtpUser: '', smtpPass: '', emailTo: '',
+                        userName: '', reportDayOfWeek: 'Monday', reportHour: 9, actuarialAlpha: 0.15,
+                        analysisWindowDays: 90, unexpectedPaymentThreshold: 3000,
+                        ollamaBaseUrl: '', ollamaModelName: '', geminiApiKey: '', aiProvider: 'Ollama',
+                        fixedCostKeywords: '', salaryKeywords: '', salaryFallbackThreshold: 10000,
+                        salaryFallbackDays: 45, stabilityPercentageThreshold: 15, trendSensitivity: 0.1,
+                        investecBaseUrl: '', syncBufferDays: 0.05, systemPersona: '',
+                        smtpHost: '', smtpPort: 587, smtpUser: '', smtpPass: '', emailTo: '',
                         historyDaysBack: 180, currencyCulture: 'en-ZA'
                     },
                     availableModels: [],
@@ -379,35 +368,35 @@
             methods: {
                 formatHour(h) { return h.toString().padStart(2, '0') + ':00'; },
                 formatTime(dateStr) { if (!dateStr || dateStr.startsWith('0001')) return 'Never'; return new Date(dateStr).toLocaleTimeString(); },
-                showToast(msg, type = 'success') { this.message = msg; this.messageType = type; setTimeout(() => this.message = '', 5000); },
-                async loadSettings() { try { const res = await fetch('/api/settings'); if (res.ok) { const data = await res.json(); this.settings = { ...this.settings, ...data }; } } catch (e) {} },
+                showToast(msg, type = 'success') { this.message = msg; this.messageType = type; setTimeout(() => this.message = '', 4000); },
+                async loadSettings() { try { const res = await fetch('/api/settings'); if (res.ok) { this.settings = await res.json(); } } catch (e) {} },
                 async loadStatus() { try { const res = await fetch('/api/settings/status'); if (res.ok) { this.systemStatus = await res.json(); } } catch (e) {} },
                 async saveSettings() {
                     this.saving = true;
                     try {
                         const res = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.settings) });
-                        if (res.ok) { this.showToast("Configuration Saved Successfully"); } else { this.showToast("Save Failed", 'error'); }
-                    } catch (e) { this.showToast("Engine Connection Error", 'error'); } finally { this.saving = false; }
+                        if (res.ok) { this.showToast("Settings Saved"); } else { this.showToast("Save Failed", 'error'); }
+                    } catch (e) { this.showToast("Connection Error", 'error'); } finally { this.saving = false; }
                 },
                 async testEmail() {
                     this.emailTesting = true;
                     try {
                         const res = await fetch('/api/settings/test-email', { method: 'POST' });
-                        if (res.ok) { this.showToast("Test Email Dispatched"); } else { this.showToast("Email Failed", 'error'); }
-                    } catch (e) { this.showToast("SMTP Connection Error", 'error'); } finally { this.emailTesting = false; }
+                        if (res.ok) { this.showToast("Test Dispatched"); } else { this.showToast("Test Failed", 'error'); }
+                    } catch (e) { this.showToast("SMTP Error", 'error'); } finally { this.emailTesting = false; }
                 },
                 async sendReportNow() {
                     this.sendingReport = true;
                     try {
                         const res = await fetch('/api/settings/send-report-now', { method: 'POST' });
-                        if (res.ok) { this.showToast("Analysis Complete & Sent"); } else { this.showToast("Report Generation Failed", 'error'); }
-                    } catch (e) { this.showToast("Processing Error", 'error'); } finally { this.sendingReport = false; }
+                        if (res.ok) { this.showToast("Analysis Sent"); } else { this.showToast("Report Failed", 'error'); }
+                    } catch (e) { this.showToast("Engine Error", 'error'); } finally { this.sendingReport = false; }
                 },
                 async forceRepull() {
-                    if (!confirm("Are you sure? This will delete all local transaction data and re-download it from Investec. This cannot be undone.")) return;
+                    if (!confirm("Delete all local data and re-sync?")) return;
                     this.repulling = true; await this.saveSettings();
-                    try { const res = await fetch('/api/settings/force-repull', { method: 'POST' }); if (res.ok) { this.showToast("Re-Sync Started"); } else { this.showToast("Sync Start Failed", 'error'); }
-                    } catch (e) { this.showToast("Network Error", 'error'); } finally { this.repulling = false; }
+                    try { const res = await fetch('/api/settings/force-repull', { method: 'POST' }); if (res.ok) { this.showToast("Sync Reset Started"); } else { this.showToast("Reset Failed", 'error'); }
+                    } catch (e) { this.showToast("Sync Error", 'error'); } finally { this.repulling = false; }
                 },
                 async loadModels(saveFirst = false) {
                     if (saveFirst) await this.saveSettings();
@@ -418,8 +407,8 @@
                     try {
                         const res = await fetch('/api/settings/test-ai', { method: 'POST' });
                         const text = await res.text();
-                        if (res.ok) { this.showToast("AI Brain Connected"); await this.loadModels(); } else { this.showToast(`AI Error: ${text}`, 'error'); }
-                    } catch (e) { this.showToast("AI Connection Failed", 'error'); } finally { this.aiTesting = false; }
+                        if (res.ok) { this.showToast("AI Brain Active"); await this.loadModels(); } else { this.showToast(`AI Error`, 'error'); }
+                    } catch (e) { this.showToast("AI Error", 'error'); } finally { this.aiTesting = false; }
                 }
             }
         }).mount('#app');

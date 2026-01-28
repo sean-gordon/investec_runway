@@ -39,6 +39,12 @@ public class AppSettings
     public string SmtpUser { get; set; } = "";
     public string SmtpPass { get; set; } = "";
     public string EmailTo { get; set; } = "";
+
+    // Twilio WhatsApp Settings
+    public string TwilioAccountSid { get; set; } = "";
+    public string TwilioAuthToken { get; set; } = "";
+    public string TwilioWhatsAppNumber { get; set; } = "";
+    public string AuthorizedWhatsAppNumber { get; set; } = ""; // To restrict who can chat
 }
 
 public interface ISettingsService

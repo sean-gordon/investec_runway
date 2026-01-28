@@ -18,6 +18,7 @@ builder.Services.AddHttpClient<IAiService, AiService>();
 builder.Services.AddSingleton<ISettingsService, SettingsService>();
 builder.Services.AddSingleton<IActuarialService, ActuarialService>();
 builder.Services.AddSingleton<ISystemStatusService, SystemStatusService>();
+builder.Services.AddSingleton<ITwilioService, TwilioService>();
 builder.Services.AddTransient<IEmailService, EmailService>();
 builder.Services.AddScoped<IFinancialReportService, FinancialReportService>();
 builder.Services.AddScoped<ITransactionSyncService, TransactionSyncService>();

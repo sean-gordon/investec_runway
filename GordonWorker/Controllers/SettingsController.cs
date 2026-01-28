@@ -88,6 +88,20 @@ public class SettingsController : ControllerBase
         return result.Success ? Ok("Connected to AI Brain successfully.") : StatusCode(500, result.Error);
     }
 
+    [HttpPost("test-whatsapp")]
+    public async Task<IActionResult> TestWhatsApp()
+    {
+        var settings = await _settingsService.GetSettingsAsync();
+        if (string.IsNullOrWhiteSpace(settings.AuthorizedWhatsAppNumber))
+        {
+            return BadRequest("Authorized WhatsApp Number is not configured.");
+        }
+
+        var twilioService = HttpContext.RequestServices.GetRequiredService<ITwilioService>();
+        await twilioService.SendWhatsAppMessageAsync(settings.AuthorizedWhatsAppNumber, "Ping! This is a test message from your Gordon Finance Engine. 🚀");
+        return Ok("WhatsApp test message dispatched.");
+    }
+
     [HttpGet("models")]
     public async Task<IActionResult> GetModels()
     {

@@ -330,6 +330,59 @@
                             </div>
                         </div>
 
+                        <!-- TAB: WHATSAPP -->
+                        <div v-if="activeTab === 'whatsapp'" class="animate-in fade-in slide-in-from-right-4 duration-500">
+                            <div class="section-card">
+                                <h2 class="text-2xl font-black text-slate-900 mb-10">WhatsApp Integration (Twilio)</h2>
+
+                                <div class="space-y-10">
+                                    <div class="input-group max-w-2xl bg-slate-50 p-8 rounded-[2rem] border border-slate-100">
+                                        <label class="label-text">Twilio Account Credentials</label>
+                                        <div class="space-y-4">
+                                            <div class="input-group">
+                                                <label class="label-text text-[9px]">Account SID</label>
+                                                <input type="text" v-model="settings.twilioAccountSid" class="input-field" placeholder="AC...">
+                                            </div>
+                                            <div class="input-group">
+                                                <label class="label-text text-[9px]">Auth Token</label>
+                                                <input type="password" v-model="settings.twilioAuthToken" class="input-field" placeholder="Twilio Auth Token">
+                                            </div>
+                                        </div>
+                                        <p class="helper-text mt-4">Required to send outbound WhatsApp messages from Gordon.</p>
+                                    </div>
+
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
+                                        <div class="input-group">
+                                            <label class="label-text">Twilio WhatsApp Number</label>
+                                            <input type="text" v-model="settings.twilioWhatsAppNumber" class="input-field" placeholder="whatsapp:+14155238886">
+                                            <p class="helper-text">The Twilio Sandbox or Production WhatsApp number (include 'whatsapp:' prefix).</p>
+                                        </div>
+                                        <div class="input-group">
+                                            <label class="label-text">Authorized Phone Number</label>
+                                            <div class="flex gap-3">
+                                                <input type="text" v-model="settings.authorizedWhatsAppNumber" class="input-field" placeholder="whatsapp:+27...">
+                                                <button type="button" @click="testWhatsApp" :disabled="whatsappTesting" 
+                                                    class="bg-slate-900 text-white px-8 rounded-xl text-xs font-black hover:bg-black transition-all uppercase tracking-widest">
+                                                    Test
+                                                </button>
+                                            </div>
+                                            <p class="helper-text">Only messages from this number will be processed (include 'whatsapp:' prefix).</p>
+                                        </div>
+                                    </div>
+
+                                    <div class="p-8 rounded-3xl bg-blue-50 border border-blue-100">
+                                        <h3 class="text-sm font-black text-blue-900 mb-2 uppercase tracking-widest">Webhook Configuration</h3>
+                                        <p class="text-xs text-blue-700 leading-relaxed mb-4">
+                                            Configure your Twilio WhatsApp Sandbox/Number with this Webhook URL for incoming messages:
+                                        </p>
+                                        <div class="bg-white p-4 rounded-xl border border-blue-200 font-mono text-[10px] break-all text-blue-800">
+                                            {{ window.location.origin }}/api/whatsapp/webhook
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                     </form>
                 </main>
             </div>
@@ -355,7 +408,8 @@
                         { id: 'data', name: 'Data & Sync', icon: '📊' },
                         { id: 'ai', name: 'AI Intelligence', icon: '🧠' },
                         { id: 'logic', name: 'Actuarial Math', icon: '🧪' },
-                        { id: 'email', name: 'Email Alerts', icon: '✉️' }
+                        { id: 'email', name: 'Email Alerts', icon: '✉️' },
+                        { id: 'whatsapp', name: 'WhatsApp', icon: '📱' }
                     ],
                     settings: {
                         userName: '', reportDayOfWeek: 'Monday', reportHour: 9, actuarialAlpha: 0.15,
@@ -366,12 +420,13 @@
                                                 investecBaseUrl: '', syncBufferDays: 0.05, systemPersona: '',
                         
                         smtpHost: '', smtpPort: 587, smtpUser: '', smtpPass: '', emailTo: '',
-                        historyDaysBack: 180, currencyCulture: 'en-ZA'
+                        historyDaysBack: 180, currencyCulture: 'en-ZA',
+                        twilioAccountSid: '', twilioAuthToken: '', twilioWhatsAppNumber: '', authorizedWhatsAppNumber: ''
                     },
                     availableModels: [],
                     systemStatus: { investecOnline: false, lastCheck: '', lastError: '' },
                     days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
-                    saving: false, emailTesting: false, aiTesting: false, sendingReport: false, repulling: false,
+                    saving: false, emailTesting: false, aiTesting: false, whatsappTesting: false, sendingReport: false, repulling: false,
                     message: '', messageType: 'success'
                 }
             },
@@ -395,6 +450,13 @@
                         const res = await fetch('/api/settings/test-email', { method: 'POST' });
                         if (res.ok) { this.showToast("Test Dispatched via SMTP"); } else { this.showToast("Test Delivery Failed", 'error'); }
                     } catch (e) { this.showToast("SMTP Relay Error", 'error'); } finally { this.emailTesting = false; }
+                },
+                async testWhatsApp() {
+                    this.whatsappTesting = true; await this.saveSettings();
+                    try {
+                        const res = await fetch('/api/settings/test-whatsapp', { method: 'POST' });
+                        if (res.ok) { this.showToast("WhatsApp Ping Dispatched"); } else { this.showToast("Twilio Dispatch Failed", 'error'); }
+                    } catch (e) { this.showToast("Twilio Gateway Error", 'error'); } finally { this.whatsappTesting = false; }
                 },
                 async sendReportNow() {
                     this.sendingReport = true;

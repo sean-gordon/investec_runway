@@ -60,42 +60,49 @@ public class ActuarialService : IActuarialService
         var settings = await _settingsService.GetSettingsAsync();
         var today = DateTime.Today;
 
-        // Salary detection: search history for TCP 131. Credits are NEGATIVE in Investec.
+        // AGGRESSIVE SALARY DETECTION: 
+        // 1. Look for TCP 131 (any sign)
         var salaryPayments = history
-            .Where(t => t.Amount < 0 && t.Description != null && (t.Description.Contains("TCP 131", StringComparison.OrdinalIgnoreCase) || t.Description.Contains("TCP131", StringComparison.OrdinalIgnoreCase)))
+            .Where(t => t.Description != null && (t.Description.Contains("TCP 131", StringComparison.OrdinalIgnoreCase) || t.Description.Contains("TCP131", StringComparison.OrdinalIgnoreCase)))
             .OrderByDescending(t => t.TransactionDate)
             .ToList();
 
-        // Fallback: If no explicit salary payment found, look for any large incoming payment (> R10,000) in the last 40 days
+        // 2. Fallback: Largest incoming payment in last 45 days
         if (!salaryPayments.Any())
         {
             salaryPayments = history
-                .Where(t => t.Amount < -10000 && (t.TransactionDate.LocalDateTime.Date >= today.AddDays(-40)))
-                .OrderByDescending(t => Math.Abs(t.Amount)) // Get the largest one
+                .Where(t => t.Amount < 0 && (t.TransactionDate.LocalDateTime.Date >= today.AddDays(-45)))
+                .OrderByDescending(t => Math.Abs(t.Amount))
                 .Take(1)
                 .ToList();
         }
 
         DateTime periodStart; DateTime prevPeriodStart; DateTime prevPeriodEnd;
 
-        if (salaryPayments.Count >= 1)
+        if (salaryPayments.Any())
         {
             periodStart = salaryPayments[0].TransactionDate.LocalDateTime.Date;
             if (salaryPayments.Count >= 2)
             {
                 var prevSalary = salaryPayments.FirstOrDefault(s => s.TransactionDate.LocalDateTime.Date < periodStart);
                 if (prevSalary != null) { prevPeriodStart = prevSalary.TransactionDate.LocalDateTime.Date; prevPeriodEnd = periodStart; }
-                else { prevPeriodStart = periodStart.AddMonths(-1); prevPeriodEnd = periodStart; }
+                else { prevPeriodStart = periodStart.AddDays(-30); prevPeriodEnd = periodStart; }
             }
-            else { prevPeriodStart = periodStart.AddMonths(-1); prevPeriodEnd = periodStart; }
+            else { prevPeriodStart = periodStart.AddDays(-30); prevPeriodEnd = periodStart; }
         }
-        else { periodStart = new DateTime(today.Year, today.Month, 1); prevPeriodStart = periodStart.AddMonths(-1); prevPeriodEnd = periodStart; }
+        else 
+        { 
+            // Better rolling fallback instead of Jan 1st
+            periodStart = today.AddDays(-28); 
+            prevPeriodStart = periodStart.AddDays(-30); 
+            prevPeriodEnd = periodStart; 
+        }
 
         var daysIntoPeriod = Math.Max(1, (today - periodStart).TotalDays + 1);
         var compareDateInPrevPeriod = prevPeriodStart.AddDays(daysIntoPeriod);
         if (compareDateInPrevPeriod > prevPeriodEnd) compareDateInPrevPeriod = prevPeriodEnd;
 
-        // Investec: Debits are POSITIVE (> 0), Credits are NEGATIVE (< 0). 
+        // Investec spend filtering
         var expenses = history.Where(t => t.Amount > 0 && 
                                         !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase) && 
                                         !t.IsInternalTransfer()).ToList();

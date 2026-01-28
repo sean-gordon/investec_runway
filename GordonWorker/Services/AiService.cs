@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace GordonWorker.Services;
 
-public interface IOllamaService
+public interface IAiService
 {
     Task<string> GenerateSqlAsync(string userPrompt);
     Task<string> FormatResponseAsync(string userPrompt, string dataContext);
@@ -12,30 +12,35 @@ public interface IOllamaService
     Task<List<string>> GetAvailableModelsAsync();
 }
 
-public class OllamaService : IOllamaService
+public class AiService : IAiService
 {
     private readonly HttpClient _httpClient;
-    private readonly ILogger<OllamaService> _logger;
+    private readonly ILogger<AiService> _logger;
     private readonly ISettingsService _settingsService;
 
-    public OllamaService(HttpClient httpClient, ILogger<OllamaService> logger, IConfiguration configuration, ISettingsService settingsService)
+    public AiService(HttpClient httpClient, ILogger<AiService> logger, IConfiguration configuration, ISettingsService settingsService)
     {
         _httpClient = httpClient;
         _logger = logger;
         _settingsService = settingsService;
     }
 
-    private async Task<(string Url, string Model)> GetConnectionDetailsAsync()
+    private async Task<(string Provider, string OllamaUrl, string OllamaModel, string GeminiKey)> GetConnectionDetailsAsync()
     {
         var settings = await _settingsService.GetSettingsAsync();
-        return (settings.OllamaBaseUrl, settings.OllamaModelName);
+        return (settings.AiProvider, settings.OllamaBaseUrl, settings.OllamaModelName, settings.GeminiApiKey);
     }
 
     public async Task<List<string>> GetAvailableModelsAsync()
     {
+        var (provider, baseUrl, _, _) = await GetConnectionDetailsAsync();
+        if (provider == "Gemini")
+        {
+            return new List<string> { "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp" };
+        }
+
         try
         {
-            var (baseUrl, _) = await GetConnectionDetailsAsync();
             var baseUri = baseUrl.EndsWith("/") ? baseUrl : baseUrl + "/";
             var fullUrl = new Uri(new Uri(baseUri), "api/tags");
 
@@ -56,9 +61,14 @@ public class OllamaService : IOllamaService
 
     public async Task<bool> TestConnectionAsync()
     {
+        var (provider, baseUrl, _, geminiKey) = await GetConnectionDetailsAsync();
+        if (provider == "Gemini")
+        {
+            return !string.IsNullOrWhiteSpace(geminiKey);
+        }
+
         try
         {
-            var (baseUrl, _) = await GetConnectionDetailsAsync();
             var baseUri = baseUrl.EndsWith("/") ? baseUrl : baseUrl + "/";
             var fullUrl = new Uri(new Uri(baseUri), "api/tags"); 
 
@@ -98,7 +108,13 @@ public class OllamaService : IOllamaService
 
     private async Task<string> GenerateCompletionAsync(string system, string prompt)
     {
-        var (baseUrl, model) = await GetConnectionDetailsAsync();
+        var (provider, baseUrl, model, geminiKey) = await GetConnectionDetailsAsync();
+
+        if (provider == "Gemini")
+        {
+            return await GenerateGeminiCompletionAsync(system, prompt, geminiKey);
+        }
+
         var request = new
         {
             model = model,
@@ -124,6 +140,44 @@ public class OllamaService : IOllamaService
         {
             _logger.LogError(ex, "Error calling Ollama at {Url}.", baseUrl);
             return "I'm sorry, I couldn't process that request right now.";
+        }
+    }
+
+    private async Task<string> GenerateGeminiCompletionAsync(string system, string prompt, string apiKey)
+    {
+        try
+        {
+            var settings = await _settingsService.GetSettingsAsync();
+            var model = settings.OllamaModelName; // Using same field for simplicity or could add GeminiModel
+            if (!model.Contains("gemini")) model = "gemini-1.5-flash";
+
+            var url = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={apiKey}";
+
+            var request = new
+            {
+                contents = new[]
+                {
+                    new { role = "user", parts = new[] { new { text = system + "\n\n" + prompt } } }
+                }
+            };
+
+            var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
+            var response = await _httpClient.PostAsync(url, content);
+            response.EnsureSuccessStatusCode();
+
+            var responseString = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(responseString);
+            return doc.RootElement
+                .GetProperty("candidates")[0]
+                .GetProperty("content")
+                .GetProperty("parts")[0]
+                .GetProperty("text")
+                .GetString()?.Trim() ?? "";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Gemini API call failed.");
+            return "I'm sorry, I couldn't process that request via Gemini.";
         }
     }
 

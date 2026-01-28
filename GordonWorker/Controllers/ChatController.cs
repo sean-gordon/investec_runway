@@ -11,12 +11,12 @@ namespace GordonWorker.Controllers;
 [Route("[controller]")]
 public class ChatController : ControllerBase
 {
-    private readonly IOllamaService _ollamaService;
+    private readonly IAiService _ollamaService;
     private readonly IActuarialService _actuarialService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<ChatController> _logger;
 
-    public ChatController(IOllamaService ollamaService, IActuarialService actuarialService, IConfiguration configuration, ILogger<ChatController> logger)
+    public ChatController(IAiService ollamaService, IActuarialService actuarialService, IConfiguration configuration, ILogger<ChatController> logger)
     {
         _ollamaService = ollamaService;
         _actuarialService = actuarialService;

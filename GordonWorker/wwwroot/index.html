@@ -131,11 +131,27 @@
                             <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <!-- AI -->
                                 <div class="space-y-4">
-                                    <h3 class="text-sm font-bold text-gray-900">Ollama Connection</h3>
+                                    <h3 class="text-sm font-bold text-gray-900">AI Connection</h3>
                                     <div>
-                                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Base URL</label>
+                                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">AI Provider</label>
+                                        <select v-model="settings.aiProvider" @change="loadModels(true)" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2 text-sm">
+                                            <option value="Ollama">Ollama (Local)</option>
+                                            <option value="Gemini">Google Gemini (Cloud)</option>
+                                        </select>
+                                    </div>
+                                    <div v-if="settings.aiProvider === 'Ollama'">
+                                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Ollama Base URL</label>
                                         <div class="flex gap-2">
                                             <input type="text" v-model="settings.ollamaBaseUrl" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2 text-sm">
+                                            <button type="button" @click="testAi" :disabled="aiTesting" class="bg-gray-100 text-gray-700 hover:bg-gray-200 px-3 py-1 rounded-md text-xs font-medium">
+                                                {{ aiTesting ? '...' : 'Test' }}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div v-if="settings.aiProvider === 'Gemini'">
+                                        <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Gemini API Key</label>
+                                        <div class="flex gap-2">
+                                            <input type="password" v-model="settings.geminiApiKey" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2 text-sm">
                                             <button type="button" @click="testAi" :disabled="aiTesting" class="bg-gray-100 text-gray-700 hover:bg-gray-200 px-3 py-1 rounded-md text-xs font-medium">
                                                 {{ aiTesting ? '...' : 'Test' }}
                                             </button>
@@ -144,7 +160,7 @@
                                     <div>
                                         <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Model Name</label>
                                         <select v-model="settings.ollamaModelName" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 border p-2 text-sm">
-                                            <option v-if="availableModels.length === 0" :value="settings.ollamaModelName">{{ settings.ollamaModelName }} (Not found)</option>
+                                            <option v-if="availableModels.length === 0" :value="settings.ollamaModelName">{{ settings.ollamaModelName }}</option>
                                             <option v-for="model in availableModels" :key="model" :value="model">{{ model }}</option>
                                         </select>
                                     </div>
@@ -240,6 +256,8 @@
                         analysisWindowDays: 90,
                         ollamaBaseUrl: 'http://host.docker.internal:11434',
                         ollamaModelName: 'deepseek-coder',
+                        geminiApiKey: '',
+                        aiProvider: 'Ollama',
                         systemPersona: 'Gordon',
                         smtpHost: '',
                         smtpPort: 587,
@@ -375,7 +393,8 @@
                         this.repulling = false;
                     }
                 },
-                async loadModels() {
+                async loadModels(saveFirst = false) {
+                    if (saveFirst) await this.saveSettings();
                     try {
                         const res = await fetch('/api/settings/models');
                         if (res.ok) {

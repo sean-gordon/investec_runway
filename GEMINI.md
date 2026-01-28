@@ -30,7 +30,7 @@ The system consists of two main containers managed via `docker-compose.yml`:
     *   **Monte Carlo Simulation**: Probability of survival (30-day).
     *   **Linear Regression**: Month-end projection.
     *   **Weighted Burn (EMA)**: Recent spending sensitivity.
-*   **`OllamaService`**: Handles LLM communication.
+*   **`AiService`**: Handles LLM communication (Ollama or Google Gemini).
     *   *Text-to-SQL*: Generates SQL for raw queries.
     *   *Analyst Persona*: Interprets complex JSON stats into simple advice.
 *   **`SettingsService`**: Persists runtime configuration to the `system_config` database table. **Always use this service to retrieve settings, do not hardcode.**

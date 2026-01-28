@@ -13,6 +13,8 @@ public class AppSettings
     public int AnalysisWindowDays { get; set; } = 90;
     public string OllamaBaseUrl { get; set; } = "http://host.docker.internal:11434";
     public string OllamaModelName { get; set; } = "deepseek-coder";
+    public string GeminiApiKey { get; set; } = "";
+    public string AiProvider { get; set; } = "Ollama"; // "Ollama" or "Gemini"
     public string SystemPersona { get; set; } = "Gordon";
     
     // Data Settings

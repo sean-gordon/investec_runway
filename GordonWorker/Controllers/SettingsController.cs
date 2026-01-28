@@ -9,7 +9,7 @@ public class SettingsController : ControllerBase
 {
     private readonly ISettingsService _settingsService;
     private readonly IEmailService _emailService;
-    private readonly IOllamaService _ollamaService;
+    private readonly IAiService _ollamaService;
     private readonly IFinancialReportService _reportService;
     private readonly ISystemStatusService _statusService;
     private readonly ITransactionSyncService _syncService;
@@ -19,7 +19,7 @@ public class SettingsController : ControllerBase
     public SettingsController(
         ISettingsService settingsService, 
         IEmailService emailService, 
-        IOllamaService ollamaService,
+        IAiService ollamaService,
         IFinancialReportService reportService,
         ISystemStatusService statusService,
         ITransactionSyncService syncService,

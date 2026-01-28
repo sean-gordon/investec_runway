@@ -15,7 +15,7 @@ public class FinancialReportService : IFinancialReportService
     private readonly IConfiguration _configuration;
     private readonly IEmailService _emailService;
     private readonly IActuarialService _actuarialService;
-    private readonly IOllamaService _ollamaService;
+    private readonly IAiService _ollamaService;
     private readonly ISettingsService _settingsService;
     private readonly IInvestecClient _investecClient;
     private readonly ILogger<FinancialReportService> _logger;
@@ -24,7 +24,7 @@ public class FinancialReportService : IFinancialReportService
         IConfiguration configuration,
         IEmailService emailService,
         IActuarialService actuarialService,
-        IOllamaService ollamaService,
+        IAiService ollamaService,
         ISettingsService settingsService,
         IInvestecClient investecClient,
         ILogger<FinancialReportService> logger)

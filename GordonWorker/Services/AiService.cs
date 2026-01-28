@@ -36,7 +36,17 @@ public class AiService : IAiService
         var (provider, baseUrl, _, _) = await GetConnectionDetailsAsync();
         if (provider == "Gemini")
         {
-            return new List<string> { "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp" };
+            return new List<string> 
+            { 
+                "gemini-3-pro",
+                "gemini-3-flash",
+                "gemini-2.5-pro",
+                "gemini-2.5-flash",
+                "gemini-2.0-pro-exp-02-05",
+                "gemini-2.0-flash", 
+                "gemini-1.5-pro", 
+                "gemini-1.5-flash"
+            };
         }
 
         try
@@ -148,8 +158,7 @@ public class AiService : IAiService
         try
         {
             var settings = await _settingsService.GetSettingsAsync();
-            var model = settings.OllamaModelName; // Using same field for simplicity or could add GeminiModel
-            if (!model.Contains("gemini")) model = "gemini-1.5-flash";
+            var model = !string.IsNullOrWhiteSpace(settings.OllamaModelName) ? settings.OllamaModelName : "gemini-1.5-flash";
 
             var url = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={apiKey}";
 

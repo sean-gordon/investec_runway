@@ -125,29 +125,47 @@ public class ActuarialService : IActuarialService
                     .Take(5)
                     .ToList();
         
-                        var categoryReport = new List<CategorySpend>();
-                        foreach (var cat in topCategories)
-                        {
-                            var ptdLastPeriodCatSpend = lastPeriodPtdExpenses
-                                .Where(t => NormalizeDescription(t.Description) == cat.Name)
-                                .Sum(t => t.Amount);
-                            
-                            var fullLastPeriodCatSpend = lastPeriodFullExpenses
-                                .Where(t => NormalizeDescription(t.Description) == cat.Name)
-                                .Sum(t => t.Amount);
-                            
-                            decimal diff = cat.Amount - ptdLastPeriodCatSpend;
-                            decimal percent = ptdLastPeriodCatSpend == 0 ? 100 : (diff / ptdLastPeriodCatSpend) * 100;   
-                
-                            // A category is 'stable' if:
-                            // 1. The Period-To-Date change is negligible (< 2%)
-                            // 2. OR the current amount matches the FULL previous period total (fixed costs hitting at slightly different times)
-                            bool isStable = (ptdLastPeriodCatSpend > 0 && Math.Abs(percent) < 2) || 
-                                            (fullLastPeriodCatSpend > 0 && Math.Abs((cat.Amount - fullLastPeriodCatSpend) / fullLastPeriodCatSpend) * 100 < 5);
-                
-                            categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent, isStable));        
-                        }        
-                // Stats - Projecting to 30 days or next salary (assume 30 day cycle for projection)
+                                var categoryReport = new List<CategorySpend>();
+                                foreach (var cat in topCategories)
+                                {
+                                    var ptdLastPeriodCatSpend = lastPeriodPtdExpenses
+                                        .Where(t => NormalizeDescription(t.Description) == cat.Name)
+                                        .Sum(t => t.Amount);
+                                    
+                                    var fullLastPeriodCatSpend = lastPeriodFullExpenses
+                                        .Where(t => NormalizeDescription(t.Description) == cat.Name)
+                                        .Sum(t => t.Amount);
+                                    
+                                    decimal diff = 0;
+                                    decimal percent = 0;
+                        
+                                    if (ptdLastPeriodCatSpend > 0)
+                                    {
+                                        diff = cat.Amount - ptdLastPeriodCatSpend;
+                                        percent = (diff / ptdLastPeriodCatSpend) * 100;
+                                    }
+                                    else if (fullLastPeriodCatSpend > 0)
+                                    {
+                                        // If nothing in PTD but hit in FULL last period, it's a timing shift.
+                                        // We compare current amount vs the full amount from last period.
+                                        diff = cat.Amount - fullLastPeriodCatSpend;
+                                        percent = (diff / fullLastPeriodCatSpend) * 100;
+                                    }
+                                    else
+                                    {
+                                        // Truly new category this period
+                                        diff = cat.Amount;
+                                        percent = 100;
+                                    }
+                        
+                                    // A category is 'stable' if:
+                                    // 1. The PTD or Full-Period change is small (< 5%)
+                                    // 2. OR the current amount is within a small margin of the full last period total
+                                    bool isStable = (ptdLastPeriodCatSpend > 0 && Math.Abs((cat.Amount - ptdLastPeriodCatSpend) / ptdLastPeriodCatSpend) * 100 < 5) || 
+                                                    (fullLastPeriodCatSpend > 0 && Math.Abs((cat.Amount - fullLastPeriodCatSpend) / fullLastPeriodCatSpend) * 100 < 5);
+                        
+                                    categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent, isStable));        
+                                }                // Stats - Projecting to 30 days or next salary (assume 30 day cycle for projection)
                 var estimatedCycleDays = (salaryPayments.Count >= 2) ? (salaryPayments[0].TransactionDate - salaryPayments[1].TransactionDate).TotalDays : 30;
                 if (estimatedCycleDays < 1) estimatedCycleDays = 30;
         

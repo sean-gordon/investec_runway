@@ -1,5 +1,6 @@
 using GordonWorker.Services;
 using GordonWorker.Workers;
+using GordonWorker.Middleware;
 using Dapper;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -45,6 +46,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseMiddleware<SecurityValidationMiddleware>();
 app.UseStaticFiles(); // Enable frontend
 app.UseAuthorization();
 

@@ -18,16 +18,20 @@ public class SecurityValidationMiddleware
     public async Task InvokeAsync(HttpContext context, ISettingsService settingsService)
     {
         var path = context.Request.Path;
-        var host = context.Request.Host.Host;
+        
+        // Use X-Forwarded-Host if available (e.g. from Cloudflare)
+        var effectiveHost = context.Request.Headers["X-Forwarded-Host"].ToString();
+        if (string.IsNullOrEmpty(effectiveHost)) effectiveHost = context.Request.Host.Host;
+        else effectiveHost = effectiveHost.Split(':')[0]; // Strip port for domain check
 
         // Rule 1: Allow if from *.wethegordons.co.za or localhost
-        bool isGordonDomain = host.EndsWith(".wethegordons.co.za", StringComparison.OrdinalIgnoreCase) || 
-                             host.Equals("wethegordons.co.za", StringComparison.OrdinalIgnoreCase) ||
-                             host.Equals("localhost", StringComparison.OrdinalIgnoreCase);
+        bool isGordonDomain = effectiveHost.EndsWith(".wethegordons.co.za", StringComparison.OrdinalIgnoreCase) || 
+                             effectiveHost.Equals("wethegordons.co.za", StringComparison.OrdinalIgnoreCase) ||
+                             effectiveHost.Equals("localhost", StringComparison.OrdinalIgnoreCase);
 
         // If it's the WhatsApp webhook, we MUST validate the Twilio signature regardless of the domain
         // to ensure it's actually Twilio calling us.
-        if (path.StartsWithSegments("/api/WhatsApp/webhook"))
+        if (path.StartsWithSegments("/api/WhatsApp/webhook") && HttpMethods.IsPost(context.Request.Method))
         {
             var settings = await settingsService.GetSettingsAsync();
             var authToken = settings.TwilioAuthToken;
@@ -53,6 +57,13 @@ public class SecurityValidationMiddleware
             
             context.Request.EnableBuffering();
             
+            if (!context.Request.HasFormContentType)
+            {
+                _logger.LogWarning("Webhook request missing form content type.");
+                context.Response.StatusCode = 415;
+                return;
+            }
+
             // For x-www-form-urlencoded, we read the form parameters
             var form = await context.Request.ReadFormAsync();
             var parameters = form.ToDictionary(k => k.Key, v => v.Value.ToString());
@@ -66,7 +77,7 @@ public class SecurityValidationMiddleware
                 return;
             }
 
-            _logger.LogWarning("Twilio signature validation failed. URL: {Url}, Host: {Host}", requestUrl, host);
+            _logger.LogWarning("Twilio signature validation failed. URL: {Url}, Host: {Host}", requestUrl, effectiveHost);
             context.Response.StatusCode = 403;
             await context.Response.WriteAsync("Forbidden: Invalid Twilio signature.");
             return;
@@ -79,7 +90,7 @@ public class SecurityValidationMiddleware
             return;
         }
 
-        _logger.LogWarning("Blocked request from unauthorized host: {Host} for path: {Path}", host, path);
+        _logger.LogWarning("Blocked request from unauthorized host: {Host} for path: {Path}", effectiveHost, path);
         context.Response.StatusCode = 403;
         await context.Response.WriteAsync("Forbidden: Unauthorized domain.");
     }

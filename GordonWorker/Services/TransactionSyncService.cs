@@ -93,6 +93,14 @@ public class TransactionSyncService : ITransactionSyncService
                             triggerReport = true;
                         }
                     }
+
+                    // Check for Large Income Alert
+                    // Credits are negative in Investec API
+                    if (tx.Amount <= -settings.IncomeAlertThreshold)
+                    {
+                        _logger.LogInformation("Large Income Detected: {Desc} (R{Amount}). Triggering automated report.", tx.Description, Math.Abs(tx.Amount));
+                        triggerReport = true;
+                    }
                 }
             }
         }

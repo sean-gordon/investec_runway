@@ -12,6 +12,7 @@ public class AppSettings
     public decimal ActuarialAlpha { get; set; } = 0.15m;
     public int AnalysisWindowDays { get; set; } = 90;
     public decimal UnexpectedPaymentThreshold { get; set; } = 3000m;
+    public decimal IncomeAlertThreshold { get; set; } = 5000m; // Alert when income > this
     public string OllamaBaseUrl { get; set; } = "http://host.docker.internal:11434";
     public string OllamaModelName { get; set; } = "deepseek-coder";
     public string GeminiApiKey { get; set; } = "";

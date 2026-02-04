@@ -32,25 +32,42 @@ The system is built using the following technologies:
 ### Installation
 
 1.  **Clone the Repository**
-    Download the source code to your local machine.
+    ```bash
+    git clone https://github.com/sean-gordon/investec_runway.git
+    cd investec_runway
+    ```
 
 2.  **Configure Environment**
-    Copy the template environment file to create your actual configuration file.
-    `cp .env.template .env`
+    Create your configuration file from the template and generate a random database password.
+    
+    **Linux / Mac:**
+    ```bash
+    cp .env.template .env
+    sed -i "s/change_this_password/$(openssl rand -hex 12)/g" .env
+    ```
+    
+    **Windows (PowerShell):**
+    ```powershell
+    Copy-Item .env.template .env
+    (Get-Content .env) -replace 'change_this_password', 'MySecurePassword123!' | Set-Content .env
+    ```
 
 3.  **Update Credentials**
-    Open the `.env` file in a text editor and update the following values:
-    *   `DB_PASSWORD`: Set a strong, unique password for your local database.
-    *   `INVESTEC_CLIENT_ID`: Your API Client ID from Investec.
-    *   `INVESTEC_SECRET`: Your API Secret from Investec.
-    *   `INVESTEC_API_KEY`: Your API Key from Investec.
+    Open the `.env` file and paste your Investec API keys.
+    ```bash
+    nano .env
+    # Or use Notepad
+    notepad .env
+    ```
 
 4.  **Start the System**
-    Run the following command to build and start the application containers:
-    `docker-compose up -d --build`
+    Launch the application in detached mode.
+    ```bash
+    docker-compose up -d --build
+    ```
 
 5.  **Access the Dashboard**
-    Open your web browser and navigate to `http://localhost:52944`.
+    Open your browser to: [http://localhost:52944](http://localhost:52944)
 
 ## Security Notes
 

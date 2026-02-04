@@ -28,3 +28,6 @@ Handle accounts from different regions with automatic exchange rate conversion.
 - [x] **Intelligent Stability Logic**: Fixed costs are identified and ignored for cut-back suggestions.
 - [x] **Cloud AI Integration**: Support for Google Gemini as a secondary brain.
 - [x] **Deterministic Fingerprinting**: Resolved data duplication issues using content-based IDs.
+- [x] **Encrypted Persistent Settings**: All configuration is now stored securely in the database and remembered across devices.
+- [x] **Linux Docker Compatibility**: Hardened orchestration for running on Oracle Cloud / Linux instances.
+- [x] **Dynamic Model Discovery**: Real-time model listing for both Ollama and Gemini.

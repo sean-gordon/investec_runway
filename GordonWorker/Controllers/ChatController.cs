@@ -39,7 +39,8 @@ public class ChatController : ControllerBase
         await connection.OpenAsync();
 
         // Check for specific "Deep Analysis" intents
-        var analysisKeywords = new[] { "runway", "burn", "forecast", "health", "analysis", "prediction", "risk" };
+        // reduced list to avoid hijacking specific queries (e.g. "analysis of Uber spend")
+        var analysisKeywords = new[] { "runway", "burn rate", "financial health", "forecast", "survival probability" };
         if (analysisKeywords.Any(k => lowerMessage.Contains(k)))
         {
             // 1. Fetch Raw Data for the Actuary Engine (Last 90 Days)
@@ -65,14 +66,15 @@ public class ChatController : ControllerBase
         else
         {
             // Text-to-SQL Agent for general queries
-            var sql = await _ollamaService.GenerateSqlAsync(request.Message);
-            _logger.LogInformation("Generated SQL: {Sql}", sql);
+            var rawResponse = await _ollamaService.GenerateSqlAsync(request.Message);
+            var sql = CleanSql(rawResponse);
+            _logger.LogInformation("Generated SQL (Cleaned): {Sql}", sql);
 
             try
             {
-                if (!sql.Trim().StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
+                if (string.IsNullOrWhiteSpace(sql) || !sql.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
                 {
-                    dataContext = "Error: The AI generated an invalid query (non-SELECT).";
+                    dataContext = "Error: The AI generated an invalid query (non-SELECT). Raw output: " + rawResponse;
                 }
                 else
                 {
@@ -89,6 +91,23 @@ public class ChatController : ControllerBase
 
         var finalResponse = await _ollamaService.FormatResponseAsync(request.Message, dataContext);
         return Ok(new { Response = finalResponse });
+    }
+
+    private string CleanSql(string llmOutput)
+    {
+        if (string.IsNullOrWhiteSpace(llmOutput)) return string.Empty;
+
+        // Remove Markdown code blocks
+        var cleaned = llmOutput.Replace("```sql", "").Replace("```", "").Trim();
+
+        // Find the start of the SELECT statement
+        var index = cleaned.IndexOf("SELECT", StringComparison.OrdinalIgnoreCase);
+        if (index >= 0)
+        {
+            cleaned = cleaned.Substring(index);
+        }
+
+        return cleaned;
     }
 }
 

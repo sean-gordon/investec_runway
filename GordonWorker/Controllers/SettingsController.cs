@@ -16,6 +16,8 @@ public class SettingsController : ControllerBase
 
     private readonly IInvestecClient _investecClient;
 
+    private readonly ILogger<SettingsController> _logger;
+
     public SettingsController(
         ISettingsService settingsService, 
         IEmailService emailService, 
@@ -23,7 +25,8 @@ public class SettingsController : ControllerBase
         IFinancialReportService reportService,
         ISystemStatusService statusService,
         ITransactionSyncService syncService,
-        IInvestecClient investecClient)
+        IInvestecClient investecClient,
+        ILogger<SettingsController> logger)
     {
         _settingsService = settingsService;
         _emailService = emailService;
@@ -32,6 +35,7 @@ public class SettingsController : ControllerBase
         _statusService = statusService;
         _syncService = syncService;
         _investecClient = investecClient;
+        _logger = logger;
     }
 
     [HttpGet("debug-investec")]
@@ -56,6 +60,7 @@ public class SettingsController : ControllerBase
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Investec Debug Failed.");
             return StatusCode(500, new { Error = ex.Message, Stack = ex.StackTrace });
         }
     }
@@ -70,22 +75,45 @@ public class SettingsController : ControllerBase
     [HttpPut]
     public async Task<IActionResult> Update([FromBody] AppSettings settings)
     {
-        await _settingsService.UpdateSettingsAsync(settings);
-        return Ok(settings);
+        try
+        {
+            await _settingsService.UpdateSettingsAsync(settings);
+            return Ok(settings);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update settings.");
+            return StatusCode(500, new { Error = ex.Message, Details = ex.InnerException?.Message });
+        }
     }
 
     [HttpPost("test-email")]
     public async Task<IActionResult> TestEmail()
     {
-        var success = await _emailService.SendTestEmailAsync();
-        return success ? Ok("Email sent successfully.") : StatusCode(500, "Failed to send email. Check logs.");
+        try
+        {
+            var success = await _emailService.SendTestEmailAsync();
+            return success ? Ok("Email sent successfully.") : StatusCode(500, "Failed to send email. Check logs.");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Error = ex.Message });
+        }
     }
 
     [HttpPost("test-ai")]
     public async Task<IActionResult> TestAi()
     {
-        var result = await _ollamaService.TestConnectionAsync();
-        return result.Success ? Ok("Connected to AI Brain successfully.") : StatusCode(500, result.Error);
+        try
+        {
+            var result = await _ollamaService.TestConnectionAsync();
+            return result.Success ? Ok(new { Message = "Connected to AI Brain successfully." }) : StatusCode(500, new { Error = result.Error });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "AI Test Failed.");
+            return StatusCode(500, new { Error = ex.Message });
+        }
     }
 
     [HttpPost("test-whatsapp")]

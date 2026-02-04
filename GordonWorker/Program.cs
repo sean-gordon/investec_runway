@@ -2,6 +2,11 @@ using GordonWorker.Services;
 using GordonWorker.Workers;
 using GordonWorker.Middleware;
 using Dapper;
+using Microsoft.AspNetCore.DataProtection;
+
+// Support legacy timestamp behavior for Npgsql (Postgres)
+AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+AppContext.SetSwitch("Npgsql.DisableDateTimeInfinityConversions", true);
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,6 +18,8 @@ DefaultTypeMap.MatchNamesWithUnderscores = true;
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo("keys"));
 
 builder.Services.AddHttpClient<IInvestecClient, InvestecClient>();
 builder.Services.AddHttpClient<IAiService, AiService>();

@@ -2,6 +2,7 @@ using GordonWorker.Services;
 using GordonWorker.Workers;
 using GordonWorker.Middleware;
 using Dapper;
+using Microsoft.AspNetCore.DataProtection;
 
 var builder = WebApplication.CreateBuilder(args);
 

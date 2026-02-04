@@ -88,7 +88,9 @@ public class SettingsService : ISettingsService
             {
                 _logger.LogInformation("No settings found in database. Initialising defaults.");
                 settings = new AppSettings();
-                await SaveToDbAsync(settings);
+                // Try to save defaults, but don't crash if DB is unreachable during startup
+                try { await SaveToDbAsync(settings); } 
+                catch (Exception ex) { _logger.LogWarning(ex, "Could not save default settings to DB. Using in-memory defaults."); }
             }
             else
             {

@@ -95,7 +95,7 @@ Table 'transactions' schema:
 - balance (numeric)
 - category (text)
 
-Return ONLY the SQL query. Use standard PostgreSQL syntax.";
+Return ONLY the raw SQL query. Do NOT use Markdown formatting (no ```sql). Do NOT include explanations.";
         return await GenerateCompletionAsync(systemPrompt, userPrompt);
     }
 

@@ -70,9 +70,22 @@ public class TransactionSyncService : ITransactionSyncService
                 var insertSql = @"
                     INSERT INTO transactions (id, account_id, transaction_date, description, amount, balance, category, is_ai_processed)
                     VALUES (@Id, @AccountId, @TransactionDate, @Description, @Amount, @Balance, @Category, @IsAiProcessed)
-                    ON CONFLICT (id) DO NOTHING";
+                    ON CONFLICT (id, transaction_date) DO NOTHING";
 
-                var rowsAffected = await connection.ExecuteAsync(insertSql, tx);
+                // Ensure UTC kind for Postgres
+                var parameters = new
+                {
+                    tx.Id,
+                    tx.AccountId,
+                    TransactionDate = tx.TransactionDate.UtcDateTime,
+                    tx.Description,
+                    tx.Amount,
+                    tx.Balance,
+                    tx.Category,
+                    tx.IsAiProcessed
+                };
+
+                var rowsAffected = await connection.ExecuteAsync(insertSql, parameters);
                 
                 // If it's a NEW transaction (rowsAffected > 0)
                 if (rowsAffected > 0)

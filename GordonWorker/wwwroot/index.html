@@ -639,7 +639,10 @@
                             method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.settings) 
                         });
                         if (res.ok) this.showToast("Saved Successfully");
-                        else this.showToast("Save Failed", "error");
+                        else {
+                            const err = await res.json();
+                            this.showToast(err.error || "Save Failed", "error");
+                        }
                     } catch (e) { this.showToast("Error Saving", "error"); }
                     finally { this.saving = false; }
                 },
@@ -691,7 +694,10 @@
                     try {
                         const res = await fetch('/api/settings/test-ai', { method: 'POST' });
                         if (res.ok) { this.showToast("AI Connected"); await this.loadModels(); }
-                        else this.showToast("AI Failed", "error");
+                        else {
+                            const err = await res.json();
+                            this.showToast(err.error || "AI Failed", "error");
+                        }
                     } catch (e) { this.showToast("Error", "error"); }
                     finally { this.aiTesting = false; }
                 },

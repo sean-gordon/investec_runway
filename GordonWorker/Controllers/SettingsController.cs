@@ -107,10 +107,11 @@ public class SettingsController : ControllerBase
         try
         {
             var result = await _ollamaService.TestConnectionAsync();
-            return result.Success ? Ok("Connected to AI Brain successfully.") : StatusCode(500, result.Error);
+            return result.Success ? Ok(new { Message = "Connected to AI Brain successfully." }) : StatusCode(500, new { Error = result.Error });
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "AI Test Failed.");
             return StatusCode(500, new { Error = ex.Message });
         }
     }

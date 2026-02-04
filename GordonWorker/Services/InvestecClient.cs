@@ -72,10 +72,18 @@ public class InvestecClient : IInvestecClient
     public async Task<string> AuthenticateAsync()
     {
         await EnsureBaseAddressAsync();
-        var clientId = _configuration["INVESTEC_CLIENT_ID"];
-        var secret = _configuration["INVESTEC_SECRET"];
-        var apiKey = _configuration["INVESTEC_API_KEY"];
+        var settings = await _settingsService.GetSettingsAsync();
+        var clientId = settings.InvestecClientId;
+        var secret = settings.InvestecSecret;
+        var apiKey = settings.InvestecApiKey;
+
+        // Fallback to configuration if DB settings are empty (legacy support/initial setup)
+        if (string.IsNullOrEmpty(clientId)) clientId = _configuration["INVESTEC_CLIENT_ID"];
+        if (string.IsNullOrEmpty(secret)) secret = _configuration["INVESTEC_SECRET"];
+        if (string.IsNullOrEmpty(apiKey)) apiKey = _configuration["INVESTEC_API_KEY"];
+
         if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(secret)) return string.Empty;
+        
         var request = new HttpRequestMessage(HttpMethod.Post, "identity/v2/oauth2/token");
         var authString = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{clientId}:{secret}"));
         request.Headers.Authorization = new AuthenticationHeaderValue("Basic", authString);

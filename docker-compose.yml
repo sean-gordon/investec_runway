@@ -22,6 +22,8 @@ services:
       - INVESTEC_SECRET=${INVESTEC_SECRET}
       - INVESTEC_API_KEY=${INVESTEC_API_KEY}
       - TZ=${TZ}
+    volumes:
+      - gordon_keys:/app/keys
     networks:
       - finance-net
     depends_on:
@@ -34,3 +36,4 @@ networks:
 
 volumes:
   timescaledb_data:
+  gordon_keys:

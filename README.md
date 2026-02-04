@@ -85,6 +85,12 @@ Once the application is running, you can fine-tune its behavior via the "Configu
 *   **Math:** Adjust the sensitivity of the financial models (e.g., how quickly the system reacts to new spending trends).
 *   **Email:** Configure SMTP settings to receive weekly email reports.
 
+### Troubleshooting Ollama (Windows)
+If Gordon cannot connect to Ollama after an upgrade, it is likely because Ollama is only listening on localhost.
+1. Quit Ollama from the System Tray.
+2. Set the Environment Variable `OLLAMA_HOST` to `0.0.0.0`.
+3. Restart Ollama.
+
 ## API Usage
 
 Gordon exposes a REST API that you can use to integrate his financial intelligence into other local services (like Home Assistant, Node-RED, or custom scripts).

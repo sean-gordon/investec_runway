@@ -13,6 +13,8 @@ DefaultTypeMap.MatchNamesWithUnderscores = true;
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo("keys"));
 
 builder.Services.AddHttpClient<IInvestecClient, InvestecClient>();
 builder.Services.AddHttpClient<IAiService, AiService>();

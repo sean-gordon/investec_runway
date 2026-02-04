@@ -549,9 +549,11 @@
                 window.addEventListener('resize', () => { this.isMobile = window.innerWidth < 768; });   
             },
             methods: {
-                formatTime(dateStr) {
-                    if (!dateStr || dateStr.startsWith('0001')) return 'Never';
-                    return new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                formatTime(dateInput) {
+                    if (!dateInput) return 'Never';
+                    // Check if it's a string before calling startsWith
+                    if (typeof dateInput === 'string' && dateInput.startsWith('0001')) return 'Never';
+                    return new Date(dateInput).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 },
                 showToast(msg, type = 'success') {
                     this.toast = { show: true, msg, type };

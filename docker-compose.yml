@@ -3,6 +3,7 @@ services:
     image: timescale/timescaledb:latest-pg16
     restart: unless-stopped
     environment:
+      - POSTGRES_DB=finance
       - POSTGRES_PASSWORD=${DB_PASSWORD}
       - TZ=${TZ}
     volumes:

@@ -640,17 +640,24 @@
                     this.chatLoading = true;
                     this.scrollToBottom();
                     
+                    console.log("Sending chat message:", msg);
+
                     try {
                         const res = await fetch('/chat', {
                             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Message: msg })
                         });
+                        console.log("Chat response status:", res.status);
+                        
                         if (res.ok) {
                             const data = await res.json();
+                            console.log("Chat data received:", data);
                             this.chatMessages.push({ role: 'gordon', content: data.response, time: this.formatTime(new Date()) });
                         } else {
+                            console.error("Chat error response:", await res.text());
                             this.chatMessages.push({ role: 'gordon', content: "I'm having trouble thinking right now.", time: this.formatTime(new Date()) });
                         }
                     } catch (e) {
+                        console.error("Chat network error:", e);
                         this.chatMessages.push({ role: 'gordon', content: "Connection lost.", time: this.formatTime(new Date()) });
                     } finally {
                         this.chatLoading = false;
@@ -669,13 +676,31 @@
         // Register HelpTip Component
         app.component('help-tip', {
             props: ['text'],
+            data() { return { show: false, top: 0, left: 0 }; },
+            methods: {
+                showTip(event) {
+                    const rect = event.target.getBoundingClientRect();
+                    this.left = rect.left + (rect.width / 2);
+                    this.top = rect.top; 
+                    
+                    // Prevent going off screen (basic check)
+                    if (this.left < 130) this.left = 130; 
+                    if (this.left > window.innerWidth - 130) this.left = window.innerWidth - 130;
+
+                    this.show = true;
+                },
+                hideTip() { this.show = false; }
+            },
             template: `
-                <div class="group relative flex items-center ml-1.5 cursor-help">
+                <div class="inline-flex items-center ml-1.5 cursor-help" @mouseenter="showTip" @mouseleave="hideTip">
                     <div class="w-4 h-4 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center text-[10px] font-bold hover:bg-brand-500 hover:text-white transition-colors">?</div>
-                    <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-slate-800 text-white text-xs rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none text-center leading-relaxed">
-                        {{ text }}
-                        <div class="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-800"></div>
-                    </div>
+                    <teleport to="body">
+                        <div v-if="show" :style="{ top: top + 'px', left: left + 'px' }" 
+                             class="fixed transform -translate-x-1/2 -translate-y-full mt-[-8px] w-64 p-3 bg-slate-800 text-white text-xs rounded-lg shadow-[0_10px_25px_-5px_rgba(0,0,0,0.5)] z-[2147483647] text-center leading-relaxed pointer-events-none border border-slate-700">
+                            {{ text }}
+                            <div class="absolute top-full left-1/2 -translate-x-1/2 -mt-[1px] border-4 border-transparent border-t-slate-800"></div>
+                        </div>
+                    </teleport>
                 </div>
             `
         });

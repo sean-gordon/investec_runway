@@ -680,6 +680,7 @@
                 },
                 async loadModels(saveFirst = false) {
                     if (saveFirst) await this.saveSettings();
+                    this.availableModels = []; // Clear current models to avoid showing stale data from previous provider
                     try {
                         const res = await fetch('/api/settings/models');
                         if (res.ok) this.availableModels = await res.json();

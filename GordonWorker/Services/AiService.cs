@@ -33,21 +33,40 @@ public class AiService : IAiService
 
     public async Task<List<string>> GetAvailableModelsAsync()
     {
-        var (provider, baseUrl, _, _) = await GetConnectionDetailsAsync();
+        var (provider, baseUrl, _, geminiKey) = await GetConnectionDetailsAsync();
+        
         if (provider == "Gemini")
         {
-            return new List<string> 
-            { 
-                "gemini-3-pro-preview",
-                "gemini-3-flash-preview",
-                "gemini-2.5-pro",
-                "gemini-2.5-flash",
-                "gemini-2.5-flash-lite",
-                "gemini-2.0-flash", 
-                "gemini-1.5-pro", 
-                "gemini-1.5-flash"
-            };
+            if (string.IsNullOrWhiteSpace(geminiKey)) return new List<string>();
+            try
+            {
+                var url = $"https://generativelanguage.googleapis.com/v1beta/models?key={geminiKey}";
+                var response = await _httpClient.GetAsync(url);
+                if (!response.IsSuccessStatusCode) return new List<string> { "gemini-1.5-flash", "gemini-1.5-pro" }; // Reliable fallbacks
+                
+                var responseString = await response.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(responseString);
+                var modelNames = new List<string>();
+                
+                if (doc.RootElement.TryGetProperty("models", out var models))
+                {
+                    foreach (var m in models.EnumerateArray())
+                    {
+                        var name = m.GetProperty("name").GetString() ?? "";
+                        if (name.StartsWith("models/")) name = name.Substring(7);
+                        // Only include text-generation models
+                        if (name.Contains("gemini") && !name.Contains("vision") && !name.Contains("embedding"))
+                        {
+                            modelNames.Add(name);
+                        }
+                    }
+                }
+                return modelNames.OrderByDescending(n => n).ToList();
+            }
+            catch { return new List<string> { "gemini-1.5-flash", "gemini-1.5-pro" }; }
         }
+
+        if (string.IsNullOrWhiteSpace(baseUrl)) return new List<string>();
 
         try
         {

@@ -16,6 +16,9 @@ services:
       context: ./GordonWorker
       dockerfile: Dockerfile
     restart: unless-stopped
+    user: root
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - ConnectionStrings__DefaultConnection=Host=timescaledb;Database=finance;Username=postgres;Password=${DB_PASSWORD}
       - INVESTEC_CLIENT_ID=${INVESTEC_CLIENT_ID}

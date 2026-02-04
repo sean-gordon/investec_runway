@@ -70,22 +70,43 @@ public class SettingsController : ControllerBase
     [HttpPut]
     public async Task<IActionResult> Update([FromBody] AppSettings settings)
     {
-        await _settingsService.UpdateSettingsAsync(settings);
-        return Ok(settings);
+        try
+        {
+            await _settingsService.UpdateSettingsAsync(settings);
+            return Ok(settings);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Error = ex.Message, Details = ex.InnerException?.Message });
+        }
     }
 
     [HttpPost("test-email")]
     public async Task<IActionResult> TestEmail()
     {
-        var success = await _emailService.SendTestEmailAsync();
-        return success ? Ok("Email sent successfully.") : StatusCode(500, "Failed to send email. Check logs.");
+        try
+        {
+            var success = await _emailService.SendTestEmailAsync();
+            return success ? Ok("Email sent successfully.") : StatusCode(500, "Failed to send email. Check logs.");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Error = ex.Message });
+        }
     }
 
     [HttpPost("test-ai")]
     public async Task<IActionResult> TestAi()
     {
-        var result = await _ollamaService.TestConnectionAsync();
-        return result.Success ? Ok("Connected to AI Brain successfully.") : StatusCode(500, result.Error);
+        try
+        {
+            var result = await _ollamaService.TestConnectionAsync();
+            return result.Success ? Ok("Connected to AI Brain successfully.") : StatusCode(500, result.Error);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Error = ex.Message });
+        }
     }
 
     [HttpPost("test-whatsapp")]

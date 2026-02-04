@@ -16,6 +16,8 @@ public class SettingsController : ControllerBase
 
     private readonly IInvestecClient _investecClient;
 
+    private readonly ILogger<SettingsController> _logger;
+
     public SettingsController(
         ISettingsService settingsService, 
         IEmailService emailService, 
@@ -23,7 +25,8 @@ public class SettingsController : ControllerBase
         IFinancialReportService reportService,
         ISystemStatusService statusService,
         ITransactionSyncService syncService,
-        IInvestecClient investecClient)
+        IInvestecClient investecClient,
+        ILogger<SettingsController> logger)
     {
         _settingsService = settingsService;
         _emailService = emailService;
@@ -32,6 +35,7 @@ public class SettingsController : ControllerBase
         _statusService = statusService;
         _syncService = syncService;
         _investecClient = investecClient;
+        _logger = logger;
     }
 
     [HttpGet("debug-investec")]
@@ -56,6 +60,7 @@ public class SettingsController : ControllerBase
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Investec Debug Failed.");
             return StatusCode(500, new { Error = ex.Message, Stack = ex.StackTrace });
         }
     }
@@ -77,6 +82,7 @@ public class SettingsController : ControllerBase
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Failed to update settings.");
             return StatusCode(500, new { Error = ex.Message, Details = ex.InnerException?.Message });
         }
     }

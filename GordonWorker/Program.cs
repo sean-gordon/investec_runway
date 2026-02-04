@@ -4,6 +4,10 @@ using GordonWorker.Middleware;
 using Dapper;
 using Microsoft.AspNetCore.DataProtection;
 
+// Support legacy timestamp behavior for Npgsql (Postgres)
+AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+AppContext.SetSwitch("Npgsql.DisableDateTimeInfinityConversions", true);
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Enable snake_case mapping for Dapper (Postgres style)

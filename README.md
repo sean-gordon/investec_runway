@@ -1,15 +1,15 @@
-# Gordon Finance Engine
+# Gordon Finance Engine 🦓
 
 Gordon Finance Engine is a self-hosted, personal financial analytics platform. It is designed to provide professional-grade insights into your personal finances by connecting directly to your bank account and using advanced data analysis techniques.
 
-The system connects to Investec Programmable Banking to retrieve your transaction history, stores it in a specialized time-series database, and uses a Large Language Model (LLM) to allow you to ask questions about your money in plain English.
+The system connects to Investec Programmable Banking to retrieve your transaction history, stores it in a specialised time-series database, and uses a Large Language Model (LLM) to allow you to ask questions about your money in plain English.
 
 ## Key Features
 
 *   **Automated Ingestion:** Automatically pulls your latest transactions from Investec.
 *   **Actuarial Logic:** Calculates your "Burn Rate" and projected financial runway using weighted averages that adapt to your recent spending habits.
 *   **AI Analyst:** Chat with your financial data using a local LLM (Ollama) or Google Gemini. Ask questions like "How much did I spend on coffee last month?" or "Will I make it to payday?".
-*   **Weekly Reports:** specific email reports that summarize your weekly spending, upcoming bills, and financial health.
+*   **Weekly Reports:** specific email reports that summarise your weekly spending, upcoming bills, and financial health.
 *   **Privacy First:** Self-hosted on your own hardware. Your banking data stays with you.
 
 ## Architecture

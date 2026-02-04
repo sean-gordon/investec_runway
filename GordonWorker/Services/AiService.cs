@@ -93,13 +93,30 @@ public class AiService : IAiService
                 if (string.IsNullOrWhiteSpace(result) || result.Contains("Error:")) return (false, result ?? "Empty response.");
                 return (true, string.Empty);
             }
+
+            if (string.IsNullOrWhiteSpace(baseUrl)) return (false, "Ollama URL is not configured.");
+            if (string.IsNullOrWhiteSpace(model)) return (false, "Please select a model first.");
+
             var baseUri = baseUrl.EndsWith("/") ? baseUrl : baseUrl + "/";
             var fullUrl = new Uri(new Uri(baseUri), "api/generate");
             var request = new { model = model, prompt = "Say 'OK'", stream = false };
             var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
+            
+            _logger.LogInformation("Testing Ollama connection: {Url}, Model: {Model}", fullUrl, model);
+            
             var response = await _httpClient.PostAsync(fullUrl, content);
+            
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                return (false, $"Model '{model}' not found on Ollama server. Have you run 'ollama pull {model}'?");
+            }
+
             if (!response.IsSuccessStatusCode) return (false, $"Ollama error ({response.StatusCode})");
             return (true, string.Empty);
+        }
+        catch (HttpRequestException ex) when (ex.Message.Contains("refused") || ex.Message.Contains("known"))
+        {
+            return (false, $"Could not reach Ollama at {baseUrl}. Check the URL and ensure OLLAMA_HOST=0.0.0.0 is set.");
         }
         catch (Exception ex) { _logger.LogError(ex, "AI Connection test failed."); return (false, ex.Message); }
     }
@@ -181,25 +198,39 @@ Context Information:
     
         private async Task<string> GenerateCompletionAsync(string system, string prompt, CancellationToken ct = default)
         {
-            var (provider, _, _, geminiKey) = await GetConnectionDetailsAsync();
+            var (provider, baseUrl, model, geminiKey) = await GetConnectionDetailsAsync();
+            
             if (provider == "Gemini") return await GenerateGeminiCompletionAsync(system, prompt, geminiKey, ct); 
             
-            var settings = await _settingsService.GetSettingsAsync();
-            var model = settings.OllamaModelName;
-            var baseUrl = settings.OllamaBaseUrl;
+            if (string.IsNullOrWhiteSpace(model))
+            {
+                _logger.LogWarning("AI model name is not configured. Please select a model in settings.");
+                return "I'm sorry, I don't have a model selected. Please check your settings.";
+            }
+
             var request = new { model = model, prompt = $"{system}\n\n{prompt}", stream = false };
             var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
             try 
             {
                 var baseUri = baseUrl.EndsWith("/") ? baseUrl : baseUrl + "/";
                 var fullUrl = new Uri(new Uri(baseUri), "api/generate");
+                
+                _logger.LogInformation("Sending request to Ollama: {Url}, Model: {Model}", fullUrl, model);
+                
                 var response = await _httpClient.PostAsync(fullUrl, content, ct);
+                
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    _logger.LogError("Ollama returned 404. This usually means the model '{Model}' is not downloaded on the server.", model);
+                    return $"Error: The AI model '{model}' was not found on your Ollama server.";
+                }
+
                 response.EnsureSuccessStatusCode();
                 var responseString = await response.Content.ReadAsStringAsync(ct);
                 var result = JsonSerializer.Deserialize<OllamaResponse>(responseString);
                 return result?.Response?.Trim() ?? string.Empty;
             }
-            catch (Exception ex) { _logger.LogError(ex, "Error calling Ollama."); return "I'm sorry, I couldn't process that request right now."; }
+            catch (Exception ex) { _logger.LogError(ex, "Error calling Ollama at {Url}", baseUrl); return "I'm sorry, I couldn't process that request right now."; }
         }
     
         private async Task<string> GenerateGeminiCompletionAsync(string system, string prompt, string apiKey, CancellationToken ct = default)

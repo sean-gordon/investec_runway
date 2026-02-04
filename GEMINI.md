@@ -6,15 +6,16 @@
 
 *   **Core:** .NET 8 (C#)
 *   **Database:** TimescaleDB (PostgreSQL extension).
-    *   `transactions` table: Time-series hypertable.
+    *   `transactions` table: Time-series hypertable with composite primary keys.
     *   `system_config` table: JSONB singleton for app settings.
-*   **AI/LLM:** Multi-provider support (Ollama or Google Gemini).
+*   **AI/LLM:** Multi-provider support (Ollama or Google Gemini) with dynamic model discovery.
 *   **Frontend:** Vue.js 3 (Global build) + Tailwind CSS. Served as static files from `wwwroot`.
-*   **Orchestration:** Docker Compose.
+*   **Security:** .NET Data Protection API for encrypting sensitive keys (AES-256) at rest in the DB.
+*   **Orchestration:** Docker Compose (Windows & Linux compatible).
 
 ## Architecture
 
-1.  **`timescaledb`**: Stores financial data and configuration.
+1.  **`timescaledb`**: Stores financial data and encrypted configuration.
 2.  **`gordon-worker`**: The main application logic.
     *   **Ingestion Worker**: Polls Investec API with deterministic deduplication (`TransactionsBackgroundService`).
     *   **Weekly Reporter**: Orchestrates the salary-cycle reporting pipeline.
@@ -22,22 +23,16 @@
 
 ### Key Services (`GordonWorker/Services`)
 
-*   **`ActuarialService`**: Implements the Payday-Targeted Lifecycle:
-    *   **Salary Cycle Detection**: Sign-agnostic detection of paycheck dates.
-    *   **Upcoming Payments**: Reserves balance for missing fixed historical overhead.
-    *   **Period-To-Date (PTD)**: Like-for-like comparison between cycles.
-    *   **Weighted Burn (EMA)**: Recent spending sensitivity.
-*   **`AiService`**: Handles LLM communication (Ollama/Gemini).
-    *   *Text-to-SQL*: Generates SQL for raw queries.
-    *   *Analyst Persona*: Interprets complex JSON stats into simple advice.
-*   **`SettingsService`**: Persists runtime configuration to the database.
+*   **`ActuarialService`**: Implements the Payday-Targeted Lifecycle.
+*   **`AiService`**: Handles LLM communication with dynamic provider switching.
+*   **`SettingsService`**: Manages encrypted database persistence for all runtime configuration.
 *   **`TransactionSyncService`**: Logic for fetching and fingerprinting transactions.
 *   **`FinancialReportService`**: Orchestrates data fetching, math, AI summary, and HTML email generation.
 
 ## Development Conventions
 
 *   **Language & Locale:** All code, comments, and logs must use **English UK**.
-*   **Logging**: Console logs must include timestamps in `[yyyy-MM-dd HH:mm:ss]` format.
+*   **Logging:** Console logs include timestamps in `[yyyy-MM-dd HH:mm:ss]` format.
 *   **Database:** Use "Deterministic Fingerprinting" for IDs to prevent sync duplication.
 *   **Frontend:** Keep the frontend "no-build". Use Vue 3 Global build.
 

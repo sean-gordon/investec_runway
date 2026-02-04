@@ -1,84 +1,112 @@
-# Gordon Finance Engine
+# Gordon Finance Engine 🦓
 
-A self-hosted, containerised financial analytics platform that acts as your personal "Actuarial AI". It synchronises Investec Programmable Banking transactions into a TimescaleDB hypertable, performs advanced statistical analysis (Burn Rate, Volatility, Runway Probability), and provides natural language insights via local LLMs (Ollama) or Cloud AI (Google Gemini).
+Gordon Finance Engine is a self-hosted, personal financial analytics platform. It is designed to provide professional-grade insights into your personal finances by connecting directly to your bank account and using advanced data analysis techniques.
 
-## Features
+The system connects to Investec Programmable Banking to retrieve your transaction history, stores it in a specialised time-series database (TimescaleDB), and uses a Large Language Model (LLM) to allow you to ask questions about your money in plain English.
 
--   **Multi-Account Sync**: Automatically fetches transactions for all linked Investec accounts every 60 seconds with deterministic deduplication.
--   **Salary-to-Salary Lifecycle**: Reports are grounded in your actual paycheck dates (e.g. "TCP 131") rather than arbitrary calendar months.
--   **Forward-Looking Projections**:
-    -   **Upcoming Expected Payments**: Automatically identifies recurring large overheads (School, Mortgage, Insurance) that haven't hit yet and reserves them in your projections.
-    -   **Projected Payday Balance**: Calculates exactly what will be left in your account the moment before your next salary arrives.
--   **Advanced Actuarial Logic**:
-    -   **Payday-Targeted Runway**: Conservative estimates of how long your money will truly last, accounting for unpaid overhead.
-    -   **Like-for-Like PTD Comparison**: Compares current spending strictly against the same point in the *previous* salary cycle.
-    -   **Volatility & Trend Analysis**: Chronological EMA-weighted burn rate and variance.
--   **AI Analyst (Dual-Brain)**: Connect to **Ollama** (local) or **Google Gemini** (cloud) to interpret data and provide actionable recommendations.
--   **Weekly Reports**: Sends high-quality HTML emails with "Financial Vital Signs" and AI summaries.
+## Key Features
 
-## Prerequisites
+*   **Automated Ingestion:** Automatically pulls your latest transactions from Investec with deterministic deduplication.
+*   **Actuarial Logic:** Calculates your "Burn Rate" and projected financial runway using weighted averages that adapt to your recent spending habits.
+*   **AI Analyst:** Chat with your financial data using a local LLM (Ollama) or Google Gemini. Ask questions like "How much did I spend on coffee last month?" or "Will I make it to payday?".
+*   **Encrypted Persistent Settings:** All configuration (Bank keys, AI settings, Email) is stored securely in the database with encryption at rest, allowing for a seamless experience across multiple devices.
+*   **Weekly Reports:** Proactive email reports that summarise your weekly spending, upcoming bills, and financial health.
+*   **Privacy First:** Self-hosted on your own hardware (Windows/Linux Docker). Your banking data stays with you.
 
--   Docker Desktop
--   Investec Programmable Banking credentials (Client ID, Secret, API Key)
--   **AI Provider**: Either an Ollama instance or a Google Gemini API Key.
--   SMTP Server details (e.g., Gmail) for email reports.
+## Architecture
 
-## Quick Start
+The system is built using the following technologies:
 
-1.  **Clone the repository**:
+*   **Core Application:** .NET 8 (C#) Worker Service.
+*   **Database:** TimescaleDB (PostgreSQL) for efficient storage of time-series transaction data.
+*   **Frontend:** A lightweight, single-page web interface built with Vue.js 3 and Tailwind CSS.
+*   **Deployment:** Docker Compose for easy orchestration of all services.
+
+## Getting Started
+
+### Prerequisites
+
+*   Docker and Docker Compose installed on your machine.
+*   An Investec Programmable Banking account with API credentials.
+*   (Optional) An Ollama instance for local AI, or a Google Gemini API key.
+
+### Installation
+
+1.  **Clone the Repository**
     ```bash
     git clone https://github.com/sean-gordon/investec_runway.git
     cd investec_runway
     ```
 
-2.  **Environment Variables**:
-    Create a `.env` file in the root directory:
-    ```env
-    INVESTEC_CLIENT_ID=your_client_id
-    INVESTEC_SECRET=your_secret
-    INVESTEC_API_KEY=your_api_key
-    ```
-
-3.  **Run with Docker Compose**:
+2.  **Configure Environment**
+    Create your configuration file from the template and generate a random database password.
+    
+    **Linux / Mac:**
     ```bash
-    docker-compose up -d --build
+    cp .env.template .env
+    # Set DB_PASSWORD and TZ in .env
+    ```
+    
+    **Windows (PowerShell):**
+    ```powershell
+    Copy-Item .env.template .env
+    # Set DB_PASSWORD and TZ in .env
     ```
 
-4.  **Access the Dashboard**:
-    Open your browser to `http://localhost:52944`.
+3.  **Start the System**
+    Launch the application in detached mode.
+    ```bash
+    docker compose up -d --build
+    ```
 
-## Configuration (via Dashboard)
+4.  **Access the Dashboard**
+    Open your browser to: [http://localhost:52944](http://localhost:52944)
 
-Once the app is running, use the dashboard (`http://localhost:52944`) to configure:
+## Configuration
 
-*   **Intelligence Engine**: Switch between Ollama and Gemini. Test connections and select models from dynamic dropdowns.
-*   **Data Settings**: Set "History Depth" and choose your Currency Culture (e.g., en-ZA for Rands).
-*   **Notifications**: Enter SMTP details to enable email reports.
+Once the application is running, you can fine-tune its behavior via the "Configuration" tab in the web interface. **All settings entered here are encrypted and saved to the database.**
 
-## Usage
+*   **Profile:** Set your name and preferred currency format.
+*   **Connections:** Manage your Investec API credentials and history depth.
+*   **Brain:** Choose between local (Ollama) or cloud (Gemini) AI providers and select your model.
+*   **Math:** Adjust the sensitivity of the financial models.
+*   **Email:** Configure SMTP settings for weekly reports.
 
-### Manual Report
-Click **"Generate & Send Report Now"** on the dashboard to trigger an immediate analysis and email.
+## Troubleshooting
 
-### Chat API
-Send a POST request to query your financial data:
-```http
-POST http://localhost:52944/chat
-Content-Type: application/json
+### Ollama (Windows)
+If Gordon cannot connect to Ollama after an upgrade, it is likely because Ollama is only listening on localhost.
+1. Quit Ollama from the System Tray.
+2. Set the Environment Variable `OLLAMA_HOST` to `0.0.0.0`.
+3. Restart Ollama.
 
-{
-  "message": "What is my projected balance for the next payday?"
-}
+### Linux Permissions
+If you see "Permission Denied" errors in the logs regarding the encryption keys, run:
+```bash
+sudo chown -R 0:0 keys
 ```
 
-### Force Re-Sync
-If data looks incorrect, click **"Force Full Re-Sync"** in the Data section. This clears local data and re-calculates all transaction IDs using stable deterministic fingerprinting.
+### Database "finance" Does Not Exist
+If the database was not automatically created, run:
+```bash
+docker exec -it investec_runway-timescaledb-1 psql -U postgres -c "CREATE DATABASE finance;"
+docker exec -it investec_runway-timescaledb-1 psql -U postgres -d finance -f /docker-entrypoint-initdb.d/init.sql
+```
 
-## Architecture
+## API Usage
 
--   **timescaledb**: PostgreSQL with Timescale extension. Stores transactions and persistent system settings.
--   **gordon-worker**: .NET 8 Service.
-    -   **Ingestion**: Background service with deterministic deduplication.
-    -   **Analysis**: `ActuarialService` performing payday-targeted math.
-    -   **AI Service**: Abstracted LLM communication (Ollama/Gemini).
-    -   **API/UI**: Serves the Vue.js frontend and REST endpoints.
+Gordon exposes a REST API that you can use to integrate his financial intelligence into other local services.
+
+**Endpoint:** `POST /chat`
+**Port:** `52944` (Default)
+
+**Example Request:**
+```bash
+curl -X POST http://localhost:52944/chat \
+  -H "Content-Type: application/json" \
+  -d '{"Message": "How much did I spend on Uber last month?"}'
+```
+
+## License
+
+This project is open-source. Please see the LICENSE file for details.

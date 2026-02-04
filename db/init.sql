@@ -3,14 +3,15 @@ CREATE EXTENSION IF NOT EXISTS timescaledb;
 
 -- Create transactions table
 CREATE TABLE IF NOT EXISTS transactions (
-    id UUID PRIMARY KEY,
+    id UUID,
     account_id TEXT,
     transaction_date TIMESTAMPTZ NOT NULL,
     description TEXT,
     amount DECIMAL(18, 2),
     balance DECIMAL(18, 2),
     category TEXT,
-    is_ai_processed BOOLEAN DEFAULT FALSE
+    is_ai_processed BOOLEAN DEFAULT FALSE,
+    PRIMARY KEY (id, transaction_date)
 );
 
 -- Convert to Hypertable partitioned by transaction_date

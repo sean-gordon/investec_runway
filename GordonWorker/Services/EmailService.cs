@@ -3,6 +3,7 @@ using System.Net.Mail;
 
 namespace GordonWorker.Services;
 
+// This defines the contract for sending emails, so other parts of the app can use it without knowing how it works.
 public interface IEmailService
 {
     Task SendEmailAsync(string subject, string body);
@@ -22,6 +23,7 @@ public class EmailService : IEmailService
         _settingsService = settingsService;
     }
 
+    // I need to gather all the email settings. I check the database first, and if nothing is there, I look in the environment files.
     private async Task<(string Host, int Port, string User, string Pass, string To)> GetEmailConfigAsync()
     {
         var settings = await _settingsService.GetSettingsAsync();
@@ -35,10 +37,12 @@ public class EmailService : IEmailService
         return (host ?? "", port, user ?? "", pass ?? "", to ?? "");
     }
 
+    // This is the main function that actually sends the email out to the internet.
     public async Task SendEmailAsync(string subject, string body)
     {
         var config = await GetEmailConfigAsync();
 
+        // If I don't know where to send the email or which server to use, I'll stop here and log a warning.
         if (string.IsNullOrEmpty(config.Host) || string.IsNullOrEmpty(config.To))
         {
             _logger.LogWarning("SMTP configuration missing. Email not sent.\nSubject: {Subject}", subject);
@@ -59,6 +63,7 @@ public class EmailService : IEmailService
             IsBodyHtml = true
         };
 
+        // You might have listed multiple people to receive this email, so I'll add them one by one.
         mailMessage.To.Clear();
         var recipients = config.To.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
         foreach (var recipient in recipients)
@@ -74,10 +79,11 @@ public class EmailService : IEmailService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send email.");
-            throw; // Re-throw for visibility in test method
+            throw; // I'm re-throwing this error so the test button knows it failed.
         }
     }
 
+    // A simple test function to check if your email settings are correct.
     public async Task<bool> SendTestEmailAsync()
     {
         try

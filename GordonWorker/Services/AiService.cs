@@ -33,21 +33,40 @@ public class AiService : IAiService
 
     public async Task<List<string>> GetAvailableModelsAsync()
     {
-        var (provider, baseUrl, _, _) = await GetConnectionDetailsAsync();
+        var (provider, baseUrl, _, geminiKey) = await GetConnectionDetailsAsync();
+        
         if (provider == "Gemini")
         {
-            return new List<string> 
-            { 
-                "gemini-3-pro-preview",
-                "gemini-3-flash-preview",
-                "gemini-2.5-pro",
-                "gemini-2.5-flash",
-                "gemini-2.5-flash-lite",
-                "gemini-2.0-flash", 
-                "gemini-1.5-pro", 
-                "gemini-1.5-flash"
-            };
+            if (string.IsNullOrWhiteSpace(geminiKey)) return new List<string>();
+            try
+            {
+                var url = $"https://generativelanguage.googleapis.com/v1beta/models?key={geminiKey}";
+                var response = await _httpClient.GetAsync(url);
+                if (!response.IsSuccessStatusCode) return new List<string> { "gemini-1.5-flash", "gemini-1.5-pro" }; // Reliable fallbacks
+                
+                var responseString = await response.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(responseString);
+                var modelNames = new List<string>();
+                
+                if (doc.RootElement.TryGetProperty("models", out var models))
+                {
+                    foreach (var m in models.EnumerateArray())
+                    {
+                        var name = m.GetProperty("name").GetString() ?? "";
+                        if (name.StartsWith("models/")) name = name.Substring(7);
+                        // Only include text-generation models
+                        if (name.Contains("gemini") && !name.Contains("vision") && !name.Contains("embedding"))
+                        {
+                            modelNames.Add(name);
+                        }
+                    }
+                }
+                return modelNames.OrderByDescending(n => n).ToList();
+            }
+            catch { return new List<string> { "gemini-1.5-flash", "gemini-1.5-pro" }; }
         }
+
+        if (string.IsNullOrWhiteSpace(baseUrl)) return new List<string>();
 
         try
         {
@@ -74,20 +93,40 @@ public class AiService : IAiService
                 if (string.IsNullOrWhiteSpace(result) || result.Contains("Error:")) return (false, result ?? "Empty response.");
                 return (true, string.Empty);
             }
+
+            if (string.IsNullOrWhiteSpace(baseUrl)) return (false, "Ollama URL is not configured.");
+            if (string.IsNullOrWhiteSpace(model)) return (false, "Please select a model first.");
+
             var baseUri = baseUrl.EndsWith("/") ? baseUrl : baseUrl + "/";
             var fullUrl = new Uri(new Uri(baseUri), "api/generate");
             var request = new { model = model, prompt = "Say 'OK'", stream = false };
             var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
+            
+            _logger.LogInformation("Testing Ollama connection: {Url}, Model: {Model}", fullUrl, model);
+            
             var response = await _httpClient.PostAsync(fullUrl, content);
+            
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                return (false, $"Model '{model}' not found on Ollama server. Have you run 'ollama pull {model}'?");
+            }
+
             if (!response.IsSuccessStatusCode) return (false, $"Ollama error ({response.StatusCode})");
             return (true, string.Empty);
+        }
+        catch (HttpRequestException ex) when (ex.Message.Contains("refused") || ex.Message.Contains("known"))
+        {
+            return (false, $"Could not reach Ollama at {baseUrl}. Check the URL and ensure OLLAMA_HOST=0.0.0.0 is set.");
         }
         catch (Exception ex) { _logger.LogError(ex, "AI Connection test failed."); return (false, ex.Message); }
     }
 
     public async Task<string> GenerateSqlAsync(string userPrompt)
     {
-        var systemPrompt = @"You are a PostgreSQL expert for a financial database.
+        var today = DateTime.Today.ToString("yyyy-MM-dd");
+        var systemPrompt = $@"You are a PostgreSQL expert for a financial database.
+Current Date: {today}
+
 Table 'transactions' schema:
 - transaction_date (timestamptz)
 - description (text)
@@ -95,7 +134,7 @@ Table 'transactions' schema:
 - balance (numeric)
 - category (text)
 
-Return ONLY the SQL query. Use standard PostgreSQL syntax.";
+Return ONLY the raw SQL query. Do NOT use Markdown formatting (no ```sql). Do NOT include explanations.";
         return await GenerateCompletionAsync(systemPrompt, userPrompt);
     }
 
@@ -159,25 +198,39 @@ Context Information:
     
         private async Task<string> GenerateCompletionAsync(string system, string prompt, CancellationToken ct = default)
         {
-            var (provider, _, _, geminiKey) = await GetConnectionDetailsAsync();
+            var (provider, baseUrl, model, geminiKey) = await GetConnectionDetailsAsync();
+            
             if (provider == "Gemini") return await GenerateGeminiCompletionAsync(system, prompt, geminiKey, ct); 
             
-            var settings = await _settingsService.GetSettingsAsync();
-            var model = settings.OllamaModelName;
-            var baseUrl = settings.OllamaBaseUrl;
+            if (string.IsNullOrWhiteSpace(model))
+            {
+                _logger.LogWarning("AI model name is not configured. Please select a model in settings.");
+                return "I'm sorry, I don't have a model selected. Please check your settings.";
+            }
+
             var request = new { model = model, prompt = $"{system}\n\n{prompt}", stream = false };
             var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
             try 
             {
                 var baseUri = baseUrl.EndsWith("/") ? baseUrl : baseUrl + "/";
                 var fullUrl = new Uri(new Uri(baseUri), "api/generate");
+                
+                _logger.LogInformation("Sending request to Ollama: {Url}, Model: {Model}", fullUrl, model);
+                
                 var response = await _httpClient.PostAsync(fullUrl, content, ct);
+                
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    _logger.LogError("Ollama returned 404. This usually means the model '{Model}' is not downloaded on the server.", model);
+                    return $"Error: The AI model '{model}' was not found on your Ollama server.";
+                }
+
                 response.EnsureSuccessStatusCode();
                 var responseString = await response.Content.ReadAsStringAsync(ct);
                 var result = JsonSerializer.Deserialize<OllamaResponse>(responseString);
                 return result?.Response?.Trim() ?? string.Empty;
             }
-            catch (Exception ex) { _logger.LogError(ex, "Error calling Ollama."); return "I'm sorry, I couldn't process that request right now."; }
+            catch (Exception ex) { _logger.LogError(ex, "Error calling Ollama at {Url}", baseUrl); return "I'm sorry, I couldn't process that request right now."; }
         }
     
         private async Task<string> GenerateGeminiCompletionAsync(string system, string prompt, string apiKey, CancellationToken ct = default)

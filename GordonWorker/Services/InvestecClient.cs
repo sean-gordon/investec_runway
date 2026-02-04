@@ -134,7 +134,17 @@ public class InvestecClient : IInvestecClient
                     var hashKey = $"{accountId}_{t.TransactionDate:O}_{t.Description}_{t.Amount.ToString("F2", CultureInfo.InvariantCulture)}_{t.AccountBalance.ToString("F2", CultureInfo.InvariantCulture)}";
                     id = GenerateUuidFromString(hashKey);
                 }
-                transactions.Add(new Transaction { Id = id, AccountId = accountId, TransactionDate = t.TransactionDate == default ? DateTimeOffset.UtcNow : t.TransactionDate, Description = t.Description, Amount = t.Amount, Balance = t.AccountBalance, Category = t.Type, IsAiProcessed = false });
+                transactions.Add(new Transaction 
+                { 
+                    Id = id, 
+                    AccountId = accountId, 
+                    TransactionDate = t.TransactionDate == default ? DateTimeOffset.UtcNow : t.TransactionDate.ToUniversalTime(), 
+                    Description = t.Description, 
+                    Amount = t.Amount, 
+                    Balance = t.AccountBalance, 
+                    Category = t.Type, 
+                    IsAiProcessed = false 
+                });
             }
         }
         return transactions;

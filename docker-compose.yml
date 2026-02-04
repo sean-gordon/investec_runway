@@ -1,8 +1,10 @@
 services:
   timescaledb:
     image: timescale/timescaledb:latest-pg16
+    restart: unless-stopped
     environment:
-      - POSTGRES_PASSWORD=password
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - TZ=${TZ}
     volumes:
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
       - timescaledb_data:/var/lib/postgresql/data
@@ -13,11 +15,13 @@ services:
     build:
       context: ./GordonWorker
       dockerfile: Dockerfile
+    restart: unless-stopped
     environment:
-      - ConnectionStrings__DefaultConnection=Host=timescaledb;Database=postgres;Username=postgres;Password=password
+      - ConnectionStrings__DefaultConnection=Host=timescaledb;Database=finance;Username=postgres;Password=${DB_PASSWORD}
       - INVESTEC_CLIENT_ID=${INVESTEC_CLIENT_ID}
       - INVESTEC_SECRET=${INVESTEC_SECRET}
       - INVESTEC_API_KEY=${INVESTEC_API_KEY}
+      - TZ=${TZ}
     networks:
       - finance-net
     depends_on:

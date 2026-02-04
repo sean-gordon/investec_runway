@@ -109,3 +109,61 @@ curl -X POST http://localhost:52944/chat \
 ## License
 
 This project is open-source. Please see the LICENSE file for details.
+
+## Reference Files
+
+If you need to manually recreate the configuration files, here is exactly what is required.
+
+**`.env`**
+```ini
+# Database Configuration
+DB_PASSWORD=change_this_password
+
+# Investec Credentials
+INVESTEC_CLIENT_ID=your_client_id_here
+INVESTEC_SECRET=your_secret_here
+INVESTEC_API_KEY=your_api_key_here
+
+# Timezone
+TZ=Africa/Johannesburg
+```
+
+**`docker-compose.yml`**
+```yaml
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    restart: unless-stopped
+    environment:
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - TZ=${TZ}
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - timescaledb_data:/var/lib/postgresql/data
+    networks:
+      - finance-net
+
+  gordon-worker:
+    build:
+      context: ./GordonWorker
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      - ConnectionStrings__DefaultConnection=Host=timescaledb;Database=finance;Username=postgres;Password=${DB_PASSWORD}
+      - INVESTEC_CLIENT_ID=${INVESTEC_CLIENT_ID}
+      - INVESTEC_SECRET=${INVESTEC_SECRET}
+      - INVESTEC_API_KEY=${INVESTEC_API_KEY}
+      - TZ=${TZ}
+    networks:
+      - finance-net
+    depends_on:
+      - timescaledb
+    ports:
+      - "52944:8080"
+
+networks:
+  finance-net:
+
+volumes:
+  timescaledb_data:
+```

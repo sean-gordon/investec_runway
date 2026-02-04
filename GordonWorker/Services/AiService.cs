@@ -87,7 +87,10 @@ public class AiService : IAiService
 
     public async Task<string> GenerateSqlAsync(string userPrompt)
     {
-        var systemPrompt = @"You are a PostgreSQL expert for a financial database.
+        var today = DateTime.Today.ToString("yyyy-MM-dd");
+        var systemPrompt = $@"You are a PostgreSQL expert for a financial database.
+Current Date: {today}
+
 Table 'transactions' schema:
 - transaction_date (timestamptz)
 - description (text)

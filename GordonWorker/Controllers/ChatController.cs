@@ -39,7 +39,8 @@ public class ChatController : ControllerBase
         await connection.OpenAsync();
 
         // Check for specific "Deep Analysis" intents
-        var analysisKeywords = new[] { "runway", "burn", "forecast", "health", "analysis", "prediction", "risk" };
+        // reduced list to avoid hijacking specific queries (e.g. "analysis of Uber spend")
+        var analysisKeywords = new[] { "runway", "burn rate", "financial health", "forecast", "survival probability" };
         if (analysisKeywords.Any(k => lowerMessage.Contains(k)))
         {
             // 1. Fetch Raw Data for the Actuary Engine (Last 90 Days)

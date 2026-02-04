@@ -382,6 +382,10 @@
                                             <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Alert Threshold (R)</label><help-tip text="Gordon will alert you if a single unexpected transaction exceeds this amount. Example: Set to 3000 to get warned about any surprise purchase over R3000."></help-tip></div>
                                             <input type="number" v-model.number="settings.unexpectedPaymentThreshold" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
                                         </div>
+                                        <div>
+                                            <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Income Alert (R)</label><help-tip text="Receive a notification if a deposit exceeds this amount. Useful for tracking salary or large refunds. Credits are negative numbers in the DB, but enter a POSITIVE number here (e.g. 5000)."></help-tip></div>
+                                            <input type="number" v-model.number="settings.incomeAlertThreshold" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
+                                        </div>
                                     </div>
                                 </div>
 
@@ -392,11 +396,41 @@
                                     <div class="p-6 space-y-4">
                                         <div>
                                             <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Salary Keywords</label><help-tip text="Words in a transaction description that confirm it is income. Separate with commas. Example: 'PAYROLL, SALARY, MONTHLY DIVIDEND'"></help-tip></div>
-                                            <textarea v-model="settings.salaryKeywords" rows="3" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-xs font-mono outline-none"></textarea>
+                                            <textarea v-model="settings.salaryKeywords" rows="2" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-xs font-mono outline-none"></textarea>
+                                        </div>
+                                        <div class="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Min Salary (R)</label><help-tip text="If a deposit doesn't match a keyword, but is LARGER than this amount, assume it is a salary. Safety net for unmarked transfers."></help-tip></div>
+                                                <input type="number" v-model.number="settings.salaryFallbackThreshold" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
+                                            </div>
+                                            <div>
+                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Salary Search (Days)</label><help-tip text="How far back to look for the last paycheck to calculate the 'Salary Cycle'. 45 days covers monthly + a bit of delay buffer."></help-tip></div>
+                                                <input type="number" v-model.number="settings.salaryFallbackDays" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
+                                            </div>
                                         </div>
                                         <div>
                                             <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Fixed Cost Keywords</label><help-tip text="Words that identify 'Must-Pay' bills. Gordon subtracts these from your available cash immediately. Example: 'RENT, MORTGAGE, MEDICAL AID'"></help-tip></div>
-                                            <textarea v-model="settings.fixedCostKeywords" rows="3" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-xs font-mono outline-none"></textarea>
+                                            <textarea v-model="settings.fixedCostKeywords" rows="2" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-xs font-mono outline-none"></textarea>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                    <div class="bg-slate-50 px-6 py-3 border-b border-slate-100">
+                                        <h3 class="font-bold text-slate-800 text-sm">Advanced Actuarial</h3>
+                                    </div>
+                                    <div class="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div>
+                                            <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Stability %</label><help-tip text="If a category's spending changes by less than this %, it is considered 'Stable'. Example: 15% means a R100 lunch bill can vary between R85 and R115 without triggering an alert."></help-tip></div>
+                                            <input type="number" v-model.number="settings.stabilityPercentageThreshold" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
+                                        </div>
+                                        <div>
+                                            <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Stability Amt (R)</label><help-tip text="Absolute variance amount. Even if percentage is high, if the Rand value change is below this, ignore it. Example: R250. Prevents alerts for tiny purchases doubling in price (e.g. gum going from R10 to R20)."></help-tip></div>
+                                            <input type="number" v-model.number="settings.stabilityAmountThreshold" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
+                                        </div>
+                                        <div>
+                                            <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Trend Sensitivity</label><help-tip text="How sensitive the 'Spending Trend' arrow is. 0.1 means a 10% deviation triggers an Up or Down arrow."></help-tip></div>
+                                            <input type="number" step="0.01" v-model.number="settings.trendSensitivity" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
                                         </div>
                                     </div>
                                 </div>

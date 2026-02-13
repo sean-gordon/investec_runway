@@ -3,6 +3,7 @@ using GordonWorker.Models;
 using GordonWorker.Services;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
+using System.Security.Claims;
 using System.Text.Json;
 using Telegram.Bot;
 using Telegram.Bot.Types;
@@ -115,10 +116,43 @@ USER QUESTION: {messageText}";
         return Ok();
     }
 
+    [Microsoft.AspNetCore.Authorization.Authorize]
     [HttpPost("setup-webhook")]
     public async Task<IActionResult> SetupWebhook([FromBody] JsonElement body)
     {
-        return Ok();
+        try
+        {
+            if (!body.TryGetProperty("Url", out var urlElement)) return BadRequest("Missing Url");
+            var url = urlElement.GetString();
+            if (string.IsNullOrWhiteSpace(url)) return BadRequest("Url empty");
+
+            // For setup, we need a user ID. 
+            // If this endpoint is open, it's a risk. 
+            // Let's assume the calling user is the admin or the owner. 
+            // We'll use the user from the token if [Authorize] is added, but this controller doesn't have [Authorize] on class.
+            // I'll add [Authorize] to the method and use the UserId.
+            
+            // Wait, this controller handles Webhooks which must be OPEN (Anonymous).
+            // So we cannot put [Authorize] on the CLASS.
+            // We must put it on this METHOD.
+            
+            // However, TelegramController inherits ControllerBase. It doesn't have the UserId helper I added to SettingsController.
+            // I need to parse claims manually or add the helper.
+            
+            // But wait, the UI calls this method. So the UI sends the token.
+            // So I can check User.Identity.IsAuthenticated.
+            
+            if (User.Identity?.IsAuthenticated != true) return Unauthorized();
+            var userId = int.Parse(User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier)!);
+
+            await _telegramService.InstallWebhookAsync(userId, url);
+            return Ok(new { Message = "Webhook registered successfully." });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to setup Telegram webhook.");
+            return StatusCode(500, new { Error = ex.Message });
+        }
     }
 
     private async Task<FinancialHealthReport> GetFinancialSummaryAsync(int userId)

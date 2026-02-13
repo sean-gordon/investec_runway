@@ -17,6 +17,7 @@ public class TelegramController : ControllerBase
     private readonly IActuarialService _actuarialService;
     private readonly ITelegramService _telegramService;
     private readonly ISettingsService _settingsService;
+    private readonly ISystemStatusService _statusService;
     private readonly IInvestecClient _investecClient;
     private readonly IConfiguration _configuration;
     private readonly ILogger<TelegramController> _logger;
@@ -26,6 +27,7 @@ public class TelegramController : ControllerBase
         IActuarialService actuarialService,
         ITelegramService telegramService,
         ISettingsService settingsService,
+        ISystemStatusService statusService,
         IInvestecClient investecClient,
         IConfiguration configuration,
         ILogger<TelegramController> logger)
@@ -34,6 +36,7 @@ public class TelegramController : ControllerBase
         _actuarialService = actuarialService;
         _telegramService = telegramService;
         _settingsService = settingsService;
+        _statusService = statusService;
         _investecClient = investecClient;
         _configuration = configuration;
         _logger = logger;
@@ -42,6 +45,8 @@ public class TelegramController : ControllerBase
     [HttpPost("webhook")]
     public async Task<IActionResult> Webhook([FromBody] Update update)
     {
+        _statusService.LastTelegramHit = DateTime.UtcNow;
+
         if (update.Message == null || string.IsNullOrWhiteSpace(update.Message.Text))
             return Ok();
 
@@ -71,6 +76,7 @@ public class TelegramController : ControllerBase
         if (!isAuthorized)
         {
             _logger.LogWarning("Unauthorized Telegram message from Chat ID {ChatId}", chatId);
+            await _telegramService.SendMessageAsync($"⚠️ Unauthorized. Your Chat ID is `{chatId}`. Please add this to your Gordon settings.");
             return Ok(); 
         }
 

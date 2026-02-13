@@ -158,6 +158,7 @@ public class SettingsController : ControllerBase
         { 
             InvestecOnline = _statusService.IsInvestecOnline,
             LastCheck = _statusService.LastInvestecCheck,
+            LastTelegramHit = _statusService.LastTelegramHit,
             LastError = _statusService.LastError
         });
     }

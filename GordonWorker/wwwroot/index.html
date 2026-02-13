@@ -163,12 +163,23 @@
                                 <!-- Last Sync -->
                                 <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
                                     <div>
-                                        <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Last Activity</p>
+                                        <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Investec Sync</p>
                                         <div class="mt-1">
                                             <span class="text-lg font-bold text-slate-900">{{ formatTime(systemStatus.lastCheck) }}</span>
                                         </div>
                                     </div>
                                     <div class="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-lg">🕒</div>
+                                </div>
+
+                                <!-- Telegram Activity -->
+                                <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                                    <div>
+                                        <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Telegram Active</p>
+                                        <div class="mt-1">
+                                            <span class="text-lg font-bold text-slate-900">{{ formatTime(systemStatus.lastTelegramHit) }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="w-10 h-10 rounded-full bg-sky-50 text-sky-600 flex items-center justify-center text-lg">🤖</div>
                                 </div>
                             </div>
 
@@ -605,7 +616,7 @@
                         telegramBotToken: '', telegramChatId: '', telegramAuthorizedChatIds: ''
                     },
                     availableModels: [],
-                    systemStatus: { investecOnline: false, lastCheck: '', lastError: '' },
+                    systemStatus: { investecOnline: false, lastCheck: '', lastTelegramHit: '', lastError: '' },
                     days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
                     
                     saving: false, emailTesting: false, aiTesting: false, whatsappTesting: false, telegramTesting: false,

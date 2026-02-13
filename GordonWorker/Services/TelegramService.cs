@@ -5,7 +5,7 @@ namespace GordonWorker.Services;
 
 public interface ITelegramService
 {
-    Task SendMessageAsync(string message);
+    Task SendMessageAsync(string message, string? targetChatId = null);
     Task InstallWebhookAsync(string webhookUrl);
     Task<string> GetWebhookInfoAsync();
 }
@@ -44,14 +44,15 @@ public class TelegramService : ITelegramService
         _logger.LogInformation("Telegram webhook set to {Url}", webhookUrl);
     }
 
-    public async Task SendMessageAsync(string message)
+    public async Task SendMessageAsync(string message, string? targetChatId = null)
     {
         var settings = await _settingsService.GetSettingsAsync();
+        var chatId = targetChatId ?? settings.TelegramChatId;
 
         if (string.IsNullOrWhiteSpace(settings.TelegramBotToken) || 
-            string.IsNullOrWhiteSpace(settings.TelegramChatId))
+            string.IsNullOrWhiteSpace(chatId))
         {
-            _logger.LogWarning("Telegram settings are not fully configured. Cannot send message.");
+            _logger.LogWarning("Telegram settings (Token or ChatId) are not fully configured. Cannot send message.");
             return;
         }
 
@@ -59,11 +60,11 @@ public class TelegramService : ITelegramService
         {
             var botClient = new TelegramBotClient(settings.TelegramBotToken);
             await botClient.SendMessage(
-                chatId: settings.TelegramChatId,
+                chatId: chatId,
                 text: message,
                 parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown
             );
-            _logger.LogInformation("Telegram message sent to {ChatId}", settings.TelegramChatId);
+            _logger.LogInformation("Telegram message sent to {ChatId}", chatId);
         }
         catch (Exception ex)
         {

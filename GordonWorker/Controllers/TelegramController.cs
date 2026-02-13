@@ -76,7 +76,7 @@ public class TelegramController : ControllerBase
         if (!isAuthorized)
         {
             _logger.LogWarning("Unauthorized Telegram message from Chat ID {ChatId}", chatId);
-            await _telegramService.SendMessageAsync($"⚠️ Unauthorized. Your Chat ID is `{chatId}`. Please add this to your Gordon settings.");
+            await _telegramService.SendMessageAsync($"⚠️ Unauthorized. Your Chat ID is `{chatId}`. Please add this to your Gordon settings.", chatId);
             return Ok(); 
         }
 
@@ -140,12 +140,12 @@ USER QUESTION:
             }
 
             // 5. Send response back via Telegram
-            await _telegramService.SendMessageAsync(finalAnswer);
+            await _telegramService.SendMessageAsync(finalAnswer, chatId);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing Telegram message.");
-            await _telegramService.SendMessageAsync("I'm sorry, I encountered an internal error while processing your request.");
+            await _telegramService.SendMessageAsync("I'm sorry, I encountered an internal error while processing your request.", chatId);
         }
 
         return Ok();

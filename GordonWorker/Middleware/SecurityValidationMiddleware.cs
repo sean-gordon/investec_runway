@@ -32,6 +32,7 @@ public class SecurityValidationMiddleware
         // Allow Telegram webhook without domain check
         if (path.StartsWithSegments("/telegram/webhook"))
         {
+            _logger.LogInformation("Telegram webhook hit detected. Bypassing domain check.");
             await _next(context);
             return;
         }

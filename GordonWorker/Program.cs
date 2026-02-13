@@ -61,6 +61,15 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseForwardedHeaders();
+
+// Global Request Logger for Debugging
+app.Use(async (context, next) =>
+{
+    var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+    logger.LogInformation("Request: {Method} {Path} from {IP}", context.Request.Method, context.Request.Path, context.Connection.RemoteIpAddress);
+    await next();
+});
+
 app.UseMiddleware<SecurityValidationMiddleware>();
 app.UseStaticFiles(); // Enable frontend
 app.UseAuthorization();

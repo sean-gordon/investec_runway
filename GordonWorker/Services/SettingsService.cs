@@ -50,12 +50,17 @@ public class AppSettings
     public string TwilioAuthToken { get; set; } = "";
     public string TwilioWhatsAppNumber { get; set; } = "";
     public string AuthorizedWhatsAppNumber { get; set; } = ""; // To restrict who can chat
+
+    // Telegram Settings
+    public string TelegramBotToken { get; set; } = "";
+    public string TelegramChatId { get; set; } = "";
+    public string TelegramAuthorizedChatIds { get; set; } = "";
 }
 
 public interface ISettingsService
 {
-    Task<AppSettings> GetSettingsAsync();
-    Task UpdateSettingsAsync(AppSettings newSettings);
+    Task<AppSettings> GetSettingsAsync(int userId);
+    Task UpdateSettingsAsync(int userId, AppSettings newSettings);
 }
 
 public class SettingsService : ISettingsService
@@ -63,7 +68,7 @@ public class SettingsService : ISettingsService
     private readonly IConfiguration _configuration;
     private readonly ILogger<SettingsService> _logger;
     private readonly IDataProtector _protector;
-    private AppSettings? _cachedSettings;
+    private readonly Dictionary<int, AppSettings> _cache = new();
 
     public SettingsService(IConfiguration configuration, ILogger<SettingsService> logger, IDataProtectionProvider dataProtectionProvider)
     {
@@ -72,25 +77,24 @@ public class SettingsService : ISettingsService
         _protector = dataProtectionProvider.CreateProtector("GordonFinanceEngine.Settings.v1");
     }
 
-    public async Task<AppSettings> GetSettingsAsync()
+    public async Task<AppSettings> GetSettingsAsync(int userId)
     {
-        if (_cachedSettings != null) return _cachedSettings;
+        if (_cache.TryGetValue(userId, out var cached)) return cached;
 
         try
         {
             using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
             await connection.OpenAsync();
 
-            var json = await connection.QuerySingleOrDefaultAsync<string>("SELECT config FROM system_config WHERE id = 1");
+            var json = await connection.QuerySingleOrDefaultAsync<string>(
+                "SELECT config FROM user_settings WHERE user_id = @userId", new { userId });
 
             AppSettings settings;
             if (string.IsNullOrEmpty(json))
             {
-                _logger.LogInformation("No settings found in database. Initialising defaults.");
+                _logger.LogInformation("No settings found for user {UserId}. Initialising defaults.", userId);
                 settings = new AppSettings();
-                // Try to save defaults, but don't crash if DB is unreachable during startup
-                try { await SaveToDbAsync(settings); } 
-                catch (Exception ex) { _logger.LogWarning(ex, "Could not save default settings to DB. Using in-memory defaults."); }
+                await SaveToDbAsync(userId, settings);
             }
             else
             {
@@ -105,26 +109,26 @@ public class SettingsService : ISettingsService
                 settings.TwilioAuthToken = TryDecrypt(settings.TwilioAuthToken);
                 settings.InvestecClientId = TryDecrypt(settings.InvestecClientId);
                 settings.TwilioAccountSid = TryDecrypt(settings.TwilioAccountSid);
+                settings.TelegramBotToken = TryDecrypt(settings.TelegramBotToken);
             }
 
-            _cachedSettings = settings;
+            _cache[userId] = settings;
+            return settings;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "CRITICAL: Failed to load settings from DB.");
+            _logger.LogError(ex, "Failed to load settings for user {UserId}", userId);
             return new AppSettings();
         }
-
-        return _cachedSettings;
     }
 
-    public async Task UpdateSettingsAsync(AppSettings newSettings)
+    public async Task UpdateSettingsAsync(int userId, AppSettings newSettings)
     {
-        _cachedSettings = newSettings;
-        await SaveToDbAsync(newSettings);
+        _cache[userId] = newSettings;
+        await SaveToDbAsync(userId, newSettings);
     }
 
-    private async Task SaveToDbAsync(AppSettings settings)
+    private async Task SaveToDbAsync(int userId, AppSettings settings)
     {
         try
         {
@@ -141,19 +145,20 @@ public class SettingsService : ISettingsService
             encryptedSettings.TwilioAuthToken = TryEncrypt(settings.TwilioAuthToken);
             encryptedSettings.InvestecClientId = TryEncrypt(settings.InvestecClientId);
             encryptedSettings.TwilioAccountSid = TryEncrypt(settings.TwilioAccountSid);
+            encryptedSettings.TelegramBotToken = TryEncrypt(settings.TelegramBotToken);
 
             var json = JsonSerializer.Serialize(encryptedSettings);
             
             var sql = @"
-                INSERT INTO system_config (id, config) 
-                VALUES (1, @Config::jsonb) 
-                ON CONFLICT (id) DO UPDATE SET config = @Config::jsonb";
+                INSERT INTO user_settings (user_id, config) 
+                VALUES (@userId, @Config::jsonb) 
+                ON CONFLICT (user_id) DO UPDATE SET config = @Config::jsonb";
 
-            await connection.ExecuteAsync(sql, new { Config = json });
+            await connection.ExecuteAsync(sql, new { userId, Config = json });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "CRITICAL: Failed to save settings to DB.");
+            _logger.LogError(ex, "Failed to save settings for user {UserId}", userId);
             throw;
         }
     }
@@ -175,7 +180,7 @@ public class SettingsService : ISettingsService
         try { return _protector.Unprotect(cipherText); }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to decrypt setting. This is expected if the key was recently added or is plain text.");
+            _logger.LogWarning(ex, "Failed to decrypt setting.");
             return cipherText; 
         }
     }

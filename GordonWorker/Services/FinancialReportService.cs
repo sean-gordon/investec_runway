@@ -208,8 +208,33 @@ public class FinancialReportService : IFinancialReportService
                     </table>
                 </td>
             </tr>
+                    </table>
+                </td>
+            </tr>
         </table>
-        <div class='footer'>Generated automatically by your Gordon Finance Engine.<br>{DateTime.Now:yyyy-MM-dd HH:mm}</div>
+        
+        <!-- PROFESSIONAL SIGNATURE -->
+        <table style='margin: 0 auto; width: 100%; max-width: 600px; font-family: Helvetica, Arial, sans-serif; margin-top: 20px;'>
+            <tr>
+                <td style='padding: 20px 0; border-top: 1px solid #e5e7eb;'>
+                    <table cellpadding='0' cellspacing='0' border='0'>
+                        <tr>
+                            <td style='padding-right: 15px; vertical-align: top;'>
+                                <div style='width: 48px; height: 48px; background-color: #0f172a; border-radius: 12px; color: #ffffff; font-size: 24px; font-weight: bold; line-height: 48px; text-align: center;'>G</div>
+                            </td>
+                            <td style='vertical-align: top;'>
+                                <div style='font-size: 16px; font-weight: 700; color: #1e293b; margin-bottom: 4px;'>{personaName}</div>
+                                <div style='font-size: 12px; color: #0ea5e9; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;'>Personal Financial Actuary</div>
+                                <div style='font-size: 12px; color: #64748b;'>Powered by <strong>Gordon Finance Engine</strong></div>
+                            </td>
+                        </tr>
+                    </table>
+                    <div style='margin-top: 24px; font-size: 10px; color: #94a3b8; line-height: 1.5; text-align: justify;'>
+                        <strong>CONFIDENTIALITY NOTICE:</strong> The contents of this email message and any attachments are intended solely for the addressee(s) and may contain confidential and/or privileged information and may be legally protected from disclosure. If you are not the intended recipient of this message or their agent, or if this message has been addressed to you in error, please immediately alert the sender and then destroy this message and any attachments. Generated at {DateTime.Now:yyyy-MM-dd HH:mm}.
+                    </div>
+                </td>
+            </tr>
+        </table>
     </div>
 </body>
 </html>";

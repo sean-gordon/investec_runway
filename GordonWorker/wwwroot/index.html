@@ -714,10 +714,12 @@
                     finally { this.telegramTesting = false; }
                 },
                 async registerWebhook() {
-                    const baseUrl = prompt("Enter your public HTTPS URL (e.g., https://yourdomain.com):", "https://financeai.wethegordons.co.za");
+                    let baseUrl = prompt("Enter your public HTTPS URL (e.g., https://yourdomain.com):", "https://financeai.wethegordons.co.za");
                     if (!baseUrl) return;
                     
-                    const fullUrl = baseUrl.endsWith('/') ? baseUrl + 'telegram/webhook' : baseUrl + '/telegram/webhook';
+                    // Remove trailing slash and any existing path suffix to prevent doubling up
+                    baseUrl = baseUrl.replace(/\/$/, "").replace(/\/telegram\/webhook$/, "");
+                    const fullUrl = baseUrl + '/telegram/webhook';
                     
                     try {
                         const res = await fetch('/telegram/setup-webhook', {

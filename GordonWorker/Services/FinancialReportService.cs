@@ -7,7 +7,7 @@ namespace GordonWorker.Services;
 
 public interface IFinancialReportService
 {
-    Task GenerateAndSendReportAsync();
+    Task GenerateAndSendReportAsync(int userId);
 }
 
 public class FinancialReportService : IFinancialReportService
@@ -15,8 +15,9 @@ public class FinancialReportService : IFinancialReportService
     private readonly IConfiguration _configuration;
     private readonly IEmailService _emailService;
     private readonly IActuarialService _actuarialService;
-    private readonly IAiService _ollamaService;
+    private readonly IAiService _aiService;
     private readonly ISettingsService _settingsService;
+    private readonly ITelegramService _telegramService;
     private readonly IInvestecClient _investecClient;
     private readonly ILogger<FinancialReportService> _logger;
 
@@ -24,24 +25,27 @@ public class FinancialReportService : IFinancialReportService
         IConfiguration configuration,
         IEmailService emailService,
         IActuarialService actuarialService,
-        IAiService ollamaService,
+        IAiService aiService,
         ISettingsService settingsService,
+        ITelegramService telegramService,
         IInvestecClient investecClient,
         ILogger<FinancialReportService> logger)
     {
         _configuration = configuration;
         _emailService = emailService;
         _actuarialService = actuarialService;
-        _ollamaService = ollamaService;
+        _aiService = aiService;
         _settingsService = settingsService;
+        _telegramService = telegramService;
         _investecClient = investecClient;
         _logger = logger;
     }
 
-    public async Task GenerateAndSendReportAsync()
+    public async Task GenerateAndSendReportAsync(int userId)
     {
-        var settings = await _settingsService.GetSettingsAsync();
-        
+        var settings = await _settingsService.GetSettingsAsync(userId);
+        _investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey, settings.InvestecBaseUrl);
+
         var culture = (System.Globalization.CultureInfo)System.Globalization.CultureInfo.InvariantCulture.Clone();
         culture.NumberFormat.CurrencySymbol = "R";
         culture.NumberFormat.CurrencyGroupSeparator = ",";
@@ -60,31 +64,10 @@ public class FinancialReportService : IFinancialReportService
         using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
         await connection.OpenAsync();
 
-        var sql = "SELECT * FROM transactions WHERE transaction_date >= NOW() - INTERVAL '14 days'";
-        var transactions = (await connection.QueryAsync<Transaction>(sql)).ToList();
-
-        var thisWeek = transactions.Where(t => t.TransactionDate >= DateTimeOffset.UtcNow.AddDays(-7)).ToList();
-        var lastWeek = transactions.Where(t => t.TransactionDate < DateTimeOffset.UtcNow.AddDays(-7)).ToList();
-
-        // CRITICAL FIX: Use fullHistorySql instead of sql
-        var fullHistorySql = "SELECT * FROM transactions WHERE transaction_date >= NOW() - INTERVAL '90 days'";
-        var fullHistory = (await connection.QueryAsync<Transaction>(fullHistorySql)).ToList();
+        var fullHistorySql = "SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '90 days'";
+        var fullHistory = (await connection.QueryAsync<Transaction>(fullHistorySql, new { userId })).ToList();
         
-        var healthReport = await _actuarialService.AnalyzeHealthAsync(fullHistory, currentBalance);
-
-        var thisWeekSpend = thisWeek
-            .Where(t => t.Amount > 0 && 
-                        !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase) &&      
-                        !t.IsInternalTransfer() &&
-                        !_actuarialService.IsSalary(t, settings))
-            .Sum(t => t.Amount);
-            
-        var lastWeekSpend = lastWeek
-            .Where(t => t.Amount > 0 && 
-                        !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase) &&      
-                        !t.IsInternalTransfer() &&
-                        !_actuarialService.IsSalary(t, settings))
-            .Sum(t => t.Amount);
+        var healthReport = await _actuarialService.AnalyzeHealthAsync(fullHistory, currentBalance, settings);
 
         var stats = new
         {
@@ -112,11 +95,12 @@ public class FinancialReportService : IFinancialReportService
         };
 
         var jsonStats = JsonSerializer.Serialize(stats);
-        var aiExplanation = await _ollamaService.GenerateSimpleReportAsync(jsonStats);
+        var aiExplanation = await _aiService.GenerateSimpleReportAsync(userId, jsonStats);
 
         var subject = $"Weekly Financial Report - {DateTime.Now:dd MMM yyyy}";
         var personaName = !string.IsNullOrWhiteSpace(settings.SystemPersona) ? settings.SystemPersona : "Gordon";
 
+        // HTML Email Template
         var categoryRows = "";
         foreach (var cat in healthReport.TopCategories)
         {
@@ -224,13 +208,48 @@ public class FinancialReportService : IFinancialReportService
                     </table>
                 </td>
             </tr>
+                    </table>
+                </td>
+            </tr>
         </table>
-        <div class='footer'>Generated automatically by your Gordon Finance Engine.<br>{DateTime.Now:yyyy-MM-dd HH:mm}</div>
+        
+        <!-- PROFESSIONAL SIGNATURE -->
+        <table style='margin: 0 auto; width: 100%; max-width: 600px; font-family: Helvetica, Arial, sans-serif; margin-top: 20px;'>
+            <tr>
+                <td style='padding: 20px 0; border-top: 1px solid #e5e7eb;'>
+                    <table cellpadding='0' cellspacing='0' border='0'>
+                        <tr>
+                            <td style='padding-right: 15px; vertical-align: top;'>
+                                <div style='width: 48px; height: 48px; background-color: #0f172a; border-radius: 12px; color: #ffffff; font-size: 24px; font-weight: bold; line-height: 48px; text-align: center;'>G</div>
+                            </td>
+                            <td style='vertical-align: top;'>
+                                <div style='font-size: 16px; font-weight: 700; color: #1e293b; margin-bottom: 4px;'>{personaName}</div>
+                                <div style='font-size: 12px; color: #0ea5e9; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;'>Personal Financial Actuary</div>
+                                <div style='font-size: 12px; color: #64748b;'>Powered by <strong>Gordon Finance Engine</strong></div>
+                            </td>
+                        </tr>
+                    </table>
+                    <div style='margin-top: 24px; font-size: 10px; color: #94a3b8; line-height: 1.5; text-align: justify;'>
+                        <strong>CONFIDENTIALITY NOTICE:</strong> The contents of this email message and any attachments are intended solely for the addressee(s) and may contain confidential and/or privileged information and may be legally protected from disclosure. If you are not the intended recipient of this message or their agent, or if this message has been addressed to you in error, please immediately alert the sender and then destroy this message and any attachments. Generated at {DateTime.Now:yyyy-MM-dd HH:mm}.
+                    </div>
+                </td>
+            </tr>
+        </table>
     </div>
 </body>
 </html>";
 
-        await _emailService.SendEmailAsync(subject, body);
-        _logger.LogInformation("Financial Report generated and sent.");
+        await _emailService.SendEmailAsync(userId, subject, body);
+        
+        // Telegram report disabled for email generation flow as requested
+        /*
+        var telegramSummary = $"📊 *Weekly Financial Report*\n\n{aiExplanation}\n\n" +
+                              $"💰 *Current Balance:* {currentBalance.ToString("C", culture)}\n" +
+                              $"📅 *Next Salary In:* {healthReport.DaysUntilNextSalary} Days\n" +
+                              $"🚀 *Survival Prob:* {healthReport.RunwayProbability:F1}%\n" +
+                              $"📈 *Trend:* {healthReport.TrendDirection}";
+        
+        await _telegramService.SendMessageAsync(userId, telegramSummary);
+        */
     }
 }

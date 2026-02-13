@@ -5,12 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Gordon Finance Engine</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📈</text></svg>">
-    
-    <!-- Scripts & Styles -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    
     <script>
         tailwind.config = {
             theme: {
@@ -23,759 +20,519 @@
             }
         }
     </script>
-
     <style>
         body { -webkit-tap-highlight-color: transparent; }
         [v-cloak] { display: none; }
-        
-        /* Custom Scrollbar for desktop */
-        @media (min-width: 768px) {
-            ::-webkit-scrollbar { width: 6px; }
-            ::-webkit-scrollbar-track { background: transparent; }
-            ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-            ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        }
-
-        /* Mobile specific fixes */
-        .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
-        .h-safe { height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
-
-        /* Animation utilities */
-        .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
-        .fade-enter-from, .fade-leave-to { opacity: 0; }
-
-        .slide-up-enter-active, .slide-up-leave-active { transition: transform 0.3s ease, opacity 0.3s ease; }
-        .slide-up-enter-from, .slide-up-leave-to { transform: translateY(20px); opacity: 0; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 h-screen overflow-hidden flex flex-col">
 
     <div id="app" v-cloak class="flex-1 flex flex-col h-full overflow-hidden relative">
 
-        <!-- HEADER (Desktop & Mobile) -->
-        <header class="bg-white border-b border-slate-200 h-16 shrink-0 flex items-center justify-between px-4 lg:px-8 z-20 shadow-sm relative">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 bg-brand-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-brand-200 transform transition-transform hover:scale-105">
-                    <span class="text-xl font-bold">G</span>
+        <!-- AUTH OVERLAY -->
+        <div v-if="!auth.token" class="fixed inset-0 z-[100] bg-brand-900 flex items-center justify-center p-4">
+            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+                <div class="bg-brand-600 p-8 text-center text-white">
+                    <div class="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
+                        <span class="text-3xl font-bold">G</span>
+                    </div>
+                    <h2 class="text-2xl font-bold">Gordon Finance</h2>
+                    <p class="text-white/70 text-sm mt-1">Actuarial spending insights.</p>
                 </div>
-                <div>
-                    <h1 class="text-lg font-bold text-slate-900 leading-tight">Gordon</h1>
-                    <div class="flex items-center gap-1.5">
-                        <span class="w-2 h-2 rounded-full" :class="systemStatus.investecOnline ? 'bg-green-500' : 'bg-red-500'"></span>
-                        <p class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{{ systemStatus.investecOnline ? 'Online' : 'Offline' }}</p>
+                <div class="p-8">
+                    <div v-if="authView === 'login'" class="space-y-4">
+                        <h3 class="text-lg font-bold text-slate-800">Sign In</h3>
+                        <input v-model="loginForm.username" type="text" placeholder="Username" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none">
+                        <input v-model="loginForm.password" type="password" placeholder="Password" @keyup.enter="login" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none">
+                        <button @click="login" :disabled="loading" class="w-full bg-brand-600 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-brand-700">
+                            {{ loading ? '...' : 'Sign In' }}
+                        </button>
+                        <p class="text-center text-xs text-slate-500 mt-4 cursor-pointer hover:underline" @click="authView = 'register'">Create an account</p>
+                    </div>
+                    <div v-else class="space-y-4">
+                        <h3 class="text-lg font-bold text-slate-800">Register</h3>
+                        <input v-model="registerForm.username" type="text" placeholder="Choose Username" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none">
+                        <input v-model="registerForm.password" type="password" placeholder="Choose Password" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none">
+                        <button @click="register" :disabled="loading" class="w-full bg-slate-800 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-slate-900">
+                            {{ loading ? '...' : 'Register' }}
+                        </button>
+                        <p class="text-center text-xs text-slate-500 mt-4 cursor-pointer hover:underline" @click="authView = 'login'">Back to Login</p>
                     </div>
                 </div>
             </div>
+        </div>
 
-            <!-- Desktop Profile/Status -->
-            <div class="flex items-center gap-4">
-                <div v-if="saving" class="hidden md:flex items-center gap-2 px-3 py-1 bg-brand-50 text-brand-600 rounded-full text-xs font-semibold animate-pulse">
-                    <span class="w-1.5 h-1.5 bg-brand-600 rounded-full"></span> Saving...
+        <!-- MAIN APP -->
+        <template v-if="auth.token">
+            <header class="bg-white border-b border-slate-200 h-16 shrink-0 flex items-center justify-between px-4 lg:px-8 z-20 shadow-sm relative">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-brand-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+                        <span class="text-xl font-bold">G</span>
+                    </div>
+                    <div>
+                        <h1 class="text-lg font-bold text-slate-900 leading-tight">Gordon</h1>
+                        <p class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{{ auth.username }} <span v-if="auth.role === 'Admin'" class="bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full ml-1">ADMIN</span></p>
+                    </div>
                 </div>
-                <div class="hidden md:flex flex-col items-end">
-                    <span class="text-sm font-semibold text-slate-700">{{ settings.userName }}</span>
-                    <span class="text-[10px] text-slate-400 font-medium">Personal Finance</span>
-                </div>
-            </div>
-        </header>
+                <button @click="logout" class="text-xs font-bold text-slate-400 hover:text-red-500">LOGOUT</button>
+            </header>
 
-        <!-- MAIN LAYOUT -->
-        <div class="flex-1 flex overflow-hidden max-w-7xl mx-auto w-full">
-            
-            <!-- DESKTOP SIDEBAR -->
-            <aside class="hidden md:flex w-64 flex-col border-r border-slate-200 bg-white">
-                <nav class="flex-1 p-4 space-y-1 overflow-y-auto">
-                    <template v-for="group in navGroups" :key="group.title">
-                        <div class="px-3 pt-4 pb-2">
-                            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{{ group.title }}</p>
-                        </div>
-                        <button v-for="item in group.items" 
-                            @click="activeTab = item.id"
-                            class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200"
-                            :class="activeTab === item.id ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'">
-                            <span class="text-lg">{{ item.icon }}</span>
-                            {{ item.name }}
+            <div class="flex-1 flex overflow-hidden max-w-7xl mx-auto w-full">
+                <!-- SIDEBAR -->
+                <aside class="hidden md:flex w-64 flex-col border-r border-slate-200 bg-white">
+                    <nav class="flex-1 p-4 space-y-1">
+                        <button v-for="item in menuItems" :key="item.id" @click="activeTab = item.id"
+                            v-show="!item.adminOnly || auth.role === 'Admin'"
+                            class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all"
+                            :class="activeTab === item.id ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-50'">
+                            <span>{{ item.icon }}</span> {{ item.name }}
                         </button>
-                    </template>
-                </nav>
-                
-                <!-- Desktop Sidebar Footer Actions -->
-                <div class="p-4 border-t border-slate-100 bg-slate-50/50">
-                     <button @click="sendReportNow" :disabled="sendingReport"
-                        class="w-full flex items-center justify-center gap-2 py-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:border-brand-300 hover:text-brand-600 shadow-sm transition-all active:scale-95">
-                        <span v-if="sendingReport" class="animate-spin">⏳</span>
-                        <span v-else>📊</span>
-                        {{ sendingReport ? 'Processing...' : 'Run Report' }}
-                    </button>
-                </div>
-            </aside>
+                    </nav>
+                    <div class="p-4 border-t border-slate-100 bg-slate-50/50">
+                        <button @click="sendReportNow" :disabled="sendingReport"
+                           class="w-full flex items-center justify-center gap-2 py-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:border-brand-300 hover:text-brand-600 shadow-sm transition-all active:scale-95">
+                           <span v-if="sendingReport" class="animate-spin">⏳</span>
+                           <span v-else>📊</span>
+                           {{ sendingReport ? 'Processing...' : 'Run Report' }}
+                       </button>
+                   </div>
+                </aside>
 
-            <!-- MAIN CONTENT AREA -->
-            <main class="flex-1 flex flex-col overflow-hidden bg-slate-50 relative">
-                
-                <!-- SCROLLABLE CONTENT -->
-                <div class="flex-1 overflow-y-auto p-4 lg:p-8 pb-24 md:pb-8" ref="mainScroll">
+                <!-- CONTENT -->
+                <main class="flex-1 overflow-y-auto p-4 lg:p-8 pb-24 md:pb-8 bg-slate-50">
                     
-                    <transition name="slide-up" mode="out-in">
-                        
-                        <!-- VIEW: DASHBOARD -->
-                        <div v-if="activeTab === 'dashboard'" :key="'dashboard'" class="space-y-6 max-w-5xl mx-auto">
-                            <!-- Welcome Header -->
-                            <div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
+                    <!-- DASHBOARD -->
+                    <div v-if="activeTab === 'dashboard'" class="space-y-6">
+                        <div class="flex justify-between items-center">
+                            <h2 class="text-2xl font-bold">Dashboard</h2>
+                            <button @click="forceRepull" class="text-xs bg-white border border-slate-200 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-50">🔄 Sync</button>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+                                <p class="text-xs font-medium text-slate-400 uppercase">Telegram Hits</p>
+                                <div class="mt-1">
+                                    <span class="text-lg font-bold text-slate-900">{{ formatTime(systemStatus.lastTelegramHit) }}</span>
+                                    <span v-if="systemStatus.lastTelegramError" class="block text-[10px] text-red-500 font-bold mt-1 truncate" :title="systemStatus.lastTelegramError">⚠ {{ systemStatus.lastTelegramError }}</span>
+                                    <span v-else-if="systemStatus.lastTelegramHit" class="block text-[10px] text-green-500 font-bold mt-1">✔ Active</span>
+                                </div>
+                            </div>
+                            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+                                <p class="text-xs font-medium text-slate-400 uppercase">Investec</p>
+                                <div class="mt-1 flex items-center gap-2">
+                                    <span class="text-lg font-bold" :class="systemStatus.investecOnline ? 'text-green-600' : 'text-red-600'">{{ systemStatus.investecOnline ? 'Online' : 'Offline' }}</span>
+                                </div>
+                            </div>
+                            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
                                 <div>
-                                    <h2 class="text-2xl font-bold text-slate-900">Dashboard</h2>
-                                    <p class="text-sm text-slate-500 mt-1">Overview of your financial engine status.</p>
+                                    <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">AI Model</p>
+                                    <div class="mt-1">
+                                        <span class="text-xl font-bold text-slate-900 block truncate max-w-[120px]">{{ settings.aiProvider }}</span>
+                                        <span class="text-[10px] text-slate-400 block truncate max-w-[120px]">{{ settings.ollamaModelName || 'Default' }}</span>
+                                    </div>
                                 </div>
-                                <div class="flex gap-2">
-                                    <button @click="forceRepull" :disabled="repulling" class="px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 shadow-sm hover:bg-slate-50">
-                                        {{ repulling ? 'Syncing...' : '🔄 Force Sync' }}
-                                    </button>
-                                </div>
+                                <div class="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-lg">🧠</div>
                             </div>
-
-                            <!-- Key Metrics Grid -->
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <!-- Status Card -->
-                                <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
-                                    <div>
-                                        <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Investec API</p>
-                                        <div class="mt-1 flex items-baseline gap-2">
-                                            <span class="text-xl font-bold text-slate-900">{{ systemStatus.investecOnline ? 'Connected' : 'Error' }}</span>
-                                        </div>
-                                    </div>
-                                    <div class="w-10 h-10 rounded-full flex items-center justify-center text-lg" :class="systemStatus.investecOnline ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'">
-                                        {{ systemStatus.investecOnline ? '✔' : '⚠' }}
+                            <!-- Last Sync -->
+                            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                                <div>
+                                    <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Last Sync</p>
+                                    <div class="mt-1">
+                                        <span class="text-lg font-bold text-slate-900">{{ formatTime(systemStatus.lastCheck) }}</span>
                                     </div>
                                 </div>
-
-                                <!-- AI Status -->
-                                <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
-                                    <div>
-                                        <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">AI Model</p>
-                                        <div class="mt-1">
-                                            <span class="text-xl font-bold text-slate-900 block truncate max-w-[120px]">{{ settings.aiProvider }}</span>
-                                            <span class="text-[10px] text-slate-400 block truncate max-w-[120px]">{{ settings.ollamaModelName || 'Default' }}</span>
-                                        </div>
-                                    </div>
-                                    <div class="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-lg">🧠</div>
-                                </div>
-
-                                <!-- Last Sync -->
-                                <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
-                                    <div>
-                                        <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Last Activity</p>
-                                        <div class="mt-1">
-                                            <span class="text-lg font-bold text-slate-900">{{ formatTime(systemStatus.lastCheck) }}</span>
-                                        </div>
-                                    </div>
-                                    <div class="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-lg">🕒</div>
-                                </div>
+                                <div class="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-lg">🕒</div>
                             </div>
+                        </div>
+                    </div>
 
-                            <!-- Quick Actions Grid (Mobile Friendly) -->
-                            <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wide mt-8">Quick Actions</h3>
-                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                <button @click="activeTab = 'chat'" class="p-4 bg-white border border-slate-200 hover:border-brand-400 hover:shadow-md transition-all rounded-xl text-left group">
-                                    <span class="text-2xl mb-2 block group-hover:scale-110 transition-transform">💬</span>
-                                    <span class="text-sm font-bold text-slate-700">Ask Gordon</span>
-                                </button>
-                                <button @click="sendReportNow" class="p-4 bg-white border border-slate-200 hover:border-brand-400 hover:shadow-md transition-all rounded-xl text-left group">
-                                    <span class="text-2xl mb-2 block group-hover:scale-110 transition-transform">📧</span>
-                                    <span class="text-sm font-bold text-slate-700">Send Email</span>
-                                </button>
-                                <button @click="activeTab = 's-connections'" class="p-4 bg-white border border-slate-200 hover:border-brand-400 hover:shadow-md transition-all rounded-xl text-left group">
-                                    <span class="text-2xl mb-2 block group-hover:scale-110 transition-transform">🔗</span>
-                                    <span class="text-sm font-bold text-slate-700">Fix Connections</span>
-                                </button>
-                                <button @click="activeTab = 's-ai'" class="p-4 bg-white border border-slate-200 hover:border-brand-400 hover:shadow-md transition-all rounded-xl text-left group">
-                                    <span class="text-2xl mb-2 block group-hover:scale-110 transition-transform">⚙️</span>
-                                    <span class="text-sm font-bold text-slate-700">AI Config</span>
-                                </button>
+                    <!-- ADMIN: USERS -->
+                    <div v-if="activeTab === 'admin-users' && auth.role === 'Admin'" class="space-y-6">
+                        <div class="flex justify-between items-center">
+                            <h2 class="text-xl font-bold">User Management</h2>
+                            <button @click="openUserModal()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm">Add User</button>
+                        </div>
+                        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-slate-50 border-b border-slate-200">
+                                    <tr><th class="px-6 py-3">Username</th><th class="px-6 py-3">Role</th><th class="px-6 py-3">System</th><th class="px-6 py-3 text-right">Actions</th></tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    <tr v-for="u in users" :key="u.id" class="hover:bg-slate-50">
+                                        <td class="px-6 py-3">{{ u.username }}</td>
+                                        <td class="px-6 py-3">{{ u.role }}</td>
+                                        <td class="px-6 py-3">{{ u.isSystem ? 'YES' : '-' }}</td>
+                                        <td class="px-6 py-3 text-right space-x-2">
+                                            <button @click="openUserModal(u)" class="text-blue-600 font-bold">Edit</button>
+                                            <button v-if="!u.isSystem" @click="deleteUser(u.id)" class="text-red-600 font-bold">Delete</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- SETTINGS PAGES -->
+                    <div v-if="activeTab.startsWith('s-')" class="max-w-3xl space-y-6 pb-20">
+                        <div class="flex justify-between items-center">
+                            <h2 class="text-xl font-bold">Configuration</h2>
+                            <button @click="saveSettings" class="bg-brand-600 text-white px-6 py-2 rounded-lg font-bold shadow-md hover:bg-brand-700">Save Changes</button>
+                        </div>
+
+                        <!-- IDENTITY -->
+                        <div v-if="activeTab === 's-identity'" class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
+                            <div>
+                                <label class="text-xs font-bold text-slate-700">Display Name</label>
+                                <input v-model="settings.userName" type="text" class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
+                            </div>
+                            <div>
+                                <label class="text-xs font-bold text-slate-700">Currency / Locale</label>
+                                <select v-model="settings.currencyCulture" class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
+                                    <option value="en-ZA">South Africa (ZAR)</option>
+                                    <option value="en-US">United States (USD)</option>
+                                    <option value="en-GB">United Kingdom (GBP)</option>
+                                </select>
                             </div>
                         </div>
 
-                        <!-- VIEW: CHAT -->
-                        <div v-else-if="activeTab === 'chat'" :key="'chat'" class="h-full flex flex-col max-w-4xl mx-auto bg-white md:rounded-2xl md:shadow-sm md:border md:border-slate-200 overflow-hidden absolute inset-0 md:relative">
-                            <!-- Chat Area -->
-                            <div class="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50 md:bg-white" ref="chatContainer">
-                                <div v-if="chatMessages.length === 0" class="flex flex-col items-center justify-center h-full text-center p-8 opacity-60">
-                                    <div class="w-16 h-16 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center text-3xl mb-4">👋</div>
-                                    <h3 class="font-bold text-slate-700">Hi {{ settings.userName }}</h3>
-                                    <p class="text-sm text-slate-500 mt-2 max-w-xs">I'm ready to analyze your finances. Try asking:</p>
-                                    <div class="mt-6 flex flex-wrap justify-center gap-2">
-                                        <button @click="suggestMessage('What is my current burn rate?')" class="px-3 py-1.5 bg-white border border-slate-200 rounded-full text-xs font-medium hover:border-brand-400">"What is my burn rate?"</button>
-                                        <button @click="suggestMessage('Show my last 3 transactions')" class="px-3 py-1.5 bg-white border border-slate-200 rounded-full text-xs font-medium hover:border-brand-400">"Last 3 transactions"</button>
-                                    </div>
-                                </div>
-
-                                <div v-for="(msg, idx) in chatMessages" :key="idx" class="flex flex-col max-w-[85%] md:max-w-[75%]" :class="msg.role === 'user' ? 'self-end items-end' : 'self-start items-start'">
-                                    <div class="px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm whitespace-pre-wrap"
-                                        :class="msg.role === 'user' ? 'bg-brand-600 text-white rounded-tr-sm' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-sm'">
-                                        {{ msg.content }}
-                                    </div>
-                                    <span class="text-[10px] text-slate-400 mt-1 px-1">{{ msg.time }}</span>
-                                </div>
-
-                                <div v-if="chatLoading" class="self-start">
-                                    <div class="bg-white border border-slate-200 px-4 py-3 rounded-2xl rounded-tl-sm shadow-sm flex gap-1.5">
-                                        <span class="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce"></span>
-                                        <span class="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce delay-75"></span>
-                                        <span class="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce delay-150"></span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Input Area -->
-                            <div class="p-3 bg-white border-t border-slate-100 flex items-center gap-2 pb-safe md:pb-3">
-                                <input type="text" v-model="userInput" @keyup.enter="sendMessage"
-                                    class="flex-1 bg-slate-100 border-none rounded-full px-4 py-3 text-sm focus:ring-2 focus:ring-brand-500 outline-none transition-all placeholder-slate-400"
-                                    placeholder="Type a message...">
-                                <button @click="sendMessage" :disabled="!userInput || chatLoading"
-                                    class="w-11 h-11 bg-brand-600 text-white rounded-full flex items-center justify-center shadow-md hover:bg-brand-700 disabled:opacity-50 disabled:shadow-none transition-all">
-                                    <svg class="w-5 h-5 translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- VIEW: SETTINGS -->
-                        <div v-else :key="'settings'" class="space-y-6 max-w-3xl mx-auto pb-20">
-                            <!-- Page Header -->
-                            <form @submit.prevent="saveSettings" class="space-y-6">
-                                <div class="flex items-center justify-between">
+                        <!-- MATH / ACTUARIAL -->
+                        <div v-if="activeTab === 's-math'" class="space-y-6">
+                            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
+                                <h3 class="font-bold text-slate-800 text-sm border-b pb-2 mb-4">Core Parameters</h3>
+                                <div class="grid grid-cols-2 gap-4">
                                     <div>
-                                        <h2 class="text-xl font-bold text-slate-900">{{ currentTabName }}</h2>
-                                        <p class="text-sm text-slate-500">System configuration and preferences.</p>
+                                        <label class="text-xs font-bold text-slate-700">Analysis Window (Days)</label>
+                                        <input v-model.number="settings.analysisWindowDays" type="number" class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
                                     </div>
-                                    <button type="submit" :disabled="saving" class="bg-brand-600 text-white px-5 py-2 rounded-lg text-sm font-bold shadow-md hover:bg-brand-700 active:scale-95 transition-all disabled:opacity-50">
-                                        {{ saving ? 'Saving...' : 'Save Changes' }}
-                                    </button>
-                                </div>
-
-                                <!-- S-IDENTITY -->
-                                <div v-if="activeTab === 's-identity'" class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                                    <div class="p-6 space-y-6">
-                                        <div>
-                                            <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">User Name</label><help-tip text="How should Gordon address you in chats and reports? Use your first name or a title like 'Sir' or 'Ma'am'."></help-tip></div>
-                                            <input type="text" v-model="settings.userName" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none transition-all">
-                                        </div>
-                                        <div>
-                                            <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Currency / Locale</label><help-tip text="Select the region for formatting money and dates. This ensures Rands look like 'R' and Dollars look like '$'."></help-tip></div>
-                                            <select v-model="settings.currencyCulture" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
-                                                <option value="en-ZA">South Africa (ZAR)</option>
-                                                <option value="en-US">United States (USD)</option>
-                                                <option value="en-GB">United Kingdom (GBP)</option>
-                                            </select>
-                                        </div>
+                                    <div>
+                                        <label class="text-xs font-bold text-slate-700">EMA Alpha ({{ settings.actuarialAlpha }})</label>
+                                        <input type="range" v-model.number="settings.actuarialAlpha" min="0.01" max="0.5" step="0.01" class="w-full mt-2 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
                                     </div>
                                 </div>
-
-                                <!-- S-CONNECTIONS -->
-                                <div v-if="activeTab === 's-connections'" class="space-y-6">
-                                    <!-- Investec -->
-                                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                                        <div class="bg-slate-50 px-6 py-3 border-b border-slate-100">
-                                            <h3 class="font-bold text-slate-800 text-sm">Investec API</h3>
-                                        </div>
-                                        <div class="p-6 space-y-4">
-                                            <div>
-                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">API Base URL</label><help-tip text="The internet address for the bank's servers. Default is 'https://openapi.investec.com/'. Only change this if you are an advanced user running a proxy."></help-tip></div>
-                                                <input type="text" v-model="settings.investecBaseUrl" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-mono outline-none">
-                                            </div>
-                                            <div>
-                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Client ID</label><help-tip text="Your Investec Programmable Banking Client ID. Get this from the Investec Online portal."></help-tip></div>
-                                                <input type="text" v-model="settings.investecClientId" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-mono outline-none">
-                                            </div>
-                                            <div>
-                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Secret</label><help-tip text="Your Investec Programmable Banking Secret. Treat this like a password."></help-tip></div>
-                                                <input type="password" v-model="settings.investecSecret" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-mono outline-none">
-                                            </div>
-                                            <div>
-                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">API Key</label><help-tip text="Your Investec Programmable Banking API Key."></help-tip></div>
-                                                <input type="password" v-model="settings.investecApiKey" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-mono outline-none">
-                                            </div>
-                                            <div class="grid grid-cols-2 gap-4">
-                                                <div>
-                                                    <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">History (Days)</label><help-tip text="When performing a 'Full Re-Sync', how many days of past transactions should be downloaded? 180 days (6 months) is recommended to build a good spending history."></help-tip></div>
-                                                    <input type="number" v-model.number="settings.historyDaysBack" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
-                                                </div>
-                                                <div>
-                                                    <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Sync Buffer</label><help-tip text="A safety margin to prevent missing transactions that happen exactly when the system is syncing. 0.05 days is about 1 hour."></help-tip></div>
-                                                    <input type="number" step="0.01" v-model.number="settings.syncBufferDays" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
-                                                </div>
-                                            </div>
-                                        </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="text-xs font-bold text-slate-700">Unexpected Alert (R)</label>
+                                        <input v-model.number="settings.unexpectedPaymentThreshold" type="number" class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
                                     </div>
-
-                                    <!-- Twilio -->
-                                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                                        <div class="bg-slate-50 px-6 py-3 border-b border-slate-100 flex justify-between items-center">
-                                            <h3 class="font-bold text-slate-800 text-sm">WhatsApp (Twilio)</h3>
-                                            <button type="button" @click="testWhatsApp" :disabled="whatsappTesting" class="text-[10px] font-bold text-brand-600 hover:underline">{{ whatsappTesting ? 'TESTING...' : 'TEST MSG' }}</button>
-                                        </div>
-                                        <div class="p-6 space-y-4">
-                                            <div>
-                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">SID</label><help-tip text="Your unique 'Account SID' from the Twilio Console. It starts with 'AC...'"></help-tip></div>
-                                                <input type="text" v-model="settings.twilioAccountSid" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-mono outline-none" placeholder="AC...">
-                                            </div>
-                                            <div>
-                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Auth Token</label><help-tip text="Your secret 'Auth Token' from Twilio. It acts like a password to send WhatsApp messages."></help-tip></div>
-                                                <input type="password" v-model="settings.twilioAuthToken" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-mono outline-none">
-                                            </div>
-                                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <div>
-                                                    <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Twilio Number</label><help-tip text="The WhatsApp number provided by Twilio. Format must be international, e.g., 'whatsapp:+14155238886'."></help-tip></div>
-                                                    <input type="text" v-model="settings.twilioWhatsAppNumber" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-mono outline-none" placeholder="whatsapp:+1...">
-                                                </div>
-                                                <div>
-                                                    <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Your Number</label><help-tip text="The personal phone number allowed to receive messages. Must match the number you verified in Twilio. Format: 'whatsapp:+27...'"></help-tip></div>
-                                                    <input type="text" v-model="settings.authorizedWhatsAppNumber" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-mono outline-none" placeholder="whatsapp:+27...">
-                                                </div>
-                                            </div>
-                                        </div>
+                                    <div>
+                                        <label class="text-xs font-bold text-slate-700">Income Alert (R)</label>
+                                        <input v-model.number="settings.incomeAlertThreshold" type="number" class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
                                     </div>
                                 </div>
+                            </div>
 
-                                <!-- S-AI -->
-                                <div v-if="activeTab === 's-ai'" class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                                    <div class="p-6 space-y-6">
-                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div>
-                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Provider</label><help-tip text="Choose which AI brain to use. 'Ollama' runs on your own computer (free, private). 'Gemini' runs on Google's cloud (faster, smarter)."></help-tip></div>
-                                                <select v-model="settings.aiProvider" @change="loadModels(true)" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
-                                                    <option value="Ollama">Ollama (Local)</option>
-                                                    <option value="Gemini">Google Gemini</option>
-                                                </select>
-                                            </div>
-                                            <div>
-                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Bot Name</label><help-tip text="Give your AI assistant a name! This is the personality it will adopt when chatting with you."></help-tip></div>
-                                                <input type="text" v-model="settings.systemPersona" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
-                                            </div>
-                                        </div>
-
-                                        <div>
-                                            <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">{{ settings.aiProvider === 'Ollama' ? 'Ollama URL' : 'Gemini Key' }}</label><help-tip :text="settings.aiProvider === 'Ollama' ? 'The network address of your Ollama server. If running on this same machine, use http://localhost:11434' : 'The API Key generated from Google AI Studio. This connects your app to Google\'s Gemini models.'"></help-tip></div>
-                                            <div class="flex gap-2">
-                                                <input v-if="settings.aiProvider === 'Ollama'" type="text" v-model="settings.ollamaBaseUrl" class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-mono outline-none">
-                                                <input v-else type="password" v-model="settings.geminiApiKey" class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-mono outline-none">
-                                                <button type="button" @click="testAi" :disabled="aiTesting" class="px-4 py-2 bg-slate-800 text-white rounded-lg text-xs font-bold">
-                                                    {{ aiTesting ? '...' : 'Test' }}
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        <div>
-                                            <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Model</label><help-tip text="Select the specific 'brain' version. Larger models are smarter but slower. 'Llama3' or 'Gemini Pro' are good choices."></help-tip></div>
-                                            <select v-model="settings.ollamaModelName" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
-                                                <option v-if="availableModels.length === 0" :value="settings.ollamaModelName">{{ settings.ollamaModelName }}</option>
-                                                <option v-for="model in availableModels" :key="model" :value="model">{{ model }}</option>
-                                            </select>
-                                        </div>
-                                        
-                                        <div class="mt-6 pt-6 border-t border-slate-100">
-                                            <h4 class="text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">External API Access</h4>
-                                            <p class="text-[10px] text-slate-500 mb-3 leading-relaxed">
-                                                You can leverage Gordon's intelligence from other services on your local network (e.g., Home Assistant, Node-RED).
-                                                Send a POST request to <code>/chat</code> with a JSON body.
-                                            </p>
-                                            <div class="bg-slate-900 rounded-lg p-3 relative group">
-                                                <pre class="text-[10px] font-mono text-slate-300 overflow-x-auto custom-scrollbar"><code>curl -X POST http://localhost:52944/chat \
-  -H "Content-Type: application/json" \
-  -d '{"Message": "How much did I spend on Uber?"}'</code></pre>
-                                            </div>
-                                        </div>
-                                    </div>
+                            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
+                                <h3 class="font-bold text-slate-800 text-sm border-b pb-2 mb-4">Classification</h3>
+                                <div>
+                                    <label class="text-xs font-bold text-slate-700">Fixed Cost Keywords</label>
+                                    <textarea v-model="settings.fixedCostKeywords" rows="2" class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono"></textarea>
                                 </div>
-
-                                <!-- S-MATH -->
-                                <div v-if="activeTab === 's-math'" class="space-y-6">
-                                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                                        <div class="bg-slate-50 px-6 py-3 border-b border-slate-100">
-                                            <h3 class="font-bold text-slate-800 text-sm">Parameters</h3>
-                                        </div>
-                                        <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                                            <div class="col-span-full">
-                                                <div class="flex justify-between mb-2">
-                                                    <div class="flex items-center gap-1.5"><label class="text-xs font-bold text-slate-700">EMA Alpha ({{ settings.actuarialAlpha }})</label><help-tip text="Controls the 'Speed of Learning'. Low (0.01): The engine changes its mind slowly. High (0.5): The engine reacts immediately to recent spending."></help-tip></div>
-                                                    <span class="text-[10px] text-slate-400">Low = Smooth, High = Reactive</span>
-                                                </div>
-                                                <input type="range" v-model.number="settings.actuarialAlpha" min="0.01" max="0.5" step="0.01" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-brand-600">
-                                            </div>
-                                            <div>
-                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Window (Days)</label><help-tip text="The number of days to look back when calculating your 'Burn Rate'. 90 days allows the system to smooth out one-off expenses."></help-tip></div>
-                                                <input type="number" v-model.number="settings.analysisWindowDays" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
-                                            </div>
-                                            <div>
-                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Alert Threshold (R)</label><help-tip text="Gordon will alert you if a single unexpected transaction exceeds this amount. Example: Set to 3000 to get warned about any surprise purchase over R3000."></help-tip></div>
-                                                <input type="number" v-model.number="settings.unexpectedPaymentThreshold" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
-                                            </div>
-                                            <div>
-                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Income Alert (R)</label><help-tip text="Receive a notification if a deposit exceeds this amount. Useful for tracking salary or large refunds. Credits are negative numbers in the DB, but enter a POSITIVE number here (e.g. 5000)."></help-tip></div>
-                                                <input type="number" v-model.number="settings.incomeAlertThreshold" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                                        <div class="bg-slate-50 px-6 py-3 border-b border-slate-100">
-                                            <h3 class="font-bold text-slate-800 text-sm">Classification</h3>
-                                        </div>
-                                        <div class="p-6 space-y-4">
-                                            <div>
-                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Salary Keywords</label><help-tip text="Words in a transaction description that confirm it is income. Separate with commas. Example: 'PAYROLL, SALARY, MONTHLY DIVIDEND'"></help-tip></div>
-                                                <textarea v-model="settings.salaryKeywords" rows="2" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-xs font-mono outline-none"></textarea>
-                                            </div>
-                                            <div class="grid grid-cols-2 gap-4">
-                                                <div>
-                                                    <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Min Salary (R)</label><help-tip text="If a deposit doesn't match a keyword, but is LARGER than this amount, assume it is a salary. Safety net for unmarked transfers."></help-tip></div>
-                                                    <input type="number" v-model.number="settings.salaryFallbackThreshold" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
-                                                </div>
-                                                <div>
-                                                    <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Salary Search (Days)</label><help-tip text="How far back to look for the last paycheck to calculate the 'Salary Cycle'. 45 days covers monthly + a bit of delay buffer."></help-tip></div>
-                                                    <input type="number" v-model.number="settings.salaryFallbackDays" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Fixed Cost Keywords</label><help-tip text="Words that identify 'Must-Pay' bills. Gordon subtracts these from your available cash immediately. Example: 'RENT, MORTGAGE, MEDICAL AID'"></help-tip></div>
-                                                <textarea v-model="settings.fixedCostKeywords" rows="2" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-xs font-mono outline-none"></textarea>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                                        <div class="bg-slate-50 px-6 py-3 border-b border-slate-100">
-                                            <h3 class="font-bold text-slate-800 text-sm">Advanced Actuarial</h3>
-                                        </div>
-                                        <div class="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-                                            <div>
-                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Stability %</label><help-tip text="If a category's spending changes by less than this %, it is considered 'Stable'. Example: 15% means a R100 lunch bill can vary between R85 and R115 without triggering an alert."></help-tip></div>
-                                                <input type="number" v-model.number="settings.stabilityPercentageThreshold" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
-                                            </div>
-                                            <div>
-                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Stability Amt (R)</label><help-tip text="Absolute variance amount. Even if percentage is high, if the Rand value change is below this, ignore it. Example: R250. Prevents alerts for tiny purchases doubling in price (e.g. gum going from R10 to R20)."></help-tip></div>
-                                                <input type="number" v-model.number="settings.stabilityAmountThreshold" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
-                                            </div>
-                                            <div>
-                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Trend Sensitivity</label><help-tip text="How sensitive the 'Spending Trend' arrow is. 0.1 means a 10% deviation triggers an Up or Down arrow."></help-tip></div>
-                                                <input type="number" step="0.01" v-model.number="settings.trendSensitivity" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
-                                            </div>
-                                        </div>
-                                    </div>
+                                <div>
+                                    <label class="text-xs font-bold text-slate-700">Salary Keywords</label>
+                                    <textarea v-model="settings.salaryKeywords" rows="2" class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono"></textarea>
                                 </div>
-
-                                <!-- S-DELIVERY -->
-                                <div v-if="activeTab === 's-delivery'" class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                                    <div class="bg-slate-50 px-6 py-3 border-b border-slate-100 flex justify-between items-center">
-                                        <h3 class="font-bold text-slate-800 text-sm">Email Reporting</h3>
-                                        <button type="button" @click="testEmail" :disabled="emailTesting" class="text-[10px] font-bold text-brand-600 hover:underline">{{ emailTesting ? 'SENDING...' : 'TEST EMAIL' }}</button>
-                                    </div>
-                                    <div class="p-6 space-y-4">
-                                        <div class="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Host</label><help-tip text="The address of your email provider's sending server. Example: 'smtp.gmail.com' for Gmail."></help-tip></div>
-                                                <input type="text" v-model="settings.smtpHost" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
-                                            </div>
-                                            <div>
-                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Port</label><help-tip text="The communication port for email. 587 is standard for secure sending (TLS)."></help-tip></div>
-                                                <input type="number" v-model.number="settings.smtpPort" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">User</label><help-tip text="The email address you are sending FROM. Usually your Gmail address."></help-tip></div>
-                                            <input type="text" v-model="settings.smtpUser" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
-                                        </div>
-                                        <div>
-                                            <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Password</label><help-tip text="The password for the sending email account. Note: For Gmail, you must use an 'App Password', not your login password."></help-tip></div>
-                                            <input type="password" v-model="settings.smtpPass" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
-                                        </div>
-                                        <div>
-                                            <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">To Address</label><help-tip text="Where should the weekly reports be sent? You can separate multiple emails with a semicolon (;)."></help-tip></div>
-                                            <input type="text" v-model="settings.emailTo" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
-                                        </div>
-                                        <div class="grid grid-cols-2 gap-4 pt-2">
-                                            <div>
-                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Day</label><help-tip text="The day of the week to send the report."></help-tip></div>
-                                                <select v-model="settings.reportDayOfWeek" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
-                                                    <option v-for="d in days" :key="d" :value="d">{{ d }}</option>
-                                                </select>
-                                            </div>
-                                            <div>
-                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Hour (24h)</label><help-tip text="The hour of the day (0-23) to send the report."></help-tip></div>
-                                                <select v-model.number="settings.reportHour" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
-                                                    <option v-for="h in 24" :key="h-1" :value="h-1">{{ (h-1).toString().padStart(2, '0') }}:00</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </form>
+                            </div>
                         </div>
 
-                    </transition>
-                </div>
-            </main>
-        </div>
+                        <!-- CONNECTIONS -->
+                        <div v-if="activeTab === 's-connections'" class="space-y-6">
+                            <!-- Investec -->
+                            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                <div class="bg-slate-50 px-6 py-3 border-b border-slate-100 flex justify-between items-center">
+                                    <h3 class="font-bold text-slate-800 text-sm">Investec API</h3>
+                                    <button @click="testInvestec" class="text-[10px] font-bold text-brand-600 hover:underline">TEST CONN</button>
+                                </div>
+                                <div class="p-6 space-y-4">
+                                    <div><label class="text-xs font-bold text-slate-700">Client ID</label><input v-model="settings.investecClientId" type="text" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"></div>
+                                    <div><label class="text-xs font-bold text-slate-700">Secret</label><input v-model="settings.investecSecret" type="password" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"></div>
+                                    <div><label class="text-xs font-bold text-slate-700">API Key</label><input v-model="settings.investecApiKey" type="password" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"></div>
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div><label class="text-xs font-bold text-slate-700">History (Days)</label><input v-model.number="settings.historyDaysBack" type="number" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm"></div>
+                                        <div><label class="text-xs font-bold text-slate-700">Sync Buffer</label><input v-model.number="settings.syncBufferDays" type="number" step="0.01" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Telegram -->
+                            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                <div class="bg-slate-50 px-6 py-3 border-b border-slate-100 flex justify-between items-center">
+                                    <h3 class="font-bold text-slate-800 text-sm">Telegram Bot</h3>
+                                    <div class="flex gap-2">
+                                        <button @click="registerWebhook" class="text-[10px] font-bold text-indigo-600 hover:underline">SET WEBHOOK</button>
+                                        <button @click="testTelegram" class="text-[10px] font-bold text-brand-600 hover:underline">TEST MSG</button>
+                                    </div>
+                                </div>
+                                <div class="p-6 space-y-4">
+                                    <div><label class="text-xs font-bold text-slate-700">Bot Token</label><input v-model="settings.telegramBotToken" type="password" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"></div>
+                                    <div><label class="text-xs font-bold text-slate-700">Chat ID</label><input v-model="settings.telegramChatId" type="text" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"></div>
+                                    <div><label class="text-xs font-bold text-slate-700">Allowed IDs (Comma sep)</label><textarea v-model="settings.telegramAuthorizedChatIds" rows="2" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono"></textarea></div>
+                                </div>
+                            </div>
+                            <!-- Twilio -->
+                            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                <div class="bg-slate-50 px-6 py-3 border-b border-slate-100 flex justify-between"><h3 class="font-bold text-slate-800 text-sm">WhatsApp (Twilio)</h3><button @click="testWhatsApp" class="text-[10px] font-bold text-brand-600 hover:underline">TEST MSG</button></div>
+                                <div class="p-6 space-y-4">
+                                    <div><label class="text-xs font-bold text-slate-700">Account SID</label><input v-model="settings.twilioAccountSid" type="text" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"></div>
+                                    <div><label class="text-xs font-bold text-slate-700">Auth Token</label><input v-model="settings.twilioAuthToken" type="password" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"></div>
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div><label class="text-xs font-bold text-slate-700">Twilio Num</label><input v-model="settings.twilioWhatsAppNumber" type="text" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"></div>
+                                        <div><label class="text-xs font-bold text-slate-700">Your Num</label><input v-model="settings.authorizedWhatsAppNumber" type="text" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
 
-        <!-- MOBILE BOTTOM NAV -->
-        <nav class="md:hidden h-16 bg-white border-t border-slate-200 flex justify-around items-center shrink-0 pb-safe z-50 fixed bottom-0 left-0 right-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-            <button @click="activeTab = 'dashboard'" class="flex flex-col items-center justify-center w-full h-full" :class="activeTab === 'dashboard' ? 'text-brand-600' : 'text-slate-400'">
-                <span class="text-xl mb-0.5">🏠</span>
-                <span class="text-[10px] font-bold">Home</span>
-            </button>
-            <button @click="activeTab = 'chat'" class="flex flex-col items-center justify-center w-full h-full" :class="activeTab === 'chat' ? 'text-brand-600' : 'text-slate-400'">
-                <span class="text-xl mb-0.5">💬</span>
-                <span class="text-[10px] font-bold">Chat</span>
-            </button>
-            <button @click="activeTab = 's-identity'" class="flex flex-col items-center justify-center w-full h-full" :class="activeTab.startsWith('s-') ? 'text-brand-600' : 'text-slate-400'">
-                <span class="text-xl mb-0.5">⚙️</span>
-                <span class="text-[10px] font-bold">Settings</span>
-            </button>
-        </nav>
+                        <!-- AI -->
+                        <div v-if="activeTab === 's-ai'" class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div><label class="text-xs font-bold text-slate-700">Provider</label><select v-model="settings.aiProvider" @change="loadModels" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm"><option value="Ollama">Ollama</option><option value="Gemini">Gemini</option></select></div>
+                                <div><label class="text-xs font-bold text-slate-700">Persona Name</label><input v-model="settings.systemPersona" type="text" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm"></div>
+                            </div>
+                            <div>
+                                <label class="text-xs font-bold text-slate-700">{{ settings.aiProvider === 'Ollama' ? 'Ollama URL' : 'Gemini Key' }}</label>
+                                <div class="flex gap-2 mt-1">
+                                    <input v-if="settings.aiProvider === 'Ollama'" v-model="settings.ollamaBaseUrl" type="text" class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                    <input v-else v-model="settings.geminiApiKey" type="password" class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                    <button @click="testAi" class="px-4 py-2 bg-slate-800 text-white rounded-lg text-xs font-bold">Test</button>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="text-xs font-bold text-slate-700">Model</label>
+                                <select v-model="settings.ollamaModelName" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                    <option v-if="availableModels.length === 0" :value="settings.ollamaModelName">{{ settings.ollamaModelName }}</option>
+                                    <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
+                                </select>
+                            </div>
+                        </div>
 
-        <!-- SUB-NAV FOR SETTINGS (Mobile Only) -->
-        <div v-if="activeTab.startsWith('s-') && isMobile" class="md:hidden fixed bottom-16 left-0 right-0 bg-white border-t border-slate-100 p-2 flex overflow-x-auto gap-2 z-40 pb-safe">
-            <button v-for="t in settingsTabs" :key="t.id" @click="activeTab = t.id" 
-                class="whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold border transition-all"
-                :class="activeTab === t.id ? 'bg-brand-600 text-white border-brand-600' : 'bg-slate-50 text-slate-600 border-slate-200'">
-                {{ t.name }}
-            </button>
-        </div>
-
-        <!-- TOAST -->
-        <transition name="slide-up">
-            <div v-if="toast.show" class="fixed bottom-20 md:bottom-10 left-1/2 -translate-x-1/2 md:translate-x-0 md:left-auto md:right-10 flex items-center gap-3 px-5 py-3 rounded-xl shadow-xl z-[100] text-white min-w-[300px]"
-                 :class="toast.type === 'error' ? 'bg-red-500' : 'bg-slate-900'">
-                <span class="text-lg">{{ toast.type === 'error' ? '❌' : '✅' }}</span>
-                <span class="text-sm font-semibold flex-1">{{ toast.msg }}</span>
+                        <!-- EMAIL -->
+                        <div v-if="activeTab === 's-delivery'" class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
+                            <div class="flex justify-between"><h3 class="font-bold text-slate-800 text-sm">SMTP Settings</h3><button @click="testEmail" class="text-[10px] font-bold text-brand-600 hover:underline">TEST EMAIL</button></div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div><label class="text-xs font-bold text-slate-700">Host</label><input v-model="settings.smtpHost" type="text" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm"></div>
+                                <div><label class="text-xs font-bold text-slate-700">Port</label><input v-model.number="settings.smtpPort" type="number" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm"></div>
+                            </div>
+                            <div><label class="text-xs font-bold text-slate-700">User</label><input v-model="settings.smtpUser" type="text" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm"></div>
+                            <div><label class="text-xs font-bold text-slate-700">Password</label><input v-model="settings.smtpPass" type="password" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm"></div>
+                            <div><label class="text-xs font-bold text-slate-700">To Address</label><input v-model="settings.emailTo" type="text" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm"></div>
+                            <div class="grid grid-cols-2 gap-4 border-t pt-4">
+                                <div>
+                                    <label class="text-xs font-bold text-slate-700">Schedule Day</label>
+                                    <select v-model="settings.reportDayOfWeek" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                        <option v-for="d in days" :key="d" :value="d">{{ d }}</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-xs font-bold text-slate-700">Schedule Hour (24h)</label>
+                                    <select v-model.number="settings.reportHour" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                        <option v-for="h in 24" :key="h-1" :value="h-1">{{ (h-1).toString().padStart(2, '0') }}:00</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </main>
             </div>
-        </transition>
+        </template>
+
+        <!-- USER MODAL -->
+        <div v-if="isUserModalOpen" class="fixed inset-0 z-[150] bg-black/50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
+                <h3 class="text-lg font-bold">{{ userForm.id ? 'Edit User' : 'New User' }}</h3>
+                <input v-if="!userForm.id" v-model="userForm.username" type="text" placeholder="Username" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none">
+                <input v-model="userForm.password" type="password" :placeholder="userForm.id ? 'New Password (Optional)' : 'Password'" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none">
+                <select v-model="userForm.role" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none">
+                    <option value="User">User</option>
+                    <option value="Admin">Admin</option>
+                </select>
+                <div class="flex gap-2 justify-end pt-2">
+                    <button @click="isUserModalOpen = false" class="px-4 py-2 text-slate-500 font-bold">Cancel</button>
+                    <button @click="saveUser" class="px-4 py-2 bg-brand-600 text-white rounded-lg font-bold">Save</button>
+                </div>
+            </div>
+        </div>
 
     </div>
 
     <script>
         const { createApp } = Vue;
-        
-        const app = createApp({
+        createApp({
             data() {
                 return {
+                    loading: false,
+                    sendingReport: false,
+                    authView: 'login',
+                    auth: { token: localStorage.getItem('token'), username: localStorage.getItem('username'), role: localStorage.getItem('role') || 'User' },
+                    loginForm: { username: '', password: '' },
+                    registerForm: { username: '', password: '' },
                     activeTab: 'dashboard',
-                    isMobile: window.innerWidth < 768,
-                    settingsTabs: [
-                        { id: 's-identity', name: 'Profile', icon: '👤' },
-                        { id: 's-connections', name: 'Connect', icon: '🔗' },
+                    users: [],
+                    userForm: { id: 0, username: '', password: '', role: 'User' },
+                    isUserModalOpen: false,
+                    menuItems: [
+                        { id: 'dashboard', name: 'Dashboard', icon: '🏠' },
+                        { id: 's-identity', name: 'Identity', icon: '👤' },
+                        { id: 's-connections', name: 'Connections', icon: '🔗' },
                         { id: 's-ai', name: 'Brain', icon: '🧠' },
-                        { id: 's-math', name: 'Math', icon: '🧪' },
-                        { id: 's-delivery', name: 'Email', icon: '✉️' },
+                        { id: 's-math', name: 'Math & Logic', icon: '🧪' },
+                        { id: 's-delivery', name: 'Email & Schedule', icon: '✉️' },
+                        { id: 'admin-users', name: 'User Mgmt', icon: '🛡️', adminOnly: true }
                     ],
-                    settings: {
-                        userName: 'User', reportDayOfWeek: 'Monday', reportHour: 9, actuarialAlpha: 0.15,
-                        analysisWindowDays: 90, unexpectedPaymentThreshold: 3000, incomeAlertThreshold: 5000,
-                        ollamaBaseUrl: '', ollamaModelName: '', geminiApiKey: '', aiProvider: 'Ollama',
-                        fixedCostKeywords: '', salaryKeywords: '', salaryFallbackThreshold: 10000,       
-                        salaryFallbackDays: 45, stabilityPercentageThreshold: 15, stabilityAmountThreshold: 250, trendSensitivity: 0.1,
-                        investecBaseUrl: '', investecClientId: '', investecSecret: '', investecApiKey: '', syncBufferDays: 0.05, systemPersona: 'Gordon',
-                        smtpHost: '', smtpPort: 587, smtpUser: '', smtpPass: '', emailTo: '',
-                        historyDaysBack: 180, currencyCulture: 'en-ZA',
-                        twilioAccountSid: '', twilioAuthToken: '', twilioWhatsAppNumber: '', authorizedWhatsAppNumber: ''
+                    settings: { 
+                        userName: 'User', currencyCulture: 'en-ZA', investecBaseUrl: 'https://openapi.investec.com/', 
+                        aiProvider: 'Ollama', ollamaBaseUrl: '', systemPersona: 'Gordon',
+                        smtpPort: 587, reportDayOfWeek: 'Monday', reportHour: 9,
+                        analysisWindowDays: 90, actuarialAlpha: 0.15, unexpectedPaymentThreshold: 3000, incomeAlertThreshold: 5000,
+                        historyDaysBack: 180, syncBufferDays: 0.05
                     },
                     availableModels: [],
-                    systemStatus: { investecOnline: false, lastCheck: '', lastError: '' },
                     days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
-                    
-                    saving: false, emailTesting: false, aiTesting: false, whatsappTesting: false,        
-                    sendingReport: false, repulling: false,
-                    toast: { show: false, msg: '', type: 'success' },
-                    
-                    userInput: '',
-                    chatLoading: false,
-                    chatMessages: []
-                }
-            },
-            computed: {
-                navGroups() {
-                    return [
-                        { title: 'Overview', items: [{ id: 'dashboard', name: 'Dashboard', icon: '🏠' },  { id: 'chat', name: 'Gordon AI', icon: '💬' }] },
-                        { title: 'Configuration', items: this.settingsTabs }
-                    ];
-                },
-                currentTabName() {
-                    const all = [{ id: 'dashboard', name: 'Dashboard' }, { id: 'chat', name: 'Chat' }, ...this.settingsTabs];
-                    return all.find(t => t.id === this.activeTab)?.name || 'Gordon';
+                    systemStatus: { investecOnline: false, lastTelegramHit: null, lastTelegramError: '', lastCheck: null },
+                    toast: { show: false, msg: '' }
                 }
             },
             mounted() {
-                this.loadSettings();
-                this.loadStatus();
-                this.loadModels();
-                setInterval(this.loadStatus, 20000);
-                window.addEventListener('resize', () => { this.isMobile = window.innerWidth < 768; });   
+                if (this.auth.token) {
+                    this.loadData();
+                    if (this.auth.role === 'Admin') this.loadUsers();
+                }
             },
             methods: {
-                formatTime(dateInput) {
-                    if (!dateInput) return 'Never';
-                    // Check if it's a string before calling startsWith
-                    if (typeof dateInput === 'string' && dateInput.startsWith('0001')) return 'Never';
-                    return new Date(dateInput).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                async api(path, method = 'GET', body = null) {
+                    const headers = { 'Authorization': `Bearer ${this.auth.token}` };
+                    if (body) headers['Content-Type'] = 'application/json';
+                    const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : null });
+                    if (res.status === 401) this.logout();
+                    return res;
                 },
-                showToast(msg, type = 'success') {
-                    this.toast = { show: true, msg, type };
-                    setTimeout(() => { if (this.toast.msg === msg) this.toast.show = false; }, 4000);
-                },
-                async loadSettings() {
+                async login() {
+                    this.loading = true;
                     try {
-                        const res = await fetch('/api/settings');
-                        if (res.ok) this.settings = await res.json();
-                    } catch (e) { console.error(e); }
+                        const res = await fetch('/api/auth/login', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(this.loginForm)
+                        });
+                        if (res.ok) {
+                            const data = await res.json();
+                            const payload = JSON.parse(atob(data.token.split('.')[1]));
+                            const role = payload.role || 'User';
+                            
+                            this.auth = { token: data.token, username: data.username, role: role };
+                            localStorage.setItem('token', data.token);
+                            localStorage.setItem('username', data.username);
+                            localStorage.setItem('role', role);
+                            
+                            this.loadData();
+                            if (role === 'Admin') this.loadUsers();
+                        } else this.showToast("Login Failed");
+                    } catch { this.showToast("Network Error"); } 
+                    finally { this.loading = false; }
                 },
-                async loadStatus() {
+                async register() {
+                    this.loading = true;
                     try {
-                        const res = await fetch('/api/settings/status');
-                        if (res.ok) this.systemStatus = await res.json();
-                    } catch (e) {}
+                        const res = await fetch('/api/auth/register', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(this.registerForm)
+                        });
+                        if (res.ok) { this.showToast("Registered! Please login."); this.authView = 'login'; }
+                        else this.showToast("Registration Failed");
+                    } finally { this.loading = false; }
+                },
+                logout() {
+                    this.auth = { token: null, username: null, role: null };
+                    localStorage.clear();
+                },
+                async loadData() {
+                    const resS = await this.api('/api/settings');
+                    if (resS.ok) {
+                        this.settings = await resS.json();
+                        this.loadModels(); // Load models after settings loaded
+                    }
+                    const resSt = await this.api('/api/settings/status');
+                    if (resSt.ok) this.systemStatus = await resSt.json();
+                },
+                async loadUsers() {
+                    const res = await this.api('/api/users');
+                    if (res.ok) this.users = await res.json();
+                },
+                async loadModels() {
+                    const res = await this.api('/api/settings/models');
+                    if (res.ok) this.availableModels = await res.json();
+                },
+                openUserModal(u = null) {
+                    this.userForm = u ? { ...u, password: '' } : { id: 0, username: '', password: '', role: 'User' };
+                    this.isUserModalOpen = true;
+                },
+                async saveUser() {
+                    const method = this.userForm.id ? 'PUT' : 'POST';
+                    const url = this.userForm.id ? `/api/users/${this.userForm.id}` : '/api/users';
+                    const res = await this.api(url, method, this.userForm);
+                    if (res.ok) { this.showToast("User Saved"); this.isUserModalOpen = false; this.loadUsers(); }
+                    else this.showToast("Save Failed");
+                },
+                async deleteUser(id) {
+                    if (!confirm("Are you sure?")) return;
+                    const res = await this.api(`/api/users/${id}`, 'DELETE');
+                    if (res.ok) { this.showToast("User Deleted"); this.loadUsers(); }
                 },
                 async saveSettings() {
-                    this.saving = true;
-                    try {
-                        const res = await fetch('/api/settings', { 
-                            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.settings) 
-                        });
-                        if (res.ok) this.showToast("Saved Successfully");
-                        else {
-                            const err = await res.json();
-                            this.showToast(err.error || "Save Failed", "error");
-                        }
-                    } catch (e) { this.showToast("Error Saving", "error"); }
-                    finally { this.saving = false; }
+                    const res = await this.api('/api/settings', 'PUT', this.settings);
+                    if (res.ok) this.showToast("Settings Saved");
+                },
+                async testInvestec() {
+                    await this.saveSettings();
+                    const res = await this.api('/api/settings/test-investec', 'POST');
+                    if (res.ok) { this.showToast("Investec Connected"); this.loadData(); } else this.showToast("Failed");
                 },
                 async testEmail() {
-                    this.emailTesting = true; await this.saveSettings();
-                    try {
-                        const res = await fetch('/api/settings/test-email', { method: 'POST' });
-                        if (res.ok) this.showToast("Test Email Sent");
-                        else this.showToast("Email Failed", "error");
-                    } catch (e) { this.showToast("Error", "error"); }
-                    finally { this.emailTesting = false; }
+                    await this.saveSettings();
+                    const res = await this.api('/api/settings/test-email', 'POST');
+                    if (res.ok) this.showToast("Email Sent"); else this.showToast("Failed");
+                },
+                async testAi() {
+                    await this.saveSettings();
+                    const res = await this.api('/api/settings/test-ai', 'POST');
+                    if (res.ok) { this.showToast("AI Connected"); this.loadModels(); } else this.showToast("Failed");
+                },
+                async testTelegram() {
+                    await this.saveSettings();
+                    const res = await this.api('/api/settings/test-telegram', 'POST');
+                    if (res.ok) this.showToast("Telegram Sent"); else this.showToast("Failed");
                 },
                 async testWhatsApp() {
-                    this.whatsappTesting = true; await this.saveSettings();
+                    await this.saveSettings();
+                    const res = await this.api('/api/settings/test-whatsapp', 'POST');
+                    if (res.ok) this.showToast("WhatsApp Sent"); else this.showToast("Failed");
+                },
+                async registerWebhook() {
+                    let baseUrl = prompt("Enter your public HTTPS URL (e.g., https://yourdomain.com):", "https://financeai.wethegordons.co.za");
+                    if (!baseUrl) return;
+                    baseUrl = baseUrl.replace(/\/$/, "").replace(/\/telegram\/webhook$/, "");
+                    const fullUrl = baseUrl + '/telegram/webhook';
                     try {
-                        const res = await fetch('/api/settings/test-whatsapp', { method: 'POST' });      
-                        if (res.ok) this.showToast("WhatsApp Sent");
-                        else this.showToast("Failed", "error");
-                    } catch (e) { this.showToast("Error", "error"); }
-                    finally { this.whatsappTesting = false; }
+                        const res = await this.api('/telegram/setup-webhook', 'POST', { Url: fullUrl }); 
+                        if (res.ok) this.showToast("Webhook Registered!");
+                        else this.showToast("Failed");
+                    } catch { this.showToast("Network Error"); }
+                },
+                async forceRepull() {
+                    if (!confirm("Resync all transactions?")) return;
+                    const res = await this.api('/api/settings/force-repull', 'POST');
+                    if (res.ok) this.showToast("Sync Started");
                 },
                 async sendReportNow() {
                     this.sendingReport = true;
                     try {
-                        const res = await fetch('/api/settings/send-report-now', { method: 'POST' });    
-                        if (res.ok) this.showToast("Report Triggered");
-                    } catch (e) { this.showToast("Error", "error"); }
-                    finally { this.sendingReport = false; }
+                        const res = await this.api('/api/settings/send-report-now', 'POST');
+                        if (res.ok) this.showToast("Report Sent"); else this.showToast("Failed");
+                    } finally { this.sendingReport = false; }
                 },
-                async forceRepull() {
-                    if (!confirm("Re-sync all transactions? This may take a while.")) return;
-                    this.repulling = true;
-                    try {
-                        const res = await fetch('/api/settings/force-repull', { method: 'POST' });       
-                        if (res.ok) this.showToast("Re-sync started");
-                    } catch (e) { this.showToast("Error", "error"); }
-                    finally { this.repulling = false; }
+                showToast(msg) {
+                    this.toast = { show: true, msg };
+                    setTimeout(() => this.toast.show = false, 3000);
                 },
-                async loadModels(saveFirst = false) {
-                    if (saveFirst) await this.saveSettings();
-                    this.availableModels = []; // Clear current models to avoid showing stale data from previous provider
-                    try {
-                        const res = await fetch('/api/settings/models');
-                        if (res.ok) this.availableModels = await res.json();
-                    } catch (e) {}
-                },
-                async testAi() {
-                    this.aiTesting = true; await this.saveSettings();
-                    try {
-                        const res = await fetch('/api/settings/test-ai', { method: 'POST' });
-                        if (res.ok) { this.showToast("AI Connected"); await this.loadModels(); }
-                        else {
-                            const err = await res.json();
-                            this.showToast(err.error || "AI Failed", "error");
-                        }
-                    } catch (e) { this.showToast("Error", "error"); }
-                    finally { this.aiTesting = false; }
-                },
-                suggestMessage(msg) { this.userInput = msg; this.sendMessage(); },
-                async sendMessage() {
-                    if (!this.userInput || this.chatLoading) return;
-                    const msg = this.userInput;
-                    this.userInput = '';
-                    this.chatMessages.push({ role: 'user', content: msg, time: this.formatTime(new Date()) });
-                    this.chatLoading = true;
-                    this.scrollToBottom();
-                    
-                    console.log("Sending chat message:", msg);
-
-                    try {
-                        const res = await fetch('/chat', {
-                            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Message: msg })
-                        });
-                        console.log("Chat response status:", res.status);
-                        
-                        if (res.ok) {
-                            const data = await res.json();
-                            console.log("Chat data received:", data);
-                            this.chatMessages.push({ role: 'gordon', content: data.response, time: this.formatTime(new Date()) });
-                        } else {
-                            console.error("Chat error response:", await res.text());
-                            this.chatMessages.push({ role: 'gordon', content: "I'm having trouble thinking right now.", time: this.formatTime(new Date()) });
-                        }
-                    } catch (e) {
-                        console.error("Chat network error:", e);
-                        this.chatMessages.push({ role: 'gordon', content: "Connection lost.", time: this.formatTime(new Date()) });
-                    } finally {
-                        this.chatLoading = false;
-                        this.scrollToBottom();
-                    }
-                },
-                scrollToBottom() {
-                    this.$nextTick(() => {
-                        const container = this.$refs.chatContainer;
-                        if (container) container.scrollTop = container.scrollHeight;
-                    });
-                }
+                formatTime(d) { return d ? new Date(d).toLocaleTimeString() : 'Never'; }
             }
-        });
-
-        // Register HelpTip Component
-        app.component('help-tip', {
-            props: ['text'],
-            data() { return { show: false, top: 0, left: 0 }; },
-            methods: {
-                showTip(event) {
-                    const rect = event.target.getBoundingClientRect();
-                    this.left = rect.left + (rect.width / 2);
-                    this.top = rect.top; 
-                    
-                    // Prevent going off screen (basic check)
-                    if (this.left < 130) this.left = 130; 
-                    if (this.left > window.innerWidth - 130) this.left = window.innerWidth - 130;
-
-                    this.show = true;
-                },
-                hideTip() { this.show = false; }
-            },
-            template: `
-                <div class="inline-flex items-center ml-1.5 cursor-help" @mouseenter="showTip" @mouseleave="hideTip">
-                    <div class="w-4 h-4 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center text-[10px] font-bold hover:bg-brand-500 hover:text-white transition-colors">?</div>
-                    <teleport to="body">
-                        <div v-if="show" :style="{ top: top + 'px', left: left + 'px' }" 
-                             class="fixed transform -translate-x-1/2 -translate-y-full mt-[-8px] w-64 p-3 bg-slate-800 text-white text-xs rounded-lg shadow-[0_10px_25px_-5px_rgba(0,0,0,0.5)] z-[2147483647] text-center leading-relaxed pointer-events-none border border-slate-700">
-                            {{ text }}
-                            <div class="absolute top-full left-1/2 -translate-x-1/2 -mt-[1px] border-4 border-transparent border-t-slate-800"></div>
-                        </div>
-                    </teleport>
-                </div>
-            `
-        });
-
-        app.mount('#app');
+        }).mount('#app');
     </script>
 </body>
 </html>

@@ -9,6 +9,7 @@ namespace GordonWorker.Services;
 
 public interface IInvestecClient
 {
+    void Configure(string clientId, string secret, string apiKey, string baseUrl = "https://openapi.investec.com/");
     Task<string> AuthenticateAsync();
     Task<List<InvestecAccount>> GetAccountsAsync();
     Task<List<Transaction>> GetTransactionsAsync(string accountId, DateTimeOffset fromDate);
@@ -27,31 +28,30 @@ public class InvestecClient : IInvestecClient
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<InvestecClient> _logger;
-    private readonly IConfiguration _configuration;
-    private readonly ISettingsService _settingsService;
+    
+    private string? _clientId;
+    private string? _secret;
+    private string? _apiKey;
     private string? _accessToken;
     private DateTime _tokenExpiry;
 
-    public InvestecClient(HttpClient httpClient, ILogger<InvestecClient> logger, IConfiguration configuration, ISettingsService settingsService)
+    public InvestecClient(HttpClient httpClient, ILogger<InvestecClient> logger)
     {
         _httpClient = httpClient;
         _logger = logger;
-        _configuration = configuration;
-        _settingsService = settingsService;
     }
 
-    private async Task EnsureBaseAddressAsync()
+    public void Configure(string clientId, string secret, string apiKey, string baseUrl = "https://openapi.investec.com/")
     {
-        if (_httpClient.BaseAddress == null)
-        {
-            var settings = await _settingsService.GetSettingsAsync();
-            _httpClient.BaseAddress = new Uri(settings.InvestecBaseUrl);
-        }
+        _clientId = clientId;
+        _secret = secret;
+        _apiKey = apiKey;
+        _httpClient.BaseAddress = new Uri(baseUrl);
+        _accessToken = null; // Reset token on reconfig
     }
 
     public async Task<decimal> GetAccountBalanceAsync(string accountId)
     {
-        await EnsureBaseAddressAsync();
         if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry) await AuthenticateAsync();
         var request = new HttpRequestMessage(HttpMethod.Get, $"za/pb/v1/accounts/{accountId}/balance");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
@@ -71,23 +71,12 @@ public class InvestecClient : IInvestecClient
 
     public async Task<string> AuthenticateAsync()
     {
-        await EnsureBaseAddressAsync();
-        var settings = await _settingsService.GetSettingsAsync();
-        var clientId = settings.InvestecClientId;
-        var secret = settings.InvestecSecret;
-        var apiKey = settings.InvestecApiKey;
-
-        // Fallback to configuration if DB settings are empty (legacy support/initial setup)
-        if (string.IsNullOrEmpty(clientId)) clientId = _configuration["INVESTEC_CLIENT_ID"];
-        if (string.IsNullOrEmpty(secret)) secret = _configuration["INVESTEC_SECRET"];
-        if (string.IsNullOrEmpty(apiKey)) apiKey = _configuration["INVESTEC_API_KEY"];
-
-        if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(secret)) return string.Empty;
+        if (string.IsNullOrEmpty(_clientId) || string.IsNullOrEmpty(_secret)) return string.Empty;
         
         var request = new HttpRequestMessage(HttpMethod.Post, "identity/v2/oauth2/token");
-        var authString = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{clientId}:{secret}"));
+        var authString = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_clientId}:{_secret}"));
         request.Headers.Authorization = new AuthenticationHeaderValue("Basic", authString);
-        request.Headers.Add("x-api-key", apiKey);
+        request.Headers.Add("x-api-key", _apiKey);
         request.Content = new FormUrlEncodedContent(new[] { new KeyValuePair<string, string>("grant_type", "client_credentials") });
         var response = await _httpClient.SendAsync(request);
         if (!response.IsSuccessStatusCode) return string.Empty;
@@ -101,7 +90,6 @@ public class InvestecClient : IInvestecClient
 
     public async Task<List<InvestecAccount>> GetAccountsAsync()
     {
-        await EnsureBaseAddressAsync();
         if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry) await AuthenticateAsync();
         var request = new HttpRequestMessage(HttpMethod.Get, "za/pb/v1/accounts");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
@@ -114,7 +102,6 @@ public class InvestecClient : IInvestecClient
 
     public async Task<List<Transaction>> GetTransactionsAsync(string accountId, DateTimeOffset fromDate)
     {
-        await EnsureBaseAddressAsync();
         if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry) await AuthenticateAsync();
         var url = $"za/pb/v1/accounts/{accountId}/transactions?fromDate={fromDate:yyyy-MM-dd}";
         var request = new HttpRequestMessage(HttpMethod.Get, url);
@@ -130,7 +117,6 @@ public class InvestecClient : IInvestecClient
             {
                 if (!Guid.TryParse(t.Id, out var id))
                 {
-                    // CRITICAL FIX: Use InvariantCulture for stable IDs across re-syncs
                     var hashKey = $"{accountId}_{t.TransactionDate:O}_{t.Description}_{t.Amount.ToString("F2", CultureInfo.InvariantCulture)}_{t.AccountBalance.ToString("F2", CultureInfo.InvariantCulture)}";
                     id = GenerateUuidFromString(hashKey);
                 }

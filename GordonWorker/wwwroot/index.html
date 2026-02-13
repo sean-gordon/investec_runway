@@ -172,7 +172,7 @@
                     </div>
 
                     <!-- SETTINGS PAGES -->
-                    <div v-if="activeTab.startsWith('s-')" class="max-w-3xl space-y-6">
+                    <div v-if="activeTab.startsWith('s-')" class="max-w-3xl space-y-6 pb-20">
                         <div class="flex justify-between items-center">
                             <h2 class="text-xl font-bold">Configuration</h2>
                             <button @click="saveSettings" class="bg-brand-600 text-white px-6 py-2 rounded-lg font-bold shadow-md hover:bg-brand-700">Save Changes</button>
@@ -194,6 +194,45 @@
                             </div>
                         </div>
 
+                        <!-- MATH / ACTUARIAL -->
+                        <div v-if="activeTab === 's-math'" class="space-y-6">
+                            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
+                                <h3 class="font-bold text-slate-800 text-sm border-b pb-2 mb-4">Core Parameters</h3>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="text-xs font-bold text-slate-700">Analysis Window (Days)</label>
+                                        <input v-model.number="settings.analysisWindowDays" type="number" class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs font-bold text-slate-700">EMA Alpha ({{ settings.actuarialAlpha }})</label>
+                                        <input type="range" v-model.number="settings.actuarialAlpha" min="0.01" max="0.5" step="0.01" class="w-full mt-2 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="text-xs font-bold text-slate-700">Unexpected Alert (R)</label>
+                                        <input v-model.number="settings.unexpectedPaymentThreshold" type="number" class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs font-bold text-slate-700">Income Alert (R)</label>
+                                        <input v-model.number="settings.incomeAlertThreshold" type="number" class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
+                                <h3 class="font-bold text-slate-800 text-sm border-b pb-2 mb-4">Classification</h3>
+                                <div>
+                                    <label class="text-xs font-bold text-slate-700">Fixed Cost Keywords</label>
+                                    <textarea v-model="settings.fixedCostKeywords" rows="2" class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono"></textarea>
+                                </div>
+                                <div>
+                                    <label class="text-xs font-bold text-slate-700">Salary Keywords</label>
+                                    <textarea v-model="settings.salaryKeywords" rows="2" class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono"></textarea>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- CONNECTIONS -->
                         <div v-if="activeTab === 's-connections'" class="space-y-6">
                             <!-- Investec -->
@@ -206,6 +245,10 @@
                                     <div><label class="text-xs font-bold text-slate-700">Client ID</label><input v-model="settings.investecClientId" type="text" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"></div>
                                     <div><label class="text-xs font-bold text-slate-700">Secret</label><input v-model="settings.investecSecret" type="password" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"></div>
                                     <div><label class="text-xs font-bold text-slate-700">API Key</label><input v-model="settings.investecApiKey" type="password" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"></div>
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div><label class="text-xs font-bold text-slate-700">History (Days)</label><input v-model.number="settings.historyDaysBack" type="number" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm"></div>
+                                        <div><label class="text-xs font-bold text-slate-700">Sync Buffer</label><input v-model.number="settings.syncBufferDays" type="number" step="0.01" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm"></div>
+                                    </div>
                                 </div>
                             </div>
                             <!-- Telegram -->
@@ -270,6 +313,20 @@
                             <div><label class="text-xs font-bold text-slate-700">User</label><input v-model="settings.smtpUser" type="text" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm"></div>
                             <div><label class="text-xs font-bold text-slate-700">Password</label><input v-model="settings.smtpPass" type="password" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm"></div>
                             <div><label class="text-xs font-bold text-slate-700">To Address</label><input v-model="settings.emailTo" type="text" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm"></div>
+                            <div class="grid grid-cols-2 gap-4 border-t pt-4">
+                                <div>
+                                    <label class="text-xs font-bold text-slate-700">Schedule Day</label>
+                                    <select v-model="settings.reportDayOfWeek" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                        <option v-for="d in days" :key="d" :value="d">{{ d }}</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-xs font-bold text-slate-700">Schedule Hour (24h)</label>
+                                    <select v-model.number="settings.reportHour" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                        <option v-for="h in 24" :key="h-1" :value="h-1">{{ (h-1).toString().padStart(2, '0') }}:00</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </main>
@@ -315,15 +372,19 @@
                         { id: 's-identity', name: 'Identity', icon: '👤' },
                         { id: 's-connections', name: 'Connections', icon: '🔗' },
                         { id: 's-ai', name: 'Brain', icon: '🧠' },
-                        { id: 's-delivery', name: 'Email', icon: '✉️' },
+                        { id: 's-math', name: 'Math & Logic', icon: '🧪' },
+                        { id: 's-delivery', name: 'Email & Schedule', icon: '✉️' },
                         { id: 'admin-users', name: 'User Mgmt', icon: '🛡️', adminOnly: true }
                     ],
                     settings: { 
                         userName: 'User', currencyCulture: 'en-ZA', investecBaseUrl: 'https://openapi.investec.com/', 
                         aiProvider: 'Ollama', ollamaBaseUrl: '', systemPersona: 'Gordon',
-                        smtpPort: 587
+                        smtpPort: 587, reportDayOfWeek: 'Monday', reportHour: 9,
+                        analysisWindowDays: 90, actuarialAlpha: 0.15, unexpectedPaymentThreshold: 3000, incomeAlertThreshold: 5000,
+                        historyDaysBack: 180, syncBufferDays: 0.05
                     },
                     availableModels: [],
+                    days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
                     systemStatus: { investecOnline: false, lastTelegramHit: null, lastTelegramError: '', lastCheck: null },
                     toast: { show: false, msg: '' }
                 }

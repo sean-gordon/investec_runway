@@ -41,93 +41,96 @@ public class WhatsAppController : ControllerBase
     [Consumes("application/x-www-form-urlencoded")]
     public async Task<IActionResult> Webhook([FromForm] string From, [FromForm] string Body)
     {
-        var settings = await _settingsService.GetSettingsAsync();
+        // 1. Identify User by WhatsApp Number
+        int? matchedUserId = null;
+        AppSettings? userSettings = null;
 
-        // 1. Authorization Check
-        if (!string.IsNullOrWhiteSpace(settings.AuthorizedWhatsAppNumber) && From != settings.AuthorizedWhatsAppNumber)
+        using (var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection")))
         {
-            _logger.LogWarning("Unauthorized WhatsApp message from {From}", From);
-            return Ok(); // Return 200 to Twilio so it doesn't retry, but ignore message
+            await connection.OpenAsync();
+            var userIds = await connection.QueryAsync<int>("SELECT id FROM users");
+            
+            foreach (var uid in userIds)
+            {
+                var s = await _settingsService.GetSettingsAsync(uid);
+                if (s.AuthorizedWhatsAppNumber == From)
+                {
+                    matchedUserId = uid;
+                    userSettings = s;
+                    break;
+                }
+            }
         }
 
-        _logger.LogInformation("WhatsApp message from {From}: {Body}", From, Body);
+        if (matchedUserId == null || userSettings == null)
+        {
+            _logger.LogWarning("Unauthorized WhatsApp message from {From}", From);
+            return Ok();
+        }
+
+        // 1.5 Validate Twilio Signature
+        if (!string.IsNullOrWhiteSpace(userSettings.TwilioAuthToken))
+        {
+            var signature = Request.Headers["X-Twilio-Signature"].ToString();
+            var requestUrl = $"{Request.Scheme}://{Request.Host}{Request.Path}{Request.QueryString}";
+            var form = await Request.ReadFormAsync();
+            var parameters = form.ToDictionary(k => k.Key, v => v.Value.ToString());
+
+            var validator = new Twilio.Security.RequestValidator(userSettings.TwilioAuthToken);
+            if (!validator.Validate(requestUrl, parameters, signature))
+            {
+                _logger.LogWarning("Twilio signature validation failed for user {UserId}", matchedUserId);
+            }
+        }
+
+        var userId = matchedUserId.Value;
+        _logger.LogInformation("WhatsApp message from {From} (User {UserId}): {Body}", From, userId, Body);
 
         try
         {
-            // 2. Fetch Financial Summary (Health Report)
-            var summary = await GetFinancialSummaryAsync();
+            var summary = await GetFinancialSummaryAsync(userId);
             var summaryJson = JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true });
 
-            // 3. Try to answer using Summary first
             var promptForSummary = $@"Use the provided financial summary to answer the user's question.
-If the summary does NOT contain the specific information needed (e.g. specific transaction details not in the top categories), respond with EXACTLY and ONLY the word 'NEED_SQL'.
+If the summary does NOT contain the specific information needed, respond with EXACTLY 'NEED_SQL'.
+USER QUESTION: {Body}";
 
-USER QUESTION:
-{Body}";
-
-            var aiResponse = await _aiService.FormatResponseAsync(promptForSummary, summaryJson, isWhatsApp: true);
-
+            var aiResponse = await _aiService.FormatResponseAsync(userId, promptForSummary, summaryJson, isWhatsApp: true);
             string finalAnswer;
 
             if (aiResponse.Trim().Equals("NEED_SQL", StringComparison.OrdinalIgnoreCase))
             {
-                _logger.LogInformation("Summary insufficient. Triggering Text-to-SQL.");
-                
-                // 4. Generate SQL if summary is not enough
-                var sql = await _aiService.GenerateSqlAsync(Body);
-                _logger.LogInformation("Generated SQL: {Sql}", sql);
-
-                using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-                await connection.OpenAsync();
-
-                try
-                {
-                    if (!sql.Trim().StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
-                    {
-                        finalAnswer = "I'm sorry, I couldn't generate a valid query to find that information.";
-                    }
-                    else
-                    {
-                        var result = await connection.QueryAsync(sql);
-                        var dataContext = JsonSerializer.Serialize(result);
-                        finalAnswer = await _aiService.FormatResponseAsync(Body, dataContext, isWhatsApp: true);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error executing generated SQL for WhatsApp.");
-                    finalAnswer = "I tried to look that up in the database but encountered an error.";
-                }
+                // Temporarily disabled SQL generation for multi-tenant safety or ensure it uses userId filter
+                // Ideally: var sql = await _aiService.GenerateSqlAsync(userId, Body);
+                // But safer to just say unavailable for now or implement safe RLS
+                finalAnswer = "I'm sorry, deep database search is temporarily disabled for security upgrades. Please ask about the summary data.";
             }
             else
             {
                 finalAnswer = aiResponse;
             }
 
-            // 5. Send response back via WhatsApp
-            await _twilioService.SendWhatsAppMessageAsync(From, finalAnswer);
+            await _twilioService.SendWhatsAppMessageAsync(userId, From, finalAnswer);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing WhatsApp message.");
-            await _twilioService.SendWhatsAppMessageAsync(From, "I'm sorry, I encountered an internal error while processing your request.");
+            await _twilioService.SendWhatsAppMessageAsync(userId, From, "I'm sorry, I encountered an internal error.");
         }
 
         return Ok();
     }
 
-    private async Task<FinancialHealthReport> GetFinancialSummaryAsync()
+    private async Task<FinancialHealthReport> GetFinancialSummaryAsync(int userId)
     {
-        var settings = await _settingsService.GetSettingsAsync();
-        
-        // Fetch last 90 days for analysis
+        var settings = await _settingsService.GetSettingsAsync(userId);
+        _investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
+
         using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-        await connection.OpenAsync();
+        var history = (await connection.QueryAsync<Transaction>(
+            "SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '90 days' ORDER BY transaction_date ASC", 
+            new { userId })).ToList();
 
-        var sqlHistory = "SELECT * FROM transactions WHERE transaction_date >= NOW() - INTERVAL '90 days' ORDER BY transaction_date ASC";
-        var history = (await connection.QueryAsync<Transaction>(sqlHistory)).ToList();
-
-        // Get current balance
         var accounts = await _investecClient.GetAccountsAsync();
         decimal currentBalance = 0;
         foreach (var acc in accounts)
@@ -135,6 +138,6 @@ USER QUESTION:
             currentBalance += await _investecClient.GetAccountBalanceAsync(acc.AccountId);
         }
 
-        return await _actuarialService.AnalyzeHealthAsync(history, currentBalance);
+        return await _actuarialService.AnalyzeHealthAsync(history, currentBalance, settings);
     }
 }

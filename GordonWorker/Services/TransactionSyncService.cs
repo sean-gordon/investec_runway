@@ -6,8 +6,8 @@ namespace GordonWorker.Services;
 
 public interface ITransactionSyncService
 {
-    Task SyncTransactionsAsync(CancellationToken token = default);
-    Task ForceRepullAsync();
+    Task SyncTransactionsAsync(int userId, CancellationToken token = default);
+    Task ForceRepullAsync(int userId);
 }
 
 public class TransactionSyncService : ITransactionSyncService
@@ -35,27 +35,25 @@ public class TransactionSyncService : ITransactionSyncService
         _reportService = reportService;
     }
 
-    public async Task SyncTransactionsAsync(CancellationToken token = default)
+    public async Task SyncTransactionsAsync(int userId, CancellationToken token = default)
     {
-        var settings = await _settingsService.GetSettingsAsync();
+        var settings = await _settingsService.GetSettingsAsync(userId);
+        
+        // Ensure Client is configured for this user
+        _client.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
+
         using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
         await connection.OpenAsync(token);
 
         var accounts = await _client.GetAccountsAsync();
         if (accounts.Count == 0) return;
 
-        // Check if DB is empty to decide depth
-        var countSql = "SELECT COUNT(*) FROM transactions";
-        var transactionCount = await connection.ExecuteScalarAsync<int>(countSql);
+        // Check if DB is empty for this user
+        var countSql = "SELECT COUNT(*) FROM transactions WHERE user_id = @userId";
+        var transactionCount = await connection.ExecuteScalarAsync<int>(countSql, new { userId });
         
-        // Use setting for "Deep Sync" depth
         var daysBack = transactionCount == 0 ? settings.HistoryDaysBack : settings.SyncBufferDays; 
         var fromDate = DateTimeOffset.UtcNow.AddDays(-daysBack);
-
-        if (transactionCount == 0)
-        {
-             _logger.LogInformation("Deep Sync Triggered: Fetching last {Days} days.", daysBack);
-        }
 
         bool triggerReport = false;
         int totalNew = 0;
@@ -63,19 +61,17 @@ public class TransactionSyncService : ITransactionSyncService
         foreach (var account in accounts)
         {
             var txs = await _client.GetTransactionsAsync(account.AccountId, fromDate);
-            if (txs.Count == 0) continue;
-
             foreach (var tx in txs)
             {
                 var insertSql = @"
-                    INSERT INTO transactions (id, account_id, transaction_date, description, amount, balance, category, is_ai_processed)
-                    VALUES (@Id, @AccountId, @TransactionDate, @Description, @Amount, @Balance, @Category, @IsAiProcessed)
-                    ON CONFLICT (id, transaction_date) DO NOTHING";
+                    INSERT INTO transactions (id, user_id, account_id, transaction_date, description, amount, balance, category, is_ai_processed)
+                    VALUES (@Id, @UserId, @AccountId, @TransactionDate, @Description, @Amount, @Balance, @Category, @IsAiProcessed)
+                    ON CONFLICT (id, transaction_date, user_id) DO NOTHING";
 
-                // Ensure UTC kind for Postgres
                 var parameters = new
                 {
                     tx.Id,
+                    UserId = userId,
                     tx.AccountId,
                     TransactionDate = tx.TransactionDate.UtcDateTime,
                     tx.Description,
@@ -86,60 +82,32 @@ public class TransactionSyncService : ITransactionSyncService
                 };
 
                 var rowsAffected = await connection.ExecuteAsync(insertSql, parameters);
-                
-                // If it's a NEW transaction (rowsAffected > 0)
                 if (rowsAffected > 0)
                 {
                     totalNew++;
-
-                    // Check for Unexpected Large Payment Trigger
-                    // Large debits are positive in Investec API
                     if (tx.Amount >= settings.UnexpectedPaymentThreshold)
                     {
                         var normalizedDesc = _actuarialService.NormalizeDescription(tx.Description);
-                        bool isFixed = _actuarialService.IsFixedCost(normalizedDesc, settings);
-                        bool isSalary = _actuarialService.IsSalary(tx, settings);
-
-                        if (!isFixed && !isSalary)
-                        {
-                            _logger.LogWarning("Unexpected Large Payment Detected: {Desc} (R{Amount}). Triggering automated report.", tx.Description, tx.Amount);
+                        if (!_actuarialService.IsFixedCost(normalizedDesc, settings) && !_actuarialService.IsSalary(tx, settings))
                             triggerReport = true;
-                        }
                     }
-
-                    // Check for Large Income Alert
-                    // Credits are negative in Investec API
-                    if (tx.Amount <= -settings.IncomeAlertThreshold)
-                    {
-                        _logger.LogInformation("Large Income Detected: {Desc} (R{Amount}). Triggering automated report.", tx.Description, Math.Abs(tx.Amount));
-                        triggerReport = true;
-                    }
+                    if (tx.Amount <= -settings.IncomeAlertThreshold) triggerReport = true;
                 }
             }
         }
         
         if (totalNew > 0) 
         {
-            _logger.LogInformation("Synced {Count} new transactions.", totalNew);
-            
-            if (triggerReport)
-            {
-                await _reportService.GenerateAndSendReportAsync();
-            }
+            _logger.LogInformation("User {UserId}: Synced {Count} new transactions.", userId, totalNew);
+            if (triggerReport) await _reportService.GenerateAndSendReportAsync(userId);
         }
     }
 
-    public async Task ForceRepullAsync()
+    public async Task ForceRepullAsync(int userId)
     {
-        _logger.LogWarning("Force Repull Initiated: Truncating table and syncing.");
-        
         using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
         await connection.OpenAsync();
-        
-        // Truncate to force clean slate
-        await connection.ExecuteAsync("TRUNCATE TABLE transactions");
-
-        // Run sync immediately
-        await SyncTransactionsAsync();
+        await connection.ExecuteAsync("DELETE FROM transactions WHERE user_id = @userId", new { userId });
+        await SyncTransactionsAsync(userId);
     }
 }

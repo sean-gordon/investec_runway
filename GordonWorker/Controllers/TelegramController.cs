@@ -78,34 +78,70 @@ public class TelegramController : ControllerBase
             }
 
             var userId = matchedUserId.Value;
-            var settings = await _settingsService.GetSettingsAsync(userId);
-            var botClient = new TelegramBotClient(settings.TelegramBotToken);
-            await botClient.SendChatAction(chatId, Telegram.Bot.Types.Enums.ChatAction.Typing);
+            
+            // Fire-and-forget processing to prevent Telegram timeout/retries
+            _ = Task.Run(async () => 
+            {
+                try 
+                {
+                    using var scope = HttpContext.RequestServices.CreateScope();
+                    var settingsService = scope.ServiceProvider.GetRequiredService<ISettingsService>();
+                    var telegramService = scope.ServiceProvider.GetRequiredService<ITelegramService>();
+                    var aiService = scope.ServiceProvider.GetRequiredService<IAiService>();
+                    var investecClient = scope.ServiceProvider.GetRequiredService<IInvestecClient>();
+                    var actuarialService = scope.ServiceProvider.GetRequiredService<IActuarialService>();
+                    var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
 
-            var summary = await GetFinancialSummaryAsync(userId);
-            var summaryJson = JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true });
+                    var settings = await settingsService.GetSettingsAsync(userId);
+                    var botClient = new TelegramBotClient(settings.TelegramBotToken);
+                    await botClient.SendChatAction(chatId, Telegram.Bot.Types.Enums.ChatAction.Typing);
 
-            var promptForSummary = $@"Use the provided financial summary to answer the user's question.
+                    // Re-implement GetFinancialSummaryAsync logic here or make it static/service-based
+                    // For simplicity, I'll inline the summary fetch since we are in a static context now
+                    
+                    investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
+                    
+                    using var connection = new NpgsqlConnection(config.GetConnectionString("DefaultConnection"));
+                    var history = (await connection.QueryAsync<Transaction>(
+                        "SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '90 days' ORDER BY transaction_date ASC", 
+                        new { userId })).ToList();
+
+                    var accounts = await investecClient.GetAccountsAsync();
+                    decimal currentBalance = 0;
+                    foreach (var acc in accounts) currentBalance += await investecClient.GetAccountBalanceAsync(acc.AccountId);
+
+                    var summary = await actuarialService.AnalyzeHealthAsync(history, currentBalance, settings);
+                    var summaryJson = JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true });
+
+                    var promptForSummary = $@"Use the provided financial summary to answer the user's question.
 If the summary does NOT contain the specific information needed, respond with EXACTLY 'NEED_SQL'.
 USER QUESTION: {messageText}";
 
-            var aiResponse = await _aiService.FormatResponseAsync(userId, promptForSummary, summaryJson, isWhatsApp: false);
-            string finalAnswer;
+                    var aiResponse = await aiService.FormatResponseAsync(userId, promptForSummary, summaryJson, isWhatsApp: false);
+                    string finalAnswer;
 
-            if (aiResponse.Trim().Equals("NEED_SQL", StringComparison.OrdinalIgnoreCase))
-            {
-                var sql = await _aiService.GenerateSqlAsync(userId, messageText);
-                using var conn = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-                try
-                {
-                    var result = await conn.QueryAsync(sql);
-                    finalAnswer = await _aiService.FormatResponseAsync(userId, messageText, JsonSerializer.Serialize(result), isWhatsApp: false);
+                    if (aiResponse.Trim().Equals("NEED_SQL", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var sql = await aiService.GenerateSqlAsync(userId, messageText);
+                        try
+                        {
+                            var result = await connection.QueryAsync(sql);
+                            finalAnswer = await aiService.FormatResponseAsync(userId, messageText, JsonSerializer.Serialize(result), isWhatsApp: false);
+                        }
+                        catch { finalAnswer = "I encountered an error looking that up."; }
+                    }
+                    else finalAnswer = aiResponse;
+
+                    await telegramService.SendMessageAsync(userId, finalAnswer, chatId);
                 }
-                catch { finalAnswer = "I encountered an error looking that up."; }
-            }
-            else finalAnswer = aiResponse;
+                catch (Exception ex)
+                {
+                    // Use a fallback logger if possible or just suppress
+                    Console.WriteLine($"Background processing error: {ex.Message}");
+                }
+            });
 
-            await _telegramService.SendMessageAsync(userId, finalAnswer, chatId);
+            return Ok();
         }
         catch (Exception ex)
         {
@@ -153,22 +189,5 @@ USER QUESTION: {messageText}";
             _logger.LogError(ex, "Failed to setup Telegram webhook.");
             return StatusCode(500, new { Error = ex.Message });
         }
-    }
-
-    private async Task<FinancialHealthReport> GetFinancialSummaryAsync(int userId)
-    {
-        var settings = await _settingsService.GetSettingsAsync(userId);
-        _investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
-        
-        using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-        var history = (await connection.QueryAsync<Transaction>(
-            "SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '90 days' ORDER BY transaction_date ASC", 
-            new { userId })).ToList();
-
-        var accounts = await _investecClient.GetAccountsAsync();
-        decimal currentBalance = 0;
-        foreach (var acc in accounts) currentBalance += await _investecClient.GetAccountBalanceAsync(acc.AccountId);
-
-        return await _actuarialService.AnalyzeHealthAsync(history, currentBalance, settings);
     }
 }

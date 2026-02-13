@@ -55,7 +55,9 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 
 builder.Services.AddHttpClient<IInvestecClient, InvestecClient>();
-builder.Services.AddHttpClient<IAiService, AiService>();
+builder.Services.AddHttpClient<IAiService, AiService>()
+    .SetHandlerLifetime(TimeSpan.FromMinutes(5))
+    .ConfigureHttpClient(client => client.Timeout = TimeSpan.FromMinutes(5));
 builder.Services.AddSingleton<ISettingsService, SettingsService>();
 builder.Services.AddSingleton<IActuarialService, ActuarialService>();
 builder.Services.AddSingleton<ISystemStatusService, SystemStatusService>();

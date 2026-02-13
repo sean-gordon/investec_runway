@@ -22,6 +22,7 @@ public class TelegramController : ControllerBase
     private readonly IInvestecClient _investecClient;
     private readonly IConfiguration _configuration;
     private readonly ILogger<TelegramController> _logger;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     public TelegramController(
         IAiService aiService,
@@ -31,7 +32,8 @@ public class TelegramController : ControllerBase
         ISystemStatusService statusService,
         IInvestecClient investecClient,
         IConfiguration configuration,
-        ILogger<TelegramController> logger)
+        ILogger<TelegramController> logger,
+        IServiceScopeFactory scopeFactory)
     {
         _aiService = aiService;
         _actuarialService = actuarialService;
@@ -41,6 +43,7 @@ public class TelegramController : ControllerBase
         _investecClient = investecClient;
         _configuration = configuration;
         _logger = logger;
+        _scopeFactory = scopeFactory;
     }
 
     [HttpPost("webhook")]
@@ -52,6 +55,10 @@ public class TelegramController : ControllerBase
         try
         {
             var update = JsonSerializer.Deserialize<Update>(rawUpdate.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            
+            // Prevent Bot Loop
+            if (update?.Message?.From?.IsBot == true) return Ok();
+
             if (update == null || update.Message == null || string.IsNullOrWhiteSpace(update.Message.Text)) return Ok();
 
             var chatId = update.Message.Chat.Id.ToString();
@@ -79,30 +86,28 @@ public class TelegramController : ControllerBase
 
             var userId = matchedUserId.Value;
             
-            // Fire-and-forget processing to prevent Telegram timeout/retries
+            // Fire-and-forget processing using ServiceScopeFactory
             _ = Task.Run(async () => 
             {
                 try 
                 {
-                    using var scope = HttpContext.RequestServices.CreateScope();
+                    using var scope = _scopeFactory.CreateScope();
                     var settingsService = scope.ServiceProvider.GetRequiredService<ISettingsService>();
                     var telegramService = scope.ServiceProvider.GetRequiredService<ITelegramService>();
                     var aiService = scope.ServiceProvider.GetRequiredService<IAiService>();
                     var investecClient = scope.ServiceProvider.GetRequiredService<IInvestecClient>();
                     var actuarialService = scope.ServiceProvider.GetRequiredService<IActuarialService>();
                     var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+                    var logger = scope.ServiceProvider.GetRequiredService<ILogger<TelegramController>>();
 
                     var settings = await settingsService.GetSettingsAsync(userId);
                     var botClient = new TelegramBotClient(settings.TelegramBotToken);
                     await botClient.SendChatAction(chatId, Telegram.Bot.Types.Enums.ChatAction.Typing);
 
-                    // Re-implement GetFinancialSummaryAsync logic here or make it static/service-based
-                    // For simplicity, I'll inline the summary fetch since we are in a static context now
-                    
                     investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
                     
-                    using var connection = new NpgsqlConnection(config.GetConnectionString("DefaultConnection"));
-                    var history = (await connection.QueryAsync<Transaction>(
+                    using var db = new NpgsqlConnection(config.GetConnectionString("DefaultConnection"));
+                    var history = (await db.QueryAsync<Transaction>(
                         "SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '90 days' ORDER BY transaction_date ASC", 
                         new { userId })).ToList();
 
@@ -125,7 +130,7 @@ USER QUESTION: {messageText}";
                         var sql = await aiService.GenerateSqlAsync(userId, messageText);
                         try
                         {
-                            var result = await connection.QueryAsync(sql);
+                            var result = await db.QueryAsync(sql);
                             finalAnswer = await aiService.FormatResponseAsync(userId, messageText, JsonSerializer.Serialize(result), isWhatsApp: false);
                         }
                         catch { finalAnswer = "I encountered an error looking that up."; }
@@ -136,7 +141,6 @@ USER QUESTION: {messageText}";
                 }
                 catch (Exception ex)
                 {
-                    // Use a fallback logger if possible or just suppress
                     Console.WriteLine($"Background processing error: {ex.Message}");
                 }
             });
@@ -161,22 +165,6 @@ USER QUESTION: {messageText}";
             if (!body.TryGetProperty("Url", out var urlElement)) return BadRequest("Missing Url");
             var url = urlElement.GetString();
             if (string.IsNullOrWhiteSpace(url)) return BadRequest("Url empty");
-
-            // For setup, we need a user ID. 
-            // If this endpoint is open, it's a risk. 
-            // Let's assume the calling user is the admin or the owner. 
-            // We'll use the user from the token if [Authorize] is added, but this controller doesn't have [Authorize] on class.
-            // I'll add [Authorize] to the method and use the UserId.
-            
-            // Wait, this controller handles Webhooks which must be OPEN (Anonymous).
-            // So we cannot put [Authorize] on the CLASS.
-            // We must put it on this METHOD.
-            
-            // However, TelegramController inherits ControllerBase. It doesn't have the UserId helper I added to SettingsController.
-            // I need to parse claims manually or add the helper.
-            
-            // But wait, the UI calls this method. So the UI sends the token.
-            // So I can check User.Identity.IsAuthenticated.
             
             if (User.Identity?.IsAuthenticated != true) return Unauthorized();
             var userId = int.Parse(User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier)!);

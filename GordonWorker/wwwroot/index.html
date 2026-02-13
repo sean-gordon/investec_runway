@@ -338,7 +338,10 @@
                                     <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                                         <div class="bg-slate-50 px-6 py-3 border-b border-slate-100 flex justify-between items-center">
                                             <h3 class="font-bold text-slate-800 text-sm">Telegram Bot</h3>
-                                            <button type="button" @click="testTelegram" :disabled="telegramTesting" class="text-[10px] font-bold text-brand-600 hover:underline">{{ telegramTesting ? 'TESTING...' : 'TEST MSG' }}</button>
+                                            <div class="flex gap-3">
+                                                <button type="button" @click="registerWebhook" class="text-[10px] font-bold text-indigo-600 hover:underline">SET WEBHOOK</button>
+                                                <button type="button" @click="testTelegram" :disabled="telegramTesting" class="text-[10px] font-bold text-brand-600 hover:underline">{{ telegramTesting ? 'TESTING...' : 'TEST MSG' }}</button>
+                                            </div>
                                         </div>
                                         <div class="p-6 space-y-4">
                                             <div>
@@ -695,6 +698,25 @@
                         else this.showToast("Failed", "error");
                     } catch (e) { this.showToast("Error", "error"); }
                     finally { this.telegramTesting = false; }
+                },
+                async registerWebhook() {
+                    const baseUrl = prompt("Enter your public HTTPS URL (e.g., https://yourdomain.com):");
+                    if (!baseUrl) return;
+                    
+                    const fullUrl = baseUrl.endsWith('/') ? baseUrl + 'api/Telegram/webhook' : baseUrl + '/api/Telegram/webhook';
+                    
+                    try {
+                        const res = await fetch('/api/Telegram/setup-webhook', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ Url: fullUrl })
+                        });
+                        if (res.ok) this.showToast("Webhook Registered!");
+                        else {
+                            const err = await res.json();
+                            this.showToast(err.error || "Failed", "error");
+                        }
+                    } catch (e) { this.showToast("Network Error", "error"); }
                 },
                 async sendReportNow() {
                     this.sendingReport = true;

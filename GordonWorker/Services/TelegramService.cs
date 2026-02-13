@@ -6,6 +6,7 @@ namespace GordonWorker.Services;
 public interface ITelegramService
 {
     Task SendMessageAsync(string message);
+    Task InstallWebhookAsync(string webhookUrl);
 }
 
 public class TelegramService : ITelegramService
@@ -17,6 +18,19 @@ public class TelegramService : ITelegramService
     {
         _settingsService = settingsService;
         _logger = logger;
+    }
+
+    public async Task InstallWebhookAsync(string webhookUrl)
+    {
+        var settings = await _settingsService.GetSettingsAsync();
+        if (string.IsNullOrWhiteSpace(settings.TelegramBotToken))
+        {
+            throw new Exception("Telegram Bot Token is not configured.");
+        }
+
+        var botClient = new TelegramBotClient(settings.TelegramBotToken);
+        await botClient.SetWebhook(webhookUrl);
+        _logger.LogInformation("Telegram webhook set to {Url}", webhookUrl);
     }
 
     public async Task SendMessageAsync(string message)

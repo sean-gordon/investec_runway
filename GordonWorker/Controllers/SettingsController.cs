@@ -130,6 +130,20 @@ public class SettingsController : ControllerBase
         return Ok("WhatsApp test message dispatched.");
     }
 
+    [HttpPost("test-telegram")]
+    public async Task<IActionResult> TestTelegram()
+    {
+        var settings = await _settingsService.GetSettingsAsync();
+        if (string.IsNullOrWhiteSpace(settings.TelegramChatId))
+        {
+            return BadRequest("Telegram Chat ID is not configured.");
+        }
+
+        var telegramService = HttpContext.RequestServices.GetRequiredService<ITelegramService>();
+        await telegramService.SendMessageAsync("Ping! This is a test message from your Gordon Finance Engine. 🚀");
+        return Ok("Telegram test message dispatched.");
+    }
+
     [HttpGet("models")]
     public async Task<IActionResult> GetModels()
     {

@@ -17,6 +17,7 @@ public class FinancialReportService : IFinancialReportService
     private readonly IActuarialService _actuarialService;
     private readonly IAiService _ollamaService;
     private readonly ISettingsService _settingsService;
+    private readonly ITelegramService _telegramService;
     private readonly IInvestecClient _investecClient;
     private readonly ILogger<FinancialReportService> _logger;
 
@@ -26,6 +27,7 @@ public class FinancialReportService : IFinancialReportService
         IActuarialService actuarialService,
         IAiService ollamaService,
         ISettingsService settingsService,
+        ITelegramService telegramService,
         IInvestecClient investecClient,
         ILogger<FinancialReportService> logger)
     {
@@ -34,6 +36,7 @@ public class FinancialReportService : IFinancialReportService
         _actuarialService = actuarialService;
         _ollamaService = ollamaService;
         _settingsService = settingsService;
+        _telegramService = telegramService;
         _investecClient = investecClient;
         _logger = logger;
     }
@@ -231,6 +234,16 @@ public class FinancialReportService : IFinancialReportService
 </html>";
 
         await _emailService.SendEmailAsync(subject, body);
+        
+        // Also send to Telegram if configured
+        var telegramSummary = $"📊 *Weekly Financial Report*\n\n{aiExplanation}\n\n" +
+                              $"💰 *Current Balance:* {currentBalance.ToString("C", culture)}\n" +
+                              $"📅 *Next Salary In:* {healthReport.DaysUntilNextSalary} Days\n" +
+                              $"🚀 *Survival Prob:* {healthReport.RunwayProbability:F1}%\n" +
+                              $"📈 *Trend:* {healthReport.TrendDirection}";
+        
+        await _telegramService.SendMessageAsync(telegramSummary);
+
         _logger.LogInformation("Financial Report generated and sent.");
     }
 }

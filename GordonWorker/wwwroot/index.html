@@ -333,6 +333,24 @@
                                             </div>
                                         </div>
                                     </div>
+
+                                    <!-- Telegram -->
+                                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                        <div class="bg-slate-50 px-6 py-3 border-b border-slate-100 flex justify-between items-center">
+                                            <h3 class="font-bold text-slate-800 text-sm">Telegram Bot</h3>
+                                            <button type="button" @click="testTelegram" :disabled="telegramTesting" class="text-[10px] font-bold text-brand-600 hover:underline">{{ telegramTesting ? 'TESTING...' : 'TEST MSG' }}</button>
+                                        </div>
+                                        <div class="p-6 space-y-4">
+                                            <div>
+                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Bot Token</label><help-tip text="The API token from @BotFather. It looks like '123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11'."></help-tip></div>
+                                                <input type="password" v-model="settings.telegramBotToken" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-mono outline-none" placeholder="123456:ABC...">
+                                            </div>
+                                            <div>
+                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Chat ID</label><help-tip text="Your personal Chat ID. You can get this from @userinfobot or similar bots."></help-tip></div>
+                                                <input type="text" v-model="settings.telegramChatId" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-mono outline-none" placeholder="123456789">
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
 
                                 <!-- S-AI -->
@@ -575,13 +593,14 @@
                         investecBaseUrl: '', investecClientId: '', investecSecret: '', investecApiKey: '', syncBufferDays: 0.05, systemPersona: 'Gordon',
                         smtpHost: '', smtpPort: 587, smtpUser: '', smtpPass: '', emailTo: '',
                         historyDaysBack: 180, currencyCulture: 'en-ZA',
-                        twilioAccountSid: '', twilioAuthToken: '', twilioWhatsAppNumber: '', authorizedWhatsAppNumber: ''
+                        twilioAccountSid: '', twilioAuthToken: '', twilioWhatsAppNumber: '', authorizedWhatsAppNumber: '',
+                        telegramBotToken: '', telegramChatId: ''
                     },
                     availableModels: [],
                     systemStatus: { investecOnline: false, lastCheck: '', lastError: '' },
                     days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
                     
-                    saving: false, emailTesting: false, aiTesting: false, whatsappTesting: false,        
+                    saving: false, emailTesting: false, aiTesting: false, whatsappTesting: false, telegramTesting: false,
                     sendingReport: false, repulling: false,
                     toast: { show: false, msg: '', type: 'success' },
                     
@@ -663,6 +682,15 @@
                         else this.showToast("Failed", "error");
                     } catch (e) { this.showToast("Error", "error"); }
                     finally { this.whatsappTesting = false; }
+                },
+                async testTelegram() {
+                    this.telegramTesting = true; await this.saveSettings();
+                    try {
+                        const res = await fetch('/api/settings/test-telegram', { method: 'POST' });
+                        if (res.ok) this.showToast("Telegram Sent");
+                        else this.showToast("Failed", "error");
+                    } catch (e) { this.showToast("Error", "error"); }
+                    finally { this.telegramTesting = false; }
                 },
                 async sendReportNow() {
                     this.sendingReport = true;

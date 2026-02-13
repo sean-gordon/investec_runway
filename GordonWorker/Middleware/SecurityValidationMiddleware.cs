@@ -29,6 +29,13 @@ public class SecurityValidationMiddleware
                              effectiveHost.Equals("wethegordons.co.za", StringComparison.OrdinalIgnoreCase) ||
                              effectiveHost.Equals("localhost", StringComparison.OrdinalIgnoreCase);
 
+        // Allow Telegram webhook without domain check
+        if (path.StartsWithSegments("/api/Telegram/webhook"))
+        {
+            await _next(context);
+            return;
+        }
+
         // If it's the WhatsApp webhook, we MUST validate the Twilio signature regardless of the domain
         // to ensure it's actually Twilio calling us.
         if (path.StartsWithSegments("/api/WhatsApp/webhook") && HttpMethods.IsPost(context.Request.Method))

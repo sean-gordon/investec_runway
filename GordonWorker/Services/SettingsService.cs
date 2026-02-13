@@ -50,6 +50,10 @@ public class AppSettings
     public string TwilioAuthToken { get; set; } = "";
     public string TwilioWhatsAppNumber { get; set; } = "";
     public string AuthorizedWhatsAppNumber { get; set; } = ""; // To restrict who can chat
+
+    // Telegram Settings
+    public string TelegramBotToken { get; set; } = "";
+    public string TelegramChatId { get; set; } = "";
 }
 
 public interface ISettingsService
@@ -105,6 +109,7 @@ public class SettingsService : ISettingsService
                 settings.TwilioAuthToken = TryDecrypt(settings.TwilioAuthToken);
                 settings.InvestecClientId = TryDecrypt(settings.InvestecClientId);
                 settings.TwilioAccountSid = TryDecrypt(settings.TwilioAccountSid);
+                settings.TelegramBotToken = TryDecrypt(settings.TelegramBotToken);
             }
 
             _cachedSettings = settings;
@@ -141,6 +146,7 @@ public class SettingsService : ISettingsService
             encryptedSettings.TwilioAuthToken = TryEncrypt(settings.TwilioAuthToken);
             encryptedSettings.InvestecClientId = TryEncrypt(settings.InvestecClientId);
             encryptedSettings.TwilioAccountSid = TryEncrypt(settings.TwilioAccountSid);
+            encryptedSettings.TelegramBotToken = TryEncrypt(settings.TelegramBotToken);
 
             var json = JsonSerializer.Serialize(encryptedSettings);
             

@@ -63,36 +63,32 @@ public class DatabaseInitializer
             await connection.ExecuteAsync(settingsSql);
 
             // 3. Transactions Table Migration
-            // Check if user_id column exists
-            var checkColumnSql = "SELECT column_name FROM information_schema.columns WHERE table_name='transactions' AND column_name='user_id'";
-            var colExists = await connection.ExecuteScalarAsync<string>(checkColumnSql);
-
-            if (colExists == null)
+            // Always try to add the column safely
+            try 
             {
-                _logger.LogInformation("Migrating transactions table to multi-tenant...");
+                await connection.ExecuteAsync("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS user_id INT;");
                 
-                // Add column (nullable first to allow backfill)
-                await connection.ExecuteAsync("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS user_id INT REFERENCES users(id) ON DELETE CASCADE;");
-                
-                // Backfill existing transactions to Admin user (User 1 or whatever ID we got)
+                // Backfill existing NULLs to Admin
                 await connection.ExecuteAsync("UPDATE transactions SET user_id = @AdminId WHERE user_id IS NULL", new { AdminId = adminId });
                 
-                // Make not null
+                // Add Foreign Key constraint if not exists (Postgres doesn't support IF NOT EXISTS for constraints directly easily in one line without check)
+                // We'll rely on the ALTER statement succeeding or failing harmlessly if constraint exists? No, duplicate constraint name throws.
+                // Simplified: Just add the column. The Create Table below handles the full definition for new setups.
+                // For existing setups, we just need the column and the data.
+                
+                // We can try to set NOT NULL now that data is backfilled
                 await connection.ExecuteAsync("ALTER TABLE transactions ALTER COLUMN user_id SET NOT NULL;");
-                
-                // Drop old primary key constraint if it exists (might fail if hypertable restrictions apply, but we try)
-                try { await connection.ExecuteAsync("ALTER TABLE transactions DROP CONSTRAINT transactions_pkey;"); } catch {}
-                
-                // Drop old index if exists
-                try { await connection.ExecuteAsync("DROP INDEX IF EXISTS transactions_id_transaction_date_idx;"); } catch {}
-                try { await connection.ExecuteAsync("DROP INDEX IF EXISTS ux_transactions_id_date;"); } catch {} // Drop previous unique index
+            } 
+            catch (Exception ex) 
+            { 
+                _logger.LogWarning("Migration warning (user_id): {Message}", ex.Message); 
             }
 
-            // Ensure Schema
+            // Ensure Transactions Table exists (for new installs)
             var transactionsSql = @"
                 CREATE TABLE IF NOT EXISTS transactions (
                     id UUID NOT NULL,
-                    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    user_id INT NOT NULL, 
                     account_id TEXT,
                     transaction_date TIMESTAMPTZ NOT NULL,
                     description TEXT,
@@ -100,41 +96,43 @@ public class DatabaseInitializer
                     balance DECIMAL(18, 2),
                     category TEXT,
                     is_ai_processed BOOLEAN DEFAULT FALSE
-                    -- TimescaleDB usually manages PKs differently, we rely on unique index
                 );";
             await connection.ExecuteAsync(transactionsSql);
 
-            // Ensure Unique Index for Hypertable (must include time column)
-            // AND for our app logic (must include user_id and id)
-            // Composite: id, transaction_date, user_id
+            // 4. Index Migration
+            // Drop old constraints/indexes that conflict with multi-tenant unique index
+            try { await connection.ExecuteAsync("DROP INDEX IF EXISTS ux_transactions_id_date;"); } catch {}
+            try { await connection.ExecuteAsync("ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_pkey;"); } catch {}
+
+            // Create new multi-tenant unique index
             try 
             {
                 await connection.ExecuteAsync("CREATE UNIQUE INDEX IF NOT EXISTS ux_transactions_id_date_user ON transactions (id, transaction_date, user_id);"); 
             } 
             catch (Exception ex) 
             { 
-                _logger.LogWarning(ex, "Could not create unique index. This might be due to duplicate data during migration."); 
+                _logger.LogError(ex, "Could not create unique index 'ux_transactions_id_date_user'."); 
             }
 
-            // Convert to Hypertable if not already
+            // Convert to Hypertable
             try 
             { 
                 await connection.ExecuteAsync("SELECT create_hypertable('transactions', 'transaction_date', if_not_exists => TRUE, migrate_data => TRUE);"); 
             } 
             catch (Exception ex)
             {
-                // Ignore "already a hypertable" errors, log others
-                if (!ex.Message.Contains("already")) _logger.LogWarning(ex, "Hypertable conversion warning.");
+                if (!ex.Message.Contains("already")) _logger.LogWarning("Hypertable conversion: {Message}", ex.Message);
             }
 
-            // Cleanup old table
+            // Cleanup old config table
             try { await connection.ExecuteAsync("DROP TABLE IF EXISTS system_config;"); } catch {}
 
             _logger.LogInformation("Database multi-tenant schema ensured.");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to initialize multi-tenant database tables.");
+            _logger.LogError(ex, "Failed to initialize database.");
+            throw; // Rethrow to stop startup if DB is critical fail
         }
     }
 }

@@ -346,8 +346,12 @@
                                                 <input type="password" v-model="settings.telegramBotToken" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-mono outline-none" placeholder="123456:ABC...">
                                             </div>
                                             <div>
-                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Chat ID</label><help-tip text="Your personal Chat ID. You can get this from @userinfobot or similar bots."></help-tip></div>
+                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Chat ID</label><help-tip text="Your primary personal Chat ID. Reports will be sent here."></help-tip></div>
                                                 <input type="text" v-model="settings.telegramChatId" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-mono outline-none" placeholder="123456789">
+                                            </div>
+                                            <div>
+                                                <div class="flex items-center mb-1.5"><label class="text-xs font-bold text-slate-700">Authorized Chat IDs (Whitelist)</label><help-tip text="Comma-separated list of Telegram Chat IDs allowed to interact with the bot."></help-tip></div>
+                                                <textarea v-model="settings.telegramAuthorizedChatIds" rows="2" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-xs font-mono outline-none" placeholder="123456789, 987654321"></textarea>
                                             </div>
                                         </div>
                                     </div>
@@ -594,7 +598,7 @@
                         smtpHost: '', smtpPort: 587, smtpUser: '', smtpPass: '', emailTo: '',
                         historyDaysBack: 180, currencyCulture: 'en-ZA',
                         twilioAccountSid: '', twilioAuthToken: '', twilioWhatsAppNumber: '', authorizedWhatsAppNumber: '',
-                        telegramBotToken: '', telegramChatId: ''
+                        telegramBotToken: '', telegramChatId: '', telegramAuthorizedChatIds: ''
                     },
                     availableModels: [],
                     systemStatus: { investecOnline: false, lastCheck: '', lastError: '' },

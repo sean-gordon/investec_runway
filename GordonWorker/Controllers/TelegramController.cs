@@ -49,7 +49,25 @@ public class TelegramController : ControllerBase
         var messageText = update.Message.Text;
 
         // 1. Authorization Check
-        if (!string.IsNullOrWhiteSpace(settings.TelegramChatId) && chatId != settings.TelegramChatId)
+        bool isAuthorized = false;
+        
+        // Check primary Chat ID
+        if (!string.IsNullOrWhiteSpace(settings.TelegramChatId) && chatId == settings.TelegramChatId)
+        {
+            isAuthorized = true;
+        }
+        
+        // Check Whitelist
+        if (!isAuthorized && !string.IsNullOrWhiteSpace(settings.TelegramAuthorizedChatIds))
+        {
+            var whitelist = settings.TelegramAuthorizedChatIds.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (whitelist.Contains(chatId))
+            {
+                isAuthorized = true;
+            }
+        }
+
+        if (!isAuthorized)
         {
             _logger.LogWarning("Unauthorized Telegram message from Chat ID {ChatId}", chatId);
             return Ok(); 

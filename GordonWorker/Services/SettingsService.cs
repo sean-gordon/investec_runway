@@ -54,6 +54,7 @@ public class AppSettings
     // Telegram Settings
     public string TelegramBotToken { get; set; } = "";
     public string TelegramChatId { get; set; } = "";
+    public string TelegramAuthorizedChatIds { get; set; } = "";
 }
 
 public interface ISettingsService

@@ -198,7 +198,10 @@
                         <div v-if="activeTab === 's-connections'" class="space-y-6">
                             <!-- Investec -->
                             <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                                <div class="bg-slate-50 px-6 py-3 border-b border-slate-100"><h3 class="font-bold text-slate-800 text-sm">Investec API</h3></div>
+                                <div class="bg-slate-50 px-6 py-3 border-b border-slate-100 flex justify-between items-center">
+                                    <h3 class="font-bold text-slate-800 text-sm">Investec API</h3>
+                                    <button @click="testInvestec" class="text-[10px] font-bold text-brand-600 hover:underline">TEST CONN</button>
+                                </div>
                                 <div class="p-6 space-y-4">
                                     <div><label class="text-xs font-bold text-slate-700">Client ID</label><input v-model="settings.investecClientId" type="text" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"></div>
                                     <div><label class="text-xs font-bold text-slate-700">Secret</label><input v-model="settings.investecSecret" type="password" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"></div>
@@ -413,6 +416,11 @@
                 async saveSettings() {
                     const res = await this.api('/api/settings', 'PUT', this.settings);
                     if (res.ok) this.showToast("Settings Saved");
+                },
+                async testInvestec() {
+                    await this.saveSettings();
+                    const res = await this.api('/api/settings/test-investec', 'POST');
+                    if (res.ok) { this.showToast("Investec Connected"); this.loadData(); } else this.showToast("Failed");
                 },
                 async testEmail() {
                     await this.saveSettings();

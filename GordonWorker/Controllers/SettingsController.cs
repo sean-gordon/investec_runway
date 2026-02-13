@@ -118,6 +118,17 @@ public class SettingsController : ControllerBase
         return Ok("Telegram test message dispatched.");
     }
 
+    [HttpPost("test-investec")]
+    public async Task<IActionResult> TestInvestec()
+    {
+        var settings = await _settingsService.GetSettingsAsync(UserId);
+        _investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
+        var (success, error) = await _investecClient.TestConnectivityAsync();
+        
+        if (success) return Ok("Investec connection successful.");
+        return StatusCode(500, $"Investec connection failed: {error}");
+    }
+
     [HttpGet("models")]
     public async Task<IActionResult> GetModels()
     {
@@ -126,12 +137,22 @@ public class SettingsController : ControllerBase
     }
 
     [HttpGet("status")]
-    public IActionResult GetStatus()
+    public async Task<IActionResult> GetStatus()
     {
+        // Check Investec status for THIS user on demand (lightweight check)
+        var settings = await _settingsService.GetSettingsAsync(UserId);
+        var isInvestecOnline = false;
+        if (!string.IsNullOrEmpty(settings.InvestecClientId))
+        {
+            _investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
+            var (success, _) = await _investecClient.TestConnectivityAsync();
+            isInvestecOnline = success;
+        }
+
         return Ok(new 
         { 
-            InvestecOnline = _statusService.IsInvestecOnline,
-            LastCheck = _statusService.LastInvestecCheck,
+            InvestecOnline = isInvestecOnline,
+            LastCheck = DateTime.UtcNow,
             LastTelegramHit = _statusService.LastTelegramHit,
             LastTelegramError = _statusService.LastTelegramError
         });

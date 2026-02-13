@@ -128,6 +128,54 @@
                         </div>
                     </div>
 
+                    <!-- ADMIN: USERS -->
+                    <div v-if="activeTab === 'admin-users' && auth.role === 'Admin'" class="space-y-6">
+                        <div class="flex justify-between items-center">
+                            <h2 class="text-xl font-bold">User Management</h2>
+                            <button @click="openUserModal()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm">Add User</button>
+                        </div>
+                        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th class="px-6 py-3 font-bold text-slate-700">Username</th>
+                                        <th class="px-6 py-3 font-bold text-slate-700">Role</th>
+                                        <th class="px-6 py-3 font-bold text-slate-700">System</th>
+                                        <th class="px-6 py-3 font-bold text-slate-700 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    <tr v-for="u in users" :key="u.id" class="hover:bg-slate-50">
+                                        <td class="px-6 py-3">{{ u.username }}</td>
+                                        <td class="px-6 py-3"><span class="px-2 py-1 rounded-full text-xs font-bold" :class="u.role === 'Admin' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'">{{ u.role }}</span></td>
+                                        <td class="px-6 py-3 text-xs text-slate-400">{{ u.isSystem ? 'YES' : '-' }}</td>
+                                        <td class="px-6 py-3 text-right space-x-2">
+                                            <button @click="openUserModal(u)" class="text-blue-600 font-bold hover:underline">Edit</button>
+                                            <button v-if="!u.isSystem" @click="deleteUser(u.id)" class="text-red-600 font-bold hover:underline">Delete</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- USER MODAL -->
+                    <div v-if="isUserModalOpen" class="fixed inset-0 z-[150] bg-black/50 flex items-center justify-center p-4">
+                        <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
+                            <h3 class="text-lg font-bold">{{ userForm.id ? 'Edit User' : 'New User' }}</h3>
+                            <input v-if="!userForm.id" v-model="userForm.username" type="text" placeholder="Username" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none">
+                            <input v-model="userForm.password" type="password" :placeholder="userForm.id ? 'New Password (Optional)' : 'Password'" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none">
+                            <select v-model="userForm.role" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none">
+                                <option value="User">User</option>
+                                <option value="Admin">Admin</option>
+                            </select>
+                            <div class="flex gap-2 justify-end pt-2">
+                                <button @click="isUserModalOpen = false" class="px-4 py-2 text-slate-500 font-bold">Cancel</button>
+                                <button @click="saveUser" class="px-4 py-2 bg-brand-600 text-white rounded-lg font-bold">Save</button>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- SETTINGS -->
                     <div v-if="activeTab.startsWith('s-')" class="max-w-3xl space-y-6">
                         <div class="flex justify-between items-center">
@@ -161,14 +209,18 @@
                 return {
                     loading: false,
                     authView: 'login',
-                    auth: { token: localStorage.getItem('token'), username: localStorage.getItem('username') },
+                    auth: { token: localStorage.getItem('token'), username: localStorage.getItem('username'), role: localStorage.getItem('role') || 'User' },
                     loginForm: { username: '', password: '' },
                     registerForm: { username: '', password: '' },
                     activeTab: 'dashboard',
+                    users: [],
+                    userForm: { id: 0, username: '', password: '', role: 'User' },
+                    isUserModalOpen: false,
                     menuItems: [
                         { id: 'dashboard', name: 'Dashboard', icon: '🏠' },
                         { id: 's-identity', name: 'Identity', icon: '👤' },
-                        { id: 's-connections', name: 'Connections', icon: '🔗' }
+                        { id: 's-connections', name: 'Connections', icon: '🔗' },
+                        { id: 'admin-users', name: 'User Mgmt', icon: '🛡️', adminOnly: true }
                     ],
                     settings: { systemPersona: 'Gordon' },
                     systemStatus: { lastTelegramHit: null },
@@ -176,7 +228,10 @@
                 }
             },
             mounted() {
-                if (this.auth.token) this.loadData();
+                if (this.auth.token) {
+                    this.loadData();
+                    if (this.auth.role === 'Admin') this.loadUsers();
+                }
             },
             methods: {
                 async api(path, method = 'GET', body = null) {
@@ -195,10 +250,17 @@
                         });
                         if (res.ok) {
                             const data = await res.json();
-                            this.auth = { token: data.token, username: data.username };
+                            // Parse JWT payload for role (simple base64 decode of part 2)
+                            const payload = JSON.parse(atob(data.token.split('.')[1]));
+                            const role = payload.role || 'User';
+                            
+                            this.auth = { token: data.token, username: data.username, role: role };
                             localStorage.setItem('token', data.token);
                             localStorage.setItem('username', data.username);
+                            localStorage.setItem('role', role);
+                            
                             this.loadData();
+                            if (role === 'Admin') this.loadUsers();
                         } else this.showToast("Login Failed");
                     } finally { this.loading = false; }
                 },
@@ -214,7 +276,7 @@
                     } finally { this.loading = false; }
                 },
                 logout() {
-                    this.auth = { token: null, username: null };
+                    this.auth = { token: null, username: null, role: null };
                     localStorage.clear();
                 },
                 async loadData() {
@@ -222,6 +284,26 @@
                     if (resS.ok) this.settings = await resS.json();
                     const resSt = await this.api('/api/settings/status');
                     if (resSt.ok) this.systemStatus = await resSt.json();
+                },
+                async loadUsers() {
+                    const res = await this.api('/api/users');
+                    if (res.ok) this.users = await res.json();
+                },
+                openUserModal(u = null) {
+                    this.userForm = u ? { ...u, password: '' } : { id: 0, username: '', password: '', role: 'User' };
+                    this.isUserModalOpen = true;
+                },
+                async saveUser() {
+                    const method = this.userForm.id ? 'PUT' : 'POST';
+                    const url = this.userForm.id ? `/api/users/${this.userForm.id}` : '/api/users';
+                    const res = await this.api(url, method, this.userForm);
+                    if (res.ok) { this.showToast("User Saved"); this.isUserModalOpen = false; this.loadUsers(); }
+                    else this.showToast("Save Failed");
+                },
+                async deleteUser(id) {
+                    if (!confirm("Are you sure?")) return;
+                    const res = await this.api(`/api/users/${id}`, 'DELETE');
+                    if (res.ok) { this.showToast("User Deleted"); this.loadUsers(); }
                 },
                 async saveSettings() {
                     const res = await this.api('/api/settings', 'PUT', this.settings);

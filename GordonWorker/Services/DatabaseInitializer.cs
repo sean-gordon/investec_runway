@@ -28,9 +28,31 @@ public class DatabaseInitializer
                     id SERIAL PRIMARY KEY,
                     username TEXT UNIQUE NOT NULL,
                     password_hash TEXT NOT NULL,
+                    role TEXT DEFAULT 'User',
+                    is_system BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMPTZ DEFAULT NOW()
                 );";
             await connection.ExecuteAsync(usersSql);
+
+            // Ensure columns exist (migration for existing DB)
+            try { await connection.ExecuteAsync("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'User';"); } catch {}
+            try { await connection.ExecuteAsync("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_system BOOLEAN DEFAULT FALSE;"); } catch {}
+
+            // Seed System Admin
+            var adminUser = _configuration["ADMIN_USERNAME"] ?? "admin";
+            var adminPass = _configuration["ADMIN_PASSWORD"] ?? "admin123"; // Default if not set
+            
+            var adminHash = BCrypt.Net.BCrypt.HashPassword(adminPass);
+
+            var upsertAdminSql = @"
+                INSERT INTO users (username, password_hash, role, is_system) 
+                VALUES (@Username, @PasswordHash, 'Admin', TRUE)
+                ON CONFLICT (username) DO UPDATE 
+                SET password_hash = @PasswordHash, role = 'Admin', is_system = TRUE 
+                WHERE users.is_system = TRUE OR users.username = @Username;";
+
+            await connection.ExecuteAsync(upsertAdminSql, new { Username = adminUser, PasswordHash = adminHash });
+            _logger.LogInformation("System Admin user ensured ('{User}').", adminUser);
 
             // 2. User Settings Table (Renamed from system_config)
             var settingsSql = @"

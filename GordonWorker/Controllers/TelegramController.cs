@@ -4,6 +4,7 @@ using GordonWorker.Services;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using System.Text.Json;
+using Telegram.Bot;
 using Telegram.Bot.Types;
 
 namespace GordonWorker.Controllers;
@@ -48,15 +49,126 @@ public class TelegramController : ControllerBase
         var chatId = update.Message.Chat.Id.ToString();
         var messageText = update.Message.Text;
 
-        // ... (rest of the webhook logic)
+        // 1. Authorization Check
+        bool isAuthorized = false;
+        
+        // Check primary Chat ID
+        if (!string.IsNullOrWhiteSpace(settings.TelegramChatId) && chatId == settings.TelegramChatId)
+        {
+            isAuthorized = true;
+        }
+        
+        // Check Whitelist
+        if (!isAuthorized && !string.IsNullOrWhiteSpace(settings.TelegramAuthorizedChatIds))
+        {
+            var whitelist = settings.TelegramAuthorizedChatIds.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (whitelist.Contains(chatId))
+            {
+                isAuthorized = true;
+            }
+        }
+
+        if (!isAuthorized)
+        {
+            _logger.LogWarning("Unauthorized Telegram message from Chat ID {ChatId}", chatId);
+            return Ok(); 
+        }
+
+        _logger.LogInformation("Telegram message from {ChatId}: {Body}", chatId, messageText);
+
+        try
+        {
+            // Start typing indicator
+            var botClient = new TelegramBotClient(settings.TelegramBotToken);
+            await botClient.SendChatAction(chatId, Telegram.Bot.Types.Enums.ChatAction.Typing);
+
+            // 2. Fetch Financial Summary (Health Report)
+            var summary = await GetFinancialSummaryAsync();
+            var summaryJson = JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true });
+
+            // 3. Try to answer using Summary first
+            var promptForSummary = $@"Use the provided financial summary to answer the user's question.
+Keep the response concise as it's being sent via Telegram.
+If the summary does NOT contain the specific information needed (e.g. specific transaction details not in the top categories), respond with EXACTLY and ONLY the word 'NEED_SQL'.
+
+USER QUESTION:
+{messageText}";
+
+            var aiResponse = await _aiService.FormatResponseAsync(promptForSummary, summaryJson, isWhatsApp: false);
+
+            string finalAnswer;
+
+            if (aiResponse.Trim().Equals("NEED_SQL", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogInformation("Summary insufficient. Triggering Text-to-SQL.");
+                
+                // 4. Generate SQL if summary is not enough
+                var sql = await _aiService.GenerateSqlAsync(messageText);
+                _logger.LogInformation("Generated SQL: {Sql}", sql);
+
+                using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+                await connection.OpenAsync();
+
+                try
+                {
+                    if (!sql.Trim().StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
+                    {
+                        finalAnswer = "I'm sorry, I couldn't generate a valid query to find that information.";
+                    }
+                    else
+                    {
+                        var result = await connection.QueryAsync(sql);
+                        var dataContext = JsonSerializer.Serialize(result);
+                        finalAnswer = await _aiService.FormatResponseAsync(messageText, dataContext, isWhatsApp: false);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error executing generated SQL for Telegram.");
+                    finalAnswer = "I tried to look that up in the database but encountered an error.";
+                }
+            }
+            else
+            {
+                finalAnswer = aiResponse;
+            }
+
+            // 5. Send response back via Telegram
+            await _telegramService.SendMessageAsync(finalAnswer);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing Telegram message.");
+            await _telegramService.SendMessageAsync("I'm sorry, I encountered an internal error while processing your request.");
+        }
+
         return Ok();
     }
 
     [HttpPost("setup-webhook")]
     public async Task<IActionResult> SetupWebhook([FromBody] JsonElement body)
     {
-        // ... (existing logic)
-        return Ok();
+        try
+        {
+            if (!body.TryGetProperty("Url", out var urlElement))
+            {
+                return BadRequest("Missing 'Url' property in request body.");
+            }
+
+            var url = urlElement.GetString();
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                return BadRequest("Url cannot be empty.");
+            }
+
+            await _telegramService.InstallWebhookAsync(url);
+            return Ok(new { Message = "Webhook registered successfully." });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to setup Telegram webhook.");
+            return StatusCode(500, new { Error = ex.Message });
+        }
     }
 
     [HttpGet("webhook-status")]

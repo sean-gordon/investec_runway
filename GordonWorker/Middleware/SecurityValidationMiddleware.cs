@@ -30,7 +30,7 @@ public class SecurityValidationMiddleware
                              effectiveHost.Equals("localhost", StringComparison.OrdinalIgnoreCase);
 
         // Allow Telegram webhook without domain check
-        if (path.StartsWithSegments("/api/Telegram/webhook"))
+        if (path.StartsWithSegments("/telegram/webhook"))
         {
             await _next(context);
             return;

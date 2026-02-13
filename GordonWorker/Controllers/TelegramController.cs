@@ -9,7 +9,7 @@ using Telegram.Bot.Types;
 namespace GordonWorker.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("telegram")]
 public class TelegramController : ControllerBase
 {
     private readonly IAiService _aiService;

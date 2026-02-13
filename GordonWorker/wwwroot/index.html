@@ -701,13 +701,13 @@
                     finally { this.telegramTesting = false; }
                 },
                 async registerWebhook() {
-                    const baseUrl = prompt("Enter your public HTTPS URL (e.g., https://yourdomain.com):");
+                    const baseUrl = prompt("Enter your public HTTPS URL (e.g., https://yourdomain.com):", "https://financeai.wethegordons.co.za");
                     if (!baseUrl) return;
                     
-                    const fullUrl = baseUrl.endsWith('/') ? baseUrl + 'api/Telegram/webhook' : baseUrl + '/api/Telegram/webhook';
+                    const fullUrl = baseUrl.endsWith('/') ? baseUrl + 'telegram/webhook' : baseUrl + '/telegram/webhook';
                     
                     try {
-                        const res = await fetch('/api/Telegram/setup-webhook', {
+                        const res = await fetch('/telegram/setup-webhook', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ Url: fullUrl })

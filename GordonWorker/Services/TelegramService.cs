@@ -5,9 +5,9 @@ namespace GordonWorker.Services;
 
 public interface ITelegramService
 {
-    Task SendMessageAsync(string message, string? targetChatId = null);
-    Task InstallWebhookAsync(string webhookUrl);
-    Task<string> GetWebhookInfoAsync();
+    Task SendMessageAsync(int userId, string message, string? targetChatId = null);
+    Task InstallWebhookAsync(int userId, string webhookUrl);
+    Task<string> GetWebhookInfoAsync(int userId);
 }
 
 public class TelegramService : ITelegramService
@@ -21,9 +21,9 @@ public class TelegramService : ITelegramService
         _logger = logger;
     }
 
-    public async Task<string> GetWebhookInfoAsync()
+    public async Task<string> GetWebhookInfoAsync(int userId)
     {
-        var settings = await _settingsService.GetSettingsAsync();
+        var settings = await _settingsService.GetSettingsAsync(userId);
         if (string.IsNullOrWhiteSpace(settings.TelegramBotToken)) return "Token not configured.";
 
         var botClient = new TelegramBotClient(settings.TelegramBotToken);
@@ -31,9 +31,9 @@ public class TelegramService : ITelegramService
         return System.Text.Json.JsonSerializer.Serialize(info, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
     }
 
-    public async Task InstallWebhookAsync(string webhookUrl)
+    public async Task InstallWebhookAsync(int userId, string webhookUrl)
     {
-        var settings = await _settingsService.GetSettingsAsync();
+        var settings = await _settingsService.GetSettingsAsync(userId);
         if (string.IsNullOrWhiteSpace(settings.TelegramBotToken))
         {
             throw new Exception("Telegram Bot Token is not configured.");
@@ -41,18 +41,18 @@ public class TelegramService : ITelegramService
 
         var botClient = new TelegramBotClient(settings.TelegramBotToken);
         await botClient.SetWebhook(webhookUrl);
-        _logger.LogInformation("Telegram webhook set to {Url}", webhookUrl);
+        _logger.LogInformation("Telegram webhook set to {Url} for user {UserId}", webhookUrl, userId);
     }
 
-    public async Task SendMessageAsync(string message, string? targetChatId = null)
+    public async Task SendMessageAsync(int userId, string message, string? targetChatId = null)
     {
-        var settings = await _settingsService.GetSettingsAsync();
+        var settings = await _settingsService.GetSettingsAsync(userId);
         var chatId = targetChatId ?? settings.TelegramChatId;
 
         if (string.IsNullOrWhiteSpace(settings.TelegramBotToken) || 
             string.IsNullOrWhiteSpace(chatId))
         {
-            _logger.LogWarning("Telegram settings (Token or ChatId) are not fully configured. Cannot send message.");
+            _logger.LogWarning("Telegram settings (Token or ChatId) are not fully configured for user {UserId}. Cannot send message.", userId);
             return;
         }
 
@@ -64,11 +64,11 @@ public class TelegramService : ITelegramService
                 text: message,
                 parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown
             );
-            _logger.LogInformation("Telegram message sent to {ChatId}", chatId);
+            _logger.LogInformation("Telegram message sent to {ChatId} for user {UserId}", chatId, userId);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to send Telegram message to {ChatId}", settings.TelegramChatId);
+            _logger.LogError(ex, "Failed to send Telegram message to {ChatId} for user {UserId}", chatId, userId);
         }
     }
 }

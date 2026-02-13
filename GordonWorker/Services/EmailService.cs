@@ -3,11 +3,10 @@ using System.Net.Mail;
 
 namespace GordonWorker.Services;
 
-// This defines the contract for sending emails, so other parts of the app can use it without knowing how it works.
 public interface IEmailService
 {
-    Task SendEmailAsync(string subject, string body);
-    Task<bool> SendTestEmailAsync();
+    Task SendEmailAsync(int userId, string subject, string body);
+    Task<bool> SendTestEmailAsync(int userId);
 }
 
 public class EmailService : IEmailService
@@ -23,29 +22,26 @@ public class EmailService : IEmailService
         _settingsService = settingsService;
     }
 
-    // I need to gather all the email settings. I check the database first, and if nothing is there, I look in the environment files.
-    private async Task<(string Host, int Port, string User, string Pass, string To)> GetEmailConfigAsync()
+    private async Task<(string Host, int Port, string User, string Pass, string To)> GetEmailConfigAsync(int userId)
     {
-        var settings = await _settingsService.GetSettingsAsync();
+        var settings = await _settingsService.GetSettingsAsync(userId);
 
-        var host = !string.IsNullOrWhiteSpace(settings.SmtpHost) ? settings.SmtpHost : _configuration["SMTP_HOST"];
-        var port = settings.SmtpPort > 0 ? settings.SmtpPort : int.Parse(_configuration["SMTP_PORT"] ?? "587");
-        var user = !string.IsNullOrWhiteSpace(settings.SmtpUser) ? settings.SmtpUser : _configuration["SMTP_USER"];
-        var pass = !string.IsNullOrWhiteSpace(settings.SmtpPass) ? settings.SmtpPass : _configuration["SMTP_PASS"];
-        var to = !string.IsNullOrWhiteSpace(settings.EmailTo) ? settings.EmailTo : _configuration["EMAIL_TO"];
+        var host = settings.SmtpHost;
+        var port = settings.SmtpPort > 0 ? settings.SmtpPort : 587;
+        var user = settings.SmtpUser;
+        var pass = settings.SmtpPass;
+        var to = settings.EmailTo;
 
-        return (host ?? "", port, user ?? "", pass ?? "", to ?? "");
+        return (host, port, user, pass, to);
     }
 
-    // This is the main function that actually sends the email out to the internet.
-    public async Task SendEmailAsync(string subject, string body)
+    public async Task SendEmailAsync(int userId, string subject, string body)
     {
-        var config = await GetEmailConfigAsync();
+        var config = await GetEmailConfigAsync(userId);
 
-        // If I don't know where to send the email or which server to use, I'll stop here and log a warning.
         if (string.IsNullOrEmpty(config.Host) || string.IsNullOrEmpty(config.To))
         {
-            _logger.LogWarning("SMTP configuration missing. Email not sent.\nSubject: {Subject}", subject);
+            _logger.LogWarning("SMTP configuration missing for user {UserId}. Email not sent.", userId);
             return;
         }
 
@@ -63,7 +59,6 @@ public class EmailService : IEmailService
             IsBodyHtml = true
         };
 
-        // You might have listed multiple people to receive this email, so I'll add them one by one.
         mailMessage.To.Clear();
         var recipients = config.To.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
         foreach (var recipient in recipients)
@@ -74,26 +69,25 @@ public class EmailService : IEmailService
         try
         {
             await client.SendMailAsync(mailMessage);
-            _logger.LogInformation("Weekly report email sent to {ToAddress}", config.To);
+            _logger.LogInformation("Email sent to {ToAddress} for user {UserId}", config.To, userId);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to send email.");
-            throw; // I'm re-throwing this error so the test button knows it failed.
+            _logger.LogError(ex, "Failed to send email for user {UserId}", userId);
+            throw; 
         }
     }
 
-    // A simple test function to check if your email settings are correct.
-    public async Task<bool> SendTestEmailAsync()
+    public async Task<bool> SendTestEmailAsync(int userId)
     {
         try
         {
-            await SendEmailAsync("Gordon Finance: Test Email", "<h1>It Works!</h1><p>This is a test email from your Gordon Finance Engine.</p>");
+            await SendEmailAsync(userId, "Gordon Finance: Test Email", "<h1>It Works!</h1><p>This is a test email from your Gordon Finance Engine.</p>");
             return true;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Test email failed.");
+            _logger.LogError(ex, "Test email failed for user {UserId}", userId);
             return false;
         }
     }

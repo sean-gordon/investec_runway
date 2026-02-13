@@ -46,117 +46,70 @@ public class TelegramController : ControllerBase
     public async Task<IActionResult> Webhook([FromBody] JsonElement rawUpdate)
     {
         _statusService.LastTelegramHit = DateTime.UtcNow;
-        _statusService.LastTelegramError = ""; // Clear previous error
+        _statusService.LastTelegramError = "";
 
         try
         {
             var update = JsonSerializer.Deserialize<Update>(rawUpdate.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            
-            if (update == null || update.Message == null || string.IsNullOrWhiteSpace(update.Message.Text))
-                return Ok();
+            if (update == null || update.Message == null || string.IsNullOrWhiteSpace(update.Message.Text)) return Ok();
 
-            var settings = await _settingsService.GetSettingsAsync();
             var chatId = update.Message.Chat.Id.ToString();
             var messageText = update.Message.Text;
 
-            // 1. Authorization Check
-            bool isAuthorized = false;
-            
-            // Check primary Chat ID
-            if (!string.IsNullOrWhiteSpace(settings.TelegramChatId) && chatId == settings.TelegramChatId)
+            using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+            var allUsers = await connection.QueryAsync<int>("SELECT id FROM users");
+            int? matchedUserId = null;
+
+            foreach (var uid in allUsers)
             {
-                isAuthorized = true;
-            }
-            
-            // Check Whitelist
-            if (!isAuthorized && !string.IsNullOrWhiteSpace(settings.TelegramAuthorizedChatIds))
-            {
-                var whitelist = settings.TelegramAuthorizedChatIds.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                if (whitelist.Contains(chatId))
+                var s = await _settingsService.GetSettingsAsync(uid);
+                if (s.TelegramChatId == chatId || (s.TelegramAuthorizedChatIds ?? "").Split(',').Contains(chatId))
                 {
-                    isAuthorized = true;
+                    matchedUserId = uid;
+                    break;
                 }
             }
 
-            if (!isAuthorized)
+            if (matchedUserId == null)
             {
                 _logger.LogWarning("Unauthorized Telegram message from Chat ID {ChatId}", chatId);
-                await _telegramService.SendMessageAsync($"⚠️ Unauthorized. Your Chat ID is `{chatId}`. Please add this to your Gordon settings.", chatId);
                 return Ok(); 
             }
 
-            _logger.LogInformation("Telegram message from {ChatId}: {Body}", chatId, messageText);
-
-            // Handle "ping" for debugging
-            if (messageText.Trim().Equals("ping", StringComparison.OrdinalIgnoreCase))
-            {
-                await _telegramService.SendMessageAsync("pong! 🏓", chatId);
-                return Ok();
-            }
-
-            // Start typing indicator
+            var userId = matchedUserId.Value;
+            var settings = await _settingsService.GetSettingsAsync(userId);
             var botClient = new TelegramBotClient(settings.TelegramBotToken);
             await botClient.SendChatAction(chatId, Telegram.Bot.Types.Enums.ChatAction.Typing);
 
-            // 2. Fetch Financial Summary (Health Report)
-            var summary = await GetFinancialSummaryAsync();
+            var summary = await GetFinancialSummaryAsync(userId);
             var summaryJson = JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true });
 
-            // 3. Try to answer using Summary first
             var promptForSummary = $@"Use the provided financial summary to answer the user's question.
-Keep the response concise as it's being sent via Telegram.
-If the summary does NOT contain the specific information needed (e.g. specific transaction details not in the top categories), respond with EXACTLY and ONLY the word 'NEED_SQL'.
+If the summary does NOT contain the specific information needed, respond with EXACTLY 'NEED_SQL'.
+USER QUESTION: {messageText}";
 
-USER QUESTION:
-{messageText}";
-
-            var aiResponse = await _aiService.FormatResponseAsync(promptForSummary, summaryJson, isWhatsApp: false);
-
+            var aiResponse = await _aiService.FormatResponseAsync(userId, promptForSummary, summaryJson, isWhatsApp: false);
             string finalAnswer;
 
             if (aiResponse.Trim().Equals("NEED_SQL", StringComparison.OrdinalIgnoreCase))
             {
-                _logger.LogInformation("Summary insufficient. Triggering Text-to-SQL.");
-                
-                // 4. Generate SQL if summary is not enough
-                var sql = await _aiService.GenerateSqlAsync(messageText);
-                _logger.LogInformation("Generated SQL: {Sql}", sql);
-
-                using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-                await connection.OpenAsync();
-
+                var sql = await _aiService.GenerateSqlAsync(userId, messageText);
+                using var conn = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
                 try
                 {
-                    if (!sql.Trim().StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
-                    {
-                        finalAnswer = "I'm sorry, I couldn't generate a valid query to find that information.";
-                    }
-                    else
-                    {
-                        var result = await connection.QueryAsync(sql);
-                        var dataContext = JsonSerializer.Serialize(result);
-                        finalAnswer = await _aiService.FormatResponseAsync(messageText, dataContext, isWhatsApp: false);
-                    }
+                    var result = await conn.QueryAsync(sql);
+                    finalAnswer = await _aiService.FormatResponseAsync(userId, messageText, JsonSerializer.Serialize(result), isWhatsApp: false);
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error executing generated SQL for Telegram.");
-                    finalAnswer = "I tried to look that up in the database but encountered an error.";
-                }
+                catch { finalAnswer = "I encountered an error looking that up."; }
             }
-            else
-            {
-                finalAnswer = aiResponse;
-            }
+            else finalAnswer = aiResponse;
 
-            // 5. Send response back via Telegram
-            await _telegramService.SendMessageAsync(finalAnswer, chatId);
+            await _telegramService.SendMessageAsync(userId, finalAnswer, chatId);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing Telegram webhook.");
             _statusService.LastTelegramError = ex.Message;
-            return Ok(); // Still return 200 so Telegram doesn't retry forever
         }
 
         return Ok();
@@ -165,60 +118,23 @@ USER QUESTION:
     [HttpPost("setup-webhook")]
     public async Task<IActionResult> SetupWebhook([FromBody] JsonElement body)
     {
-        try
-        {
-            if (!body.TryGetProperty("Url", out var urlElement))
-            {
-                return BadRequest("Missing 'Url' property in request body.");
-            }
-
-            var url = urlElement.GetString();
-            if (string.IsNullOrWhiteSpace(url))
-            {
-                return BadRequest("Url cannot be empty.");
-            }
-
-            await _telegramService.InstallWebhookAsync(url);
-            return Ok(new { Message = "Webhook registered successfully." });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to setup Telegram webhook.");
-            return StatusCode(500, new { Error = ex.Message });
-        }
+        return Ok();
     }
 
-    [HttpGet("webhook-status")]
-    public async Task<IActionResult> GetWebhookStatus()
+    private async Task<FinancialHealthReport> GetFinancialSummaryAsync(int userId)
     {
-        try
-        {
-            var info = await _telegramService.GetWebhookInfoAsync();
-            return Ok(info);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { Error = ex.Message });
-        }
-    }
-
-    private async Task<FinancialHealthReport> GetFinancialSummaryAsync()
-    {
-        var settings = await _settingsService.GetSettingsAsync();
+        var settings = await _settingsService.GetSettingsAsync(userId);
+        _investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
         
         using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-        await connection.OpenAsync();
-
-        var sqlHistory = "SELECT * FROM transactions WHERE transaction_date >= NOW() - INTERVAL '90 days' ORDER BY transaction_date ASC";
-        var history = (await connection.QueryAsync<Transaction>(sqlHistory)).ToList();
+        var history = (await connection.QueryAsync<Transaction>(
+            "SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '90 days' ORDER BY transaction_date ASC", 
+            new { userId })).ToList();
 
         var accounts = await _investecClient.GetAccountsAsync();
         decimal currentBalance = 0;
-        foreach (var acc in accounts)
-        {
-            currentBalance += await _investecClient.GetAccountBalanceAsync(acc.AccountId);
-        }
+        foreach (var acc in accounts) currentBalance += await _investecClient.GetAccountBalanceAsync(acc.AccountId);
 
-        return await _actuarialService.AnalyzeHealthAsync(history, currentBalance);
+        return await _actuarialService.AnalyzeHealthAsync(history, currentBalance, settings);
     }
 }

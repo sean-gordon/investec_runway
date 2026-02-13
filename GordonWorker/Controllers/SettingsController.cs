@@ -1,74 +1,57 @@
 using GordonWorker.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
+using System.Text.Json;
 
 namespace GordonWorker.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class SettingsController : ControllerBase
 {
     private readonly ISettingsService _settingsService;
     private readonly IEmailService _emailService;
-    private readonly IAiService _ollamaService;
+    private readonly IAiService _aiService;
     private readonly IFinancialReportService _reportService;
     private readonly ISystemStatusService _statusService;
     private readonly ITransactionSyncService _syncService;
-
     private readonly IInvestecClient _investecClient;
-
+    private readonly ITwilioService _twilioService;
+    private readonly ITelegramService _telegramService;
     private readonly ILogger<SettingsController> _logger;
 
     public SettingsController(
         ISettingsService settingsService, 
         IEmailService emailService, 
-        IAiService ollamaService,
+        IAiService aiService,
         IFinancialReportService reportService,
         ISystemStatusService statusService,
         ITransactionSyncService syncService,
         IInvestecClient investecClient,
+        ITwilioService twilioService,
+        ITelegramService telegramService,
         ILogger<SettingsController> logger)
     {
         _settingsService = settingsService;
         _emailService = emailService;
-        _ollamaService = ollamaService;
+        _aiService = aiService;
         _reportService = reportService;
         _statusService = statusService;
         _syncService = syncService;
         _investecClient = investecClient;
+        _twilioService = twilioService;
+        _telegramService = telegramService;
         _logger = logger;
     }
 
-    [HttpGet("debug-investec")]
-    public async Task<IActionResult> DebugInvestec()
-    {
-        try
-        {
-            var accounts = await _investecClient.GetAccountsAsync();
-            var debugData = new Dictionary<string, object>
-            {
-                { "AccountsFound", accounts.Count },
-                { "Accounts", accounts }
-            };
-
-            foreach (var acc in accounts)
-            {
-                var txs = await _investecClient.GetTransactionsAsync(acc.AccountId, DateTimeOffset.UtcNow.AddDays(-30));
-                debugData.Add($"Transactions_{acc.AccountId}", txs);
-            }
-
-            return Ok(debugData);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Investec Debug Failed.");
-            return StatusCode(500, new { Error = ex.Message, Stack = ex.StackTrace });
-        }
-    }
+    private int UserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
     [HttpGet]
     public async Task<IActionResult> Get()
     {
-        var settings = await _settingsService.GetSettingsAsync();
+        var settings = await _settingsService.GetSettingsAsync(UserId);
         return Ok(settings);
     }
 
@@ -77,13 +60,13 @@ public class SettingsController : ControllerBase
     {
         try
         {
-            await _settingsService.UpdateSettingsAsync(settings);
+            await _settingsService.UpdateSettingsAsync(UserId, settings);
             return Ok(settings);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to update settings.");
-            return StatusCode(500, new { Error = ex.Message, Details = ex.InnerException?.Message });
+            _logger.LogError(ex, "Failed to update settings for user {UserId}", UserId);
+            return StatusCode(500, new { Error = ex.Message });
         }
     }
 
@@ -92,8 +75,8 @@ public class SettingsController : ControllerBase
     {
         try
         {
-            var success = await _emailService.SendTestEmailAsync();
-            return success ? Ok("Email sent successfully.") : StatusCode(500, "Failed to send email. Check logs.");
+            var success = await _emailService.SendTestEmailAsync(UserId);
+            return success ? Ok("Email sent successfully.") : StatusCode(500, "Failed to send email.");
         }
         catch (Exception ex)
         {
@@ -106,12 +89,11 @@ public class SettingsController : ControllerBase
     {
         try
         {
-            var result = await _ollamaService.TestConnectionAsync();
+            var result = await _aiService.TestConnectionAsync(UserId);
             return result.Success ? Ok(new { Message = "Connected to AI Brain successfully." }) : StatusCode(500, new { Error = result.Error });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "AI Test Failed.");
             return StatusCode(500, new { Error = ex.Message });
         }
     }
@@ -119,35 +101,27 @@ public class SettingsController : ControllerBase
     [HttpPost("test-whatsapp")]
     public async Task<IActionResult> TestWhatsApp()
     {
-        var settings = await _settingsService.GetSettingsAsync();
-        if (string.IsNullOrWhiteSpace(settings.AuthorizedWhatsAppNumber))
-        {
-            return BadRequest("Authorized WhatsApp Number is not configured.");
-        }
+        var settings = await _settingsService.GetSettingsAsync(UserId);
+        if (string.IsNullOrWhiteSpace(settings.AuthorizedWhatsAppNumber)) return BadRequest("WhatsApp Number not configured.");
 
-        var twilioService = HttpContext.RequestServices.GetRequiredService<ITwilioService>();
-        await twilioService.SendWhatsAppMessageAsync(settings.AuthorizedWhatsAppNumber, "Ping! This is a test message from your Gordon Finance Engine. 🚀");
+        await _twilioService.SendWhatsAppMessageAsync(UserId, settings.AuthorizedWhatsAppNumber, "Ping! Multi-user test from Gordon. 🚀");
         return Ok("WhatsApp test message dispatched.");
     }
 
     [HttpPost("test-telegram")]
     public async Task<IActionResult> TestTelegram()
     {
-        var settings = await _settingsService.GetSettingsAsync();
-        if (string.IsNullOrWhiteSpace(settings.TelegramChatId))
-        {
-            return BadRequest("Telegram Chat ID is not configured.");
-        }
+        var settings = await _settingsService.GetSettingsAsync(UserId);
+        if (string.IsNullOrWhiteSpace(settings.TelegramChatId)) return BadRequest("Telegram Chat ID not configured.");
 
-        var telegramService = HttpContext.RequestServices.GetRequiredService<ITelegramService>();
-        await telegramService.SendMessageAsync("Ping! This is a test message from your Gordon Finance Engine. 🚀");
+        await _telegramService.SendMessageAsync(UserId, "Ping! Multi-user test from Gordon. 🚀");
         return Ok("Telegram test message dispatched.");
     }
 
     [HttpGet("models")]
     public async Task<IActionResult> GetModels()
     {
-        var models = await _ollamaService.GetAvailableModelsAsync();
+        var models = await _aiService.GetAvailableModelsAsync(UserId);
         return Ok(models);
     }
 
@@ -159,8 +133,7 @@ public class SettingsController : ControllerBase
             InvestecOnline = _statusService.IsInvestecOnline,
             LastCheck = _statusService.LastInvestecCheck,
             LastTelegramHit = _statusService.LastTelegramHit,
-            LastTelegramError = _statusService.LastTelegramError,
-            LastError = _statusService.LastError
+            LastTelegramError = _statusService.LastTelegramError
         });
     }
 
@@ -169,7 +142,7 @@ public class SettingsController : ControllerBase
     {
         try
         {
-            await _reportService.GenerateAndSendReportAsync();
+            await _reportService.GenerateAndSendReportAsync(UserId);
             return Ok("Financial Report generated and sent.");
         }
         catch (Exception ex)
@@ -183,8 +156,8 @@ public class SettingsController : ControllerBase
     {
         try
         {
-            await _syncService.ForceRepullAsync();
-            return Ok("Repull initiated. Check logs for progress.");
+            await _syncService.ForceRepullAsync(UserId);
+            return Ok("Repull initiated.");
         }
         catch (Exception ex)
         {

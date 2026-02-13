@@ -30,7 +30,7 @@ public record CategorySpend(string Name, decimal Amount, decimal ChangeAmount, d
 
 public interface IActuarialService
 {
-    Task<FinancialHealthReport> AnalyzeHealthAsync(List<Transaction> history, decimal currentBalance);
+    Task<FinancialHealthReport> AnalyzeHealthAsync(List<Transaction> history, decimal currentBalance, AppSettings settings);
     bool IsSalary(Transaction t, AppSettings settings);
     string NormalizeDescription(string? desc);
     bool IsFixedCost(string categoryName, AppSettings settings);
@@ -38,11 +38,9 @@ public interface IActuarialService
 
 public class ActuarialService : IActuarialService
 {
-    private readonly ISettingsService _settingsService;
-
-    public ActuarialService(ISettingsService settingsService)
+    // No injected services needed, purely mathematical logic based on inputs
+    public ActuarialService()
     {
-        _settingsService = settingsService;
     }
 
     public string NormalizeDescription(string? desc)
@@ -69,9 +67,8 @@ public class ActuarialService : IActuarialService
         return keywords.Any(k => t.Description.Contains(k, StringComparison.OrdinalIgnoreCase));
     }
 
-    public async Task<FinancialHealthReport> AnalyzeHealthAsync(List<Transaction> history, decimal currentBalance)
+    public async Task<FinancialHealthReport> AnalyzeHealthAsync(List<Transaction> history, decimal currentBalance, AppSettings settings)
     {
-        var settings = await _settingsService.GetSettingsAsync();
         var today = DateTime.Today;
 
         // SALARY DETECTION (Sign-Agnostic)
@@ -222,7 +219,7 @@ public class ActuarialService : IActuarialService
         var trendMultiplierLower = 1.0m - settings.TrendSensitivity;
         string trendDirection = (decimal)weightedMean > (decimal)dailyAvgSimple * trendMultiplierUpper ? "Increasing" : ((decimal)weightedMean < (decimal)dailyAvgSimple * trendMultiplierLower ? "Decreasing" : "Stable");
 
-        return new FinancialHealthReport(
+        return await Task.FromResult(new FinancialHealthReport(
             CurrentBalance: currentBalance,
             WeightedDailyBurn: baseBurn,
             MonthlyBurnRate: baseBurn * 30,
@@ -241,7 +238,7 @@ public class ActuarialService : IActuarialService
             RunwayProbability: Math.Min(Math.Max(probSurvival, 0), 100),
             TopCategories: categoryReport.OrderByDescending(c => c.Amount).Take(3).ToList(),
             UpcomingFixedCosts: upcomingFixedCosts
-        );
+        ));
     }
 
     private double CumulativeDistributionFunction(double x)

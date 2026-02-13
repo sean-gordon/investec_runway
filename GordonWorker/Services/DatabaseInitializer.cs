@@ -22,18 +22,29 @@ public class DatabaseInitializer
             using var connection = new NpgsqlConnection(connectionString);
             await connection.OpenAsync();
 
-            var sql = @"
-                CREATE TABLE IF NOT EXISTS system_config (
-                    id INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+            // 1. Users Table
+            var usersSql = @"
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );";
+            await connection.ExecuteAsync(usersSql);
+
+            // 2. User Settings Table (Renamed from system_config)
+            var settingsSql = @"
+                CREATE TABLE IF NOT EXISTS user_settings (
+                    user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
                     config JSONB NOT NULL
                 );";
+            await connection.ExecuteAsync(settingsSql);
 
-            await connection.ExecuteAsync(sql);
-
-            // Ensure transactions table exists with correct schema for TimescaleDB
+            // 3. Transactions Table (Updated with user_id)
             var transactionsSql = @"
                 CREATE TABLE IF NOT EXISTS transactions (
                     id UUID NOT NULL,
+                    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                     account_id TEXT,
                     transaction_date TIMESTAMPTZ NOT NULL,
                     description TEXT,
@@ -41,23 +52,24 @@ public class DatabaseInitializer
                     balance DECIMAL(18, 2),
                     category TEXT,
                     is_ai_processed BOOLEAN DEFAULT FALSE,
-                    PRIMARY KEY (id, transaction_date)
+                    PRIMARY KEY (id, transaction_date, user_id)
                 );
                 
-                -- TimescaleDB hypertables need a unique index that includes the partitioning column
-                CREATE UNIQUE INDEX IF NOT EXISTS ux_transactions_id_date ON transactions (id, transaction_date);
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_transactions_id_date_user ON transactions (id, transaction_date, user_id);
             ";
-
             await connection.ExecuteAsync(transactionsSql);
             
-            // Try to convert to hypertable (fails silently if already a hypertable)
+            // Try to convert to hypertable
             try { await connection.ExecuteAsync("SELECT create_hypertable('transactions', 'transaction_date', if_not_exists => TRUE);"); } catch {}
 
-            _logger.LogInformation("Database tables and indexes ensured.");
+            // Cleanup old table if exists
+            try { await connection.ExecuteAsync("DROP TABLE IF EXISTS system_config;"); } catch {}
+
+            _logger.LogInformation("Database multi-tenant schema ensured.");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to initialize database tables.");
+            _logger.LogError(ex, "Failed to initialize multi-tenant database tables.");
         }
     }
 }

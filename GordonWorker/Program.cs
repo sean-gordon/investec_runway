@@ -2,31 +2,57 @@ using GordonWorker.Services;
 using GordonWorker.Workers;
 using GordonWorker.Middleware;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 using Dapper;
 using Microsoft.AspNetCore.DataProtection;
 
-// Support legacy timestamp behavior for Npgsql (Postgres)
+// Support legacy timestamp behavior for Npgsql
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 AppContext.SetSwitch("Npgsql.DisableDateTimeInfinityConversions", true);
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Enable snake_case mapping for Dapper (Postgres style)
+// Enable snake_case mapping for Dapper
 DefaultTypeMap.MatchNamesWithUnderscores = true;
 
-// Add services to the container.
+// 1. JWT Authentication Setup
+var jwtSettings = builder.Configuration.GetSection("Jwt");
+var key = Encoding.ASCII.GetBytes(jwtSettings["Secret"] ?? "SUPER_SECRET_FALLBACK_KEY_CHANGE_ME_NOW");
+
+builder.Services.AddAuthentication(x =>
+{
+    x.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    x.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(x =>
+{
+    x.RequireHttpsMetadata = false;
+    x.SaveToken = true;
+    x.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = new SymmetricSecurityKey(key),
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidIssuer = jwtSettings["Issuer"],
+        ValidAudience = jwtSettings["Audience"],
+        ClockSkew = TimeSpan.Zero
+    };
+});
+
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo("keys"));
+
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
     options.KnownNetworks.Clear();
     options.KnownProxies.Clear();
 });
-
-builder.Services.AddControllers();
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
-builder.Services.AddDataProtection()
-    .PersistKeysToFileSystem(new DirectoryInfo("keys"));
 
 builder.Services.AddHttpClient<IInvestecClient, InvestecClient>();
 builder.Services.AddHttpClient<IAiService, AiService>();
@@ -53,7 +79,6 @@ using (var scope = app.Services.CreateScope())
     await initializer.InitializeAsync();
 }
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -62,20 +87,23 @@ if (app.Environment.IsDevelopment())
 
 app.UseForwardedHeaders();
 
-// Global Request Logger for Debugging
+// Global Request Logger
 app.Use(async (context, next) =>
 {
     var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-    logger.LogInformation("Request: {Method} {Path} from {IP}", context.Request.Method, context.Request.Path, context.Connection.RemoteIpAddress);
+    logger.LogInformation("Request: {Method} {Path}", context.Request.Method, context.Request.Path);
     await next();
 });
 
-app.UseMiddleware<SecurityValidationMiddleware>();
-app.UseStaticFiles(); // Enable frontend
+app.UseStaticFiles();
+app.UseRouting();
+
+app.UseAuthentication();
 app.UseAuthorization();
 
+app.UseMiddleware<SecurityValidationMiddleware>();
+
 app.MapControllers();
-// Fallback to index.html for SPA
 app.MapFallbackToFile("index.html");
 
 app.Run();

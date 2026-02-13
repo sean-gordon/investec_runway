@@ -43,47 +43,57 @@ public class TelegramController : ControllerBase
     }
 
     [HttpPost("webhook")]
-    public async Task<IActionResult> Webhook([FromBody] Update update)
+    public async Task<IActionResult> Webhook([FromBody] JsonElement rawUpdate)
     {
         _statusService.LastTelegramHit = DateTime.UtcNow;
-
-        if (update.Message == null || string.IsNullOrWhiteSpace(update.Message.Text))
-            return Ok();
-
-        var settings = await _settingsService.GetSettingsAsync();
-        var chatId = update.Message.Chat.Id.ToString();
-        var messageText = update.Message.Text;
-
-        // 1. Authorization Check
-        bool isAuthorized = false;
-        
-        // Check primary Chat ID
-        if (!string.IsNullOrWhiteSpace(settings.TelegramChatId) && chatId == settings.TelegramChatId)
-        {
-            isAuthorized = true;
-        }
-        
-        // Check Whitelist
-        if (!isAuthorized && !string.IsNullOrWhiteSpace(settings.TelegramAuthorizedChatIds))
-        {
-            var whitelist = settings.TelegramAuthorizedChatIds.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            if (whitelist.Contains(chatId))
-            {
-                isAuthorized = true;
-            }
-        }
-
-        if (!isAuthorized)
-        {
-            _logger.LogWarning("Unauthorized Telegram message from Chat ID {ChatId}", chatId);
-            await _telegramService.SendMessageAsync($"⚠️ Unauthorized. Your Chat ID is `{chatId}`. Please add this to your Gordon settings.", chatId);
-            return Ok(); 
-        }
-
-        _logger.LogInformation("Telegram message from {ChatId}: {Body}", chatId, messageText);
+        _statusService.LastTelegramError = ""; // Clear previous error
 
         try
         {
+            var update = JsonSerializer.Deserialize<Update>(rawUpdate.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            
+            if (update == null || update.Message == null || string.IsNullOrWhiteSpace(update.Message.Text))
+                return Ok();
+
+            var settings = await _settingsService.GetSettingsAsync();
+            var chatId = update.Message.Chat.Id.ToString();
+            var messageText = update.Message.Text;
+
+            // 1. Authorization Check
+            bool isAuthorized = false;
+            
+            // Check primary Chat ID
+            if (!string.IsNullOrWhiteSpace(settings.TelegramChatId) && chatId == settings.TelegramChatId)
+            {
+                isAuthorized = true;
+            }
+            
+            // Check Whitelist
+            if (!isAuthorized && !string.IsNullOrWhiteSpace(settings.TelegramAuthorizedChatIds))
+            {
+                var whitelist = settings.TelegramAuthorizedChatIds.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (whitelist.Contains(chatId))
+                {
+                    isAuthorized = true;
+                }
+            }
+
+            if (!isAuthorized)
+            {
+                _logger.LogWarning("Unauthorized Telegram message from Chat ID {ChatId}", chatId);
+                await _telegramService.SendMessageAsync($"⚠️ Unauthorized. Your Chat ID is `{chatId}`. Please add this to your Gordon settings.", chatId);
+                return Ok(); 
+            }
+
+            _logger.LogInformation("Telegram message from {ChatId}: {Body}", chatId, messageText);
+
+            // Handle "ping" for debugging
+            if (messageText.Trim().Equals("ping", StringComparison.OrdinalIgnoreCase))
+            {
+                await _telegramService.SendMessageAsync("pong! 🏓", chatId);
+                return Ok();
+            }
+
             // Start typing indicator
             var botClient = new TelegramBotClient(settings.TelegramBotToken);
             await botClient.SendChatAction(chatId, Telegram.Bot.Types.Enums.ChatAction.Typing);
@@ -144,8 +154,9 @@ USER QUESTION:
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error processing Telegram message.");
-            await _telegramService.SendMessageAsync("I'm sorry, I encountered an internal error while processing your request.", chatId);
+            _logger.LogError(ex, "Error processing Telegram webhook.");
+            _statusService.LastTelegramError = ex.Message;
+            return Ok(); // Still return 200 so Telegram doesn't retry forever
         }
 
         return Ok();

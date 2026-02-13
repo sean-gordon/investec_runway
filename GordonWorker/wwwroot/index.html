@@ -177,6 +177,8 @@
                                         <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Telegram Active</p>
                                         <div class="mt-1">
                                             <span class="text-lg font-bold text-slate-900">{{ formatTime(systemStatus.lastTelegramHit) }}</span>
+                                            <span v-if="systemStatus.lastTelegramError" class="block text-[10px] text-red-500 font-bold mt-1 truncate max-w-[120px]" :title="systemStatus.lastTelegramError">⚠ {{ systemStatus.lastTelegramError }}</span>
+                                            <span v-else-if="systemStatus.lastTelegramHit" class="block text-[10px] text-green-500 font-bold mt-1">✔ No errors</span>
                                         </div>
                                     </div>
                                     <div class="w-10 h-10 rounded-full bg-sky-50 text-sky-600 flex items-center justify-center text-lg">🤖</div>
@@ -616,7 +618,7 @@
                         telegramBotToken: '', telegramChatId: '', telegramAuthorizedChatIds: ''
                     },
                     availableModels: [],
-                    systemStatus: { investecOnline: false, lastCheck: '', lastTelegramHit: '', lastError: '' },
+                    systemStatus: { investecOnline: false, lastCheck: '', lastTelegramHit: '', lastTelegramError: '', lastError: '' },
                     days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
                     
                     saving: false, emailTesting: false, aiTesting: false, whatsappTesting: false, telegramTesting: false,

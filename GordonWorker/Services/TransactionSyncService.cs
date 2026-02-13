@@ -70,7 +70,7 @@ public class TransactionSyncService : ITransactionSyncService
                 var insertSql = @"
                     INSERT INTO transactions (id, account_id, transaction_date, description, amount, balance, category, is_ai_processed)
                     VALUES (@Id, @AccountId, @TransactionDate, @Description, @Amount, @Balance, @Category, @IsAiProcessed)
-                    ON CONFLICT (id, transaction_date) DO NOTHING";
+                    ON CONFLICT (id) DO NOTHING";
 
                 // Ensure UTC kind for Postgres
                 var parameters = new

@@ -14,6 +14,12 @@ var builder = WebApplication.CreateBuilder(args);
 DefaultTypeMap.MatchNamesWithUnderscores = true;
 
 // Add services to the container.
+builder.Services.Configure<Microsoft.AspNetCore.HttpOverrides.ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -53,7 +59,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+app.UseForwardedHeaders();
 app.UseMiddleware<SecurityValidationMiddleware>();
 app.UseStaticFiles(); // Enable frontend
 app.UseAuthorization();

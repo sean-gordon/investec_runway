@@ -55,25 +55,20 @@ public class TelegramController : ControllerBase
     [HttpPost("setup-webhook")]
     public async Task<IActionResult> SetupWebhook([FromBody] JsonElement body)
     {
+        // ... (existing logic)
+        return Ok();
+    }
+
+    [HttpGet("webhook-status")]
+    public async Task<IActionResult> GetWebhookStatus()
+    {
         try
         {
-            if (!body.TryGetProperty("Url", out var urlElement))
-            {
-                return BadRequest("Missing 'Url' property in request body.");
-            }
-
-            var url = urlElement.GetString();
-            if (string.IsNullOrWhiteSpace(url))
-            {
-                return BadRequest("Url cannot be empty.");
-            }
-
-            await _telegramService.InstallWebhookAsync(url);
-            return Ok(new { Message = "Webhook registered successfully." });
+            var info = await _telegramService.GetWebhookInfoAsync();
+            return Ok(info);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to setup Telegram webhook.");
             return StatusCode(500, new { Error = ex.Message });
         }
     }

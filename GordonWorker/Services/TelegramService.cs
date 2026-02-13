@@ -7,6 +7,7 @@ public interface ITelegramService
 {
     Task SendMessageAsync(string message);
     Task InstallWebhookAsync(string webhookUrl);
+    Task<string> GetWebhookInfoAsync();
 }
 
 public class TelegramService : ITelegramService
@@ -18,6 +19,16 @@ public class TelegramService : ITelegramService
     {
         _settingsService = settingsService;
         _logger = logger;
+    }
+
+    public async Task<string> GetWebhookInfoAsync()
+    {
+        var settings = await _settingsService.GetSettingsAsync();
+        if (string.IsNullOrWhiteSpace(settings.TelegramBotToken)) return "Token not configured.";
+
+        var botClient = new TelegramBotClient(settings.TelegramBotToken);
+        var info = await botClient.GetWebhookInfo();
+        return System.Text.Json.JsonSerializer.Serialize(info, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
     }
 
     public async Task InstallWebhookAsync(string webhookUrl)

@@ -28,17 +28,22 @@ public class TransactionsBackgroundService : BackgroundService
         {
             try
             {
-                using var scope = _serviceProvider.CreateScope();
-                var syncService = scope.ServiceProvider.GetRequiredService<ITransactionSyncService>();
-                
-                // Get all users
-                using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-                var userIds = await connection.QueryAsync<int>("SELECT id FROM users");
+                // Get all users first
+                IEnumerable<int> userIds;
+                using (var scope = _serviceProvider.CreateScope())
+                {
+                    var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+                    using var connection = new NpgsqlConnection(configuration.GetConnectionString("DefaultConnection"));
+                    userIds = await connection.QueryAsync<int>("SELECT id FROM users");
+                }
 
                 foreach (var userId in userIds)
                 {
                     try
                     {
+                        // Create a NEW scope for each user to ensure fresh Scoped services (like InvestecClient)
+                        using var userScope = _serviceProvider.CreateScope();
+                        var syncService = userScope.ServiceProvider.GetRequiredService<ITransactionSyncService>();
                         await syncService.SyncTransactionsAsync(userId, stoppingToken);
                     }
                     catch (Exception ex)

@@ -25,12 +25,14 @@ public class WeeklyReportWorker : BackgroundService
         {
             try
             {
-                using var scope = _serviceProvider.CreateScope();
-                var settingsService = scope.ServiceProvider.GetRequiredService<ISettingsService>();
-                var reportService = scope.ServiceProvider.GetRequiredService<IFinancialReportService>();
-
-                using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-                var users = await connection.QueryAsync<UserReportStatus>("SELECT id, last_weekly_report_sent as LastWeeklyReportSent FROM users");
+                // Fetch users first
+                IEnumerable<UserReportStatus> users;
+                using (var scope = _serviceProvider.CreateScope())
+                {
+                    var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+                    using var connection = new NpgsqlConnection(configuration.GetConnectionString("DefaultConnection"));
+                    users = await connection.QueryAsync<UserReportStatus>("SELECT id, last_weekly_report_sent as LastWeeklyReportSent FROM users");
+                }
 
                 var now = DateTime.Now;
 
@@ -38,6 +40,12 @@ public class WeeklyReportWorker : BackgroundService
                 {
                     // Optimization: Skip immediately if already sent today
                     if (user.LastWeeklyReportSent.HasValue && user.LastWeeklyReportSent.Value.Date == now.Date) continue;
+
+                    // Create per-user scope
+                    using var userScope = _serviceProvider.CreateScope();
+                    var settingsService = userScope.ServiceProvider.GetRequiredService<ISettingsService>();
+                    var reportService = userScope.ServiceProvider.GetRequiredService<IFinancialReportService>();
+                    var config = userScope.ServiceProvider.GetRequiredService<IConfiguration>(); // Get config from scope if needed, or use class field
 
                     var settings = await settingsService.GetSettingsAsync(user.Id);
                     
@@ -49,8 +57,9 @@ public class WeeklyReportWorker : BackgroundService
                         {
                             await reportService.GenerateAndSendReportAsync(user.Id);
                             
-                            // Update DB immediately to prevent double-send
-                            await connection.ExecuteAsync("UPDATE users SET last_weekly_report_sent = @Now WHERE id = @Id", new { Now = now, user.Id });
+                            // Update DB immediately to prevent double-send (using a new connection or the shared config)
+                            using var updateConnection = new NpgsqlConnection(config.GetConnectionString("DefaultConnection"));
+                            await updateConnection.ExecuteAsync("UPDATE users SET last_weekly_report_sent = @Now WHERE id = @Id", new { Now = now, user.Id });
                             _logger.LogInformation("Weekly report sent for user {UserId}", user.Id);
                         }
                         catch (Exception ex)

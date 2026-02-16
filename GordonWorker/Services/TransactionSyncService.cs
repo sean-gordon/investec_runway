@@ -69,7 +69,7 @@ public class TransactionSyncService : ITransactionSyncService
                 var insertSql = @"
                     INSERT INTO transactions (id, user_id, account_id, transaction_date, description, amount, balance, category, is_ai_processed)
                     VALUES (@Id, @UserId, @AccountId, @TransactionDate, @Description, @Amount, @Balance, @Category, @IsAiProcessed)
-                    ON CONFLICT (id, transaction_date, user_id) DO NOTHING";
+                    ON CONFLICT (id, transaction_date) DO NOTHING";
 
                 var parameters = new
                 {

@@ -76,27 +76,10 @@ public class DatabaseInitializer
             await connection.ExecuteAsync(chatHistorySql);
 
             // 3. Transactions Table Migration
-            // Always try to add the column safely
-            try 
-            {
-                await connection.ExecuteAsync("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS user_id INT;");
-                
-                // Backfill existing NULLs to Admin
-                await connection.ExecuteAsync("UPDATE transactions SET user_id = @AdminId WHERE user_id IS NULL", new { AdminId = adminId });
-                
-                // Set NOT NULL now that data is backfilled
-                try { await connection.ExecuteAsync("ALTER TABLE transactions ALTER COLUMN user_id SET NOT NULL;"); } catch {}
-            } 
-            catch (Exception ex) 
-            { 
-                _logger.LogWarning("Migration warning (user_id): {Message}", ex.Message); 
-            }
-
             // Ensure Transactions Table exists (for new installs)
             var transactionsSql = @"
                 CREATE TABLE IF NOT EXISTS transactions (
                     id UUID NOT NULL,
-                    user_id INT NOT NULL, 
                     account_id TEXT,
                     transaction_date TIMESTAMPTZ NOT NULL,
                     description TEXT,
@@ -108,14 +91,25 @@ public class DatabaseInitializer
                 );";
             await connection.ExecuteAsync(transactionsSql);
 
-            // Migration for existing table
+            // Add user_id if missing (migration)
+            var colCheckSql = "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'transactions' AND column_name = 'user_id'";
+            var hasUserId = await connection.ExecuteScalarAsync<int>(colCheckSql) > 0;
+            if (!hasUserId)
+            {
+                _logger.LogInformation("Adding 'user_id' column to 'transactions' table...");
+                await connection.ExecuteAsync("ALTER TABLE transactions ADD COLUMN user_id INT;");
+                await connection.ExecuteAsync("UPDATE transactions SET user_id = @AdminId WHERE user_id IS NULL", new { AdminId = adminId });
+                await connection.ExecuteAsync("ALTER TABLE transactions ALTER COLUMN user_id SET NOT NULL;");
+            }
+
+            // Migration for notes
             try { await connection.ExecuteAsync("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS notes TEXT;"); } catch {}
 
             // 4. Index Migration
             // TimescaleDB hypertables require unique indexes to include the partitioning column (transaction_date)
             try 
             {
-                // Drop legacy indexes that might conflict with multi-tenant unique constraint
+                // Drop legacy indexes/constraints
                 await connection.ExecuteAsync("DROP INDEX IF EXISTS ux_transactions_id_date;");
                 await connection.ExecuteAsync("ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_pkey;");
                 
@@ -130,6 +124,7 @@ public class DatabaseInitializer
             // Convert to Hypertable
             try 
             { 
+                // Note: migrate_data => true is required if data already exists
                 await connection.ExecuteAsync("SELECT create_hypertable('transactions', 'transaction_date', if_not_exists => TRUE, migrate_data => TRUE);"); 
             } 
             catch (Exception ex)

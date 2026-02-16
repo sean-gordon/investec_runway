@@ -131,7 +131,7 @@ public class TelegramService : ITelegramService
         }
     }
 
-    public static string EscapeMarkdownV2(string? text)
+    public static string EscapeHtml(string? text)
     {
         // Now using HTML, so we use HtmlEncode
         if (string.IsNullOrEmpty(text)) return "";

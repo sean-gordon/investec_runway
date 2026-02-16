@@ -115,7 +115,7 @@ public class TelegramController : ControllerBase
                         "Consolidating your financial position..."
                     };
                     var witty = wittyComments[new Random().Next(wittyComments.Length)];
-                    var placeholderId = await telegramService.SendMessageWithIdAsync(userId, $"<i>Processing Request...</i> {TelegramService.EscapeMarkdownV2(witty)}", chatId);
+                    var placeholderId = await telegramService.SendMessageWithIdAsync(userId, $"<i>Processing Request...</i> {TelegramService.EscapeHtml(witty)}", chatId);
 
                     investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
                     
@@ -161,7 +161,7 @@ INSTRUCTIONS:
 
                                 var caption = await aiService.FormatResponseAsync(userId, commentaryPrompt, "", isWhatsApp: false);
                                 
-                                await telegramService.SendImageAsync(userId, chartBytes, $"<b>📊 {TelegramService.EscapeMarkdownV2(chartTitle)}</b>\n\n{caption}", chatId);
+                                await telegramService.SendImageAsync(userId, chartBytes, $"<b>📊 {TelegramService.EscapeHtml(chartTitle)}</b>\n\n{caption}", chatId);
                                 if (placeholderId > 0) await telegramService.EditMessageAsync(userId, placeholderId, "Analytical visualization complete.", chatId);
                                 return;
                             }
@@ -191,7 +191,7 @@ INSTRUCTIONS:
                             new { Note = explanationNote, Id = explainedTxId, UserId = userId });
                         
                         var tx = history.FirstOrDefault(t => t.Id == explainedTxId);
-                        var confirmation = $"✅ <b>Noted.</b> I've updated the ledger:\n<i>{TelegramService.EscapeMarkdownV2(tx?.Description ?? "Transaction")}</i>: {TelegramService.EscapeMarkdownV2(explanationNote)}";
+                        var confirmation = $"✅ <b>Noted.</b> I've updated the ledger:\n<i>{TelegramService.EscapeHtml(tx?.Description ?? "Transaction")}</i>: {TelegramService.EscapeHtml(explanationNote)}";
                         
                         // Save history (User Request)
                         await db.ExecuteAsync("INSERT INTO chat_history (user_id, message_text, is_user) VALUES (@UserId, @Text, TRUE)", 
@@ -225,7 +225,7 @@ INSTRUCTIONS:
                             if (runwayImpact > 5) riskLevel = "Medium";
                             if (simSummary.ExpectedRunwayDays < 10) riskLevel = "High";
 
-                            var response = $"<b>Affordability Analysis: {TelegramService.EscapeMarkdownV2(affordDesc)}</b>\n" +
+                            var response = $"<b>Affordability Analysis: {TelegramService.EscapeHtml(affordDesc)}</b>\n" +
                                            $"-----------------------------\n" +
                                            $"<b>Price:</b> R{amount:N2}\n" +
                                            $"<b>New Balance:</b> R{simulatedBalance:N2}\n" +
@@ -254,10 +254,10 @@ INSTRUCTIONS:
                     culture.NumberFormat.CurrencySymbol = "R";
                     var statsBlock = $"<b>Financial Position Update</b>\n" +
                                      $"---------------------------\n" +
-                                     $"<b>Current Balance:</b> {TelegramService.EscapeMarkdownV2(currentBalance.ToString("C", culture))}\n" +
-                                     $"<b>Projected Runway:</b> {TelegramService.EscapeMarkdownV2(summary.ExpectedRunwayDays.ToString("F0"))} Days\n" +
+                                     $"<b>Current Balance:</b> {TelegramService.EscapeHtml(currentBalance.ToString("C", culture))}\n" +
+                                     $"<b>Projected Runway:</b> {(summary.ExpectedRunwayDays < 0 ? "0" : TelegramService.EscapeHtml(summary.ExpectedRunwayDays.ToString("F0")))} Days\n" +
                                      $"<b>Next Salary:</b> In {summary.DaysUntilNextSalary} Days\n" +
-                                     $"<b>Trend:</b> {TelegramService.EscapeMarkdownV2(summary.TrendDirection)}\n" +
+                                     $"<b>Burn Trend:</b> {TelegramService.EscapeHtml(summary.TrendDirection)}\n" +
                                      $"---------------------------\n\n";
 
                     // Retrieve recent chat history
@@ -287,6 +287,13 @@ Demonstrate that you understand their financial reality better than they do, and
 If the provided data context appears incomplete (e.g. R0.00 expected income or missing notes), acknowledge this limitation professionally and suggest the user sync their accounts or provide manual clarification.";
 
                     var aiResponse = await aiService.FormatResponseAsync(userId, promptForSummary, summaryJson, isWhatsApp: false);
+                    
+                    // Fallback for AI failures
+                    if (string.IsNullOrWhiteSpace(aiResponse) || aiResponse.Contains("I'm sorry") || aiResponse.Contains("Error:"))
+                    {
+                        aiResponse = "<i>I'm currently observing some latency in my analytical engine. Your core metrics are displayed above for your review.</i>";
+                    }
+
                     string finalAnswer;
 
                     if (aiResponse.Trim().Equals("NEED_SQL", StringComparison.OrdinalIgnoreCase))
@@ -295,9 +302,9 @@ If the provided data context appears incomplete (e.g. R0.00 expected income or m
                         try
                         {
                             var result = await db.QueryAsync(sql);
-                            finalAnswer = await aiService.FormatResponseAsync(userId, messageText, JsonSerializer.Serialize(result), isWhatsApp: false);
+                            finalAnswer = statsBlock + await aiService.FormatResponseAsync(userId, messageText, JsonSerializer.Serialize(result), isWhatsApp: false);
                         }
-                        catch { finalAnswer = "I encountered an error looking that up."; }
+                        catch { finalAnswer = statsBlock + "I encountered an error looking that up."; }
                     }
                     else 
                     {

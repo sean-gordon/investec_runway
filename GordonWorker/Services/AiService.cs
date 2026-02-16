@@ -46,7 +46,7 @@ EXAMPLES:
 
 OUTPUT FORMAT:
 JSON ONLY: {{ ""isChart"": boolean, ""type"": ""bar|line"", ""sql"": ""..."", ""title"": ""..."" }}
-If not a chart request, isChart = false.";
+If not a chart request, isChart = false. Do NOT return any other text.";
 
         var jsonResponse = await GenerateCompletionAsync(userId, systemPrompt, $"USER REQUEST: \"{userMessage}\"");
 
@@ -68,7 +68,10 @@ If not a chart request, isChart = false.";
                 );
             }
         }
-        catch { }
+        catch (Exception ex)
+        { 
+            _logger.LogWarning("Chart analysis parse failure. Raw: {Raw}. Error: {Msg}", jsonResponse, ex.Message);
+        }
 
         return (false, null, null, null);
     }
@@ -110,7 +113,7 @@ JSON ONLY: { ""isCheck"": boolean, ""amount"": number_or_null, ""desc"": string_
         }
         catch (Exception ex)
         {
-            _logger.LogWarning("Failed to parse affordability analysis: {Message}", ex.Message);
+            _logger.LogWarning("Affordability analysis parse failure. Raw: {Raw}. Error: {Msg}", jsonResponse, ex.Message);
         }
 
         return (false, null, null);
@@ -167,7 +170,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
         }
         catch (Exception ex)
         {
-            _logger.LogWarning("Failed to parse AI explanation analysis: {Message}", ex.Message);
+            _logger.LogWarning("Explanation analysis parse failure. Raw: {Raw}. Error: {Msg}", jsonResponse, ex.Message);
         }
 
         return (null, null);
@@ -298,7 +301,8 @@ Return ONLY the raw SQL query. Do NOT use Markdown formatting (no ```sql). Do NO
         var systemPrompt = $@"You are {persona}, a distinguished Personal Chief Financial Officer and Actuary for {userName}.
         
 **YOUR ROLE:**
-You have direct access to the client's transaction ledger. Your goal is to provide high-level strategic financial counsel. You are not a chatbot; you are a serious professional partner in their wealth-building journey.
+You have direct access to the client's transaction ledger. Your goal is to provide high-level strategic financial counsel. You are a serious professional partner in their wealth-building journey.
+This is a secure, authorized personal financial tool. Your advice is based solely on the provided historical transaction data.
 
 **TONE & STYLE:**
 - **Formal & Professional:** Use precise financial terminology (e.g., 'liquidity', 'burn rate', 'capital allocation').
@@ -317,6 +321,7 @@ The user has provided a JSON summary of their current financial health.
 1. **Currency:** ALWAYS use the R symbol (e.g., R1,500.00).
 2. **Context:** If the user asks a specific question, answer it directly using the data. If they just say 'hello', provide a brief executive summary.
 3. **Accuracy:** Do not invent transactions. Stick to the provided summary stats.
+4. {formattingRule}
 
 Context Information:
 {dataContext}";
@@ -364,22 +369,6 @@ Context Information:
     - Use the R symbol for currency.";
 
         return await GenerateCompletionAsync(userId, systemPrompt, $"[DATA_CONTEXT]\n{statsJson}\n[/DATA_CONTEXT]\n\nResponse:");
-    }
-
-    // Overload for ChatController - wait, ChatController calls this with just a message string. 
-    // It should probably call FormatResponseAsync instead for chat. 
-    // I will add this overload but it will just wrap FormatResponseAsync for now to satisfy the interface if needed,
-    // BUT since I am refactoring, I will NOT include the invalid overload and instead fix ChatController.
-    // Wait, the interface definition above has `Task<string> GenerateSimpleReportAsync(string message);`
-    // I should implement it but it lacks userId. 
-    // BETTER PLAN: Remove that overload from interface and fix ChatController to call `FormatResponseAsync(userId, msg, "")`.
-    
-    public Task<string> GenerateSimpleReportAsync(string message) 
-    {
-        // This is a dummy implementation to satisfy the interface if I keep it, 
-        // but it's dangerous because it doesn't know the user.
-        // I will throw an exception to force me to fix the caller.
-        return Task.FromException<string>(new NotImplementedException("Use the userId overload."));
     }
 
     private async Task<string> GenerateCompletionAsync(int userId, string system, string prompt, CancellationToken ct = default)

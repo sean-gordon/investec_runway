@@ -88,20 +88,31 @@ public class ChartService : IChartService
         plt.Title("Financial Runway");
         
         // Y-Axis Currency
-        // ScottPlot 5 uses Label factories or custom tick generators.
-        // Simplest way is to set the Label string directly if supported, or let it auto-format.
-        // We will stick to auto for now but add the currency label.
         plt.YLabel("Balance (ZAR)");
+        plt.Axes.Left.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic();
+        plt.Axes.Left.Label.Text = "Balance (ZAR)";
+
+        // Custom Y-axis formatter for currency
+        // ScottPlot 5 uses TickGenerators. I'll stick to basic numeric labels if complex formatting is hard, 
+        // but let's try to set the format string.
         
         plt.XLabel("Date");
         plt.Axes.DateTimeTicksBottom();
+        
+        // Style adjustments for visibility
+        plt.FigureBackground.Color = Colors.White;
+        plt.DataBackground.Color = Colors.White;
+        
+        // Axis line colors and tick colors
+        plt.Axes.Left.FrameLineStyle.Color = Colors.Black;
+        plt.Axes.Bottom.FrameLineStyle.Color = Colors.Black;
         
         // Add Grid
         plt.Grid.MajorLineColor = Colors.Black.WithOpacity(0.1);
         plt.Grid.IsVisible = true;
 
         // Add Legend
-        plt.ShowLegend();
+        plt.ShowLegend(Edge.Right);
         
         // Add a horizontal line at 0
         var zeroLine = plt.Add.HorizontalLine(0);
@@ -109,6 +120,6 @@ public class ChartService : IChartService
         zeroLine.LinePattern = LinePattern.Dotted;
 
         // 4. Render
-        return plt.GetImageBytes(800, 500, ImageFormat.Png);
+        return plt.GetImageBytes(1000, 600, ImageFormat.Png);
     }
 }

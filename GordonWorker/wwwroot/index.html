@@ -156,6 +156,37 @@
                                 <div class="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-lg">🕒</div>
                             </div>
                         </div>
+
+                        <!-- RECENT ACTIVITY -->
+                        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                            <div class="px-6 py-4 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
+                                <h3 class="font-bold text-slate-800 text-sm">Recent Ledger Activity</h3>
+                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Last 10 Entries</span>
+                            </div>
+                            <div class="divide-y divide-slate-50">
+                                <div v-for="tx in recentTransactions" :key="tx.id" class="px-6 py-4 hover:bg-slate-50/50 transition-colors">
+                                    <div class="flex justify-between items-start">
+                                        <div class="flex-1 min-w-0">
+                                            <p class="text-sm font-bold text-slate-900 truncate">{{ tx.description }}</p>
+                                            <p class="text-[10px] text-slate-400 font-medium">{{ formatDate(tx.transactionDate) }} • {{ tx.category || 'General' }}</p>
+                                            <!-- TRANSACTION NOTE -->
+                                            <div v-if="tx.notes" class="mt-2 flex items-start gap-1.5">
+                                                <span class="text-xs">💡</span>
+                                                <p class="text-xs italic text-brand-600 font-medium leading-tight">{{ tx.notes }}</p>
+                                            </div>
+                                        </div>
+                                        <div class="text-right ml-4">
+                                            <p class="text-sm font-bold" :class="tx.amount > 0 ? 'text-red-600' : 'text-green-600'">
+                                                {{ tx.amount > 0 ? '-' : '+' }} {{ formatCurrency(Math.Abs(tx.amount)) }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div v-if="recentTransactions.length === 0" class="p-8 text-center text-slate-400 text-xs font-medium">
+                                    No transactions found. Pull data to get started.
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- ADMIN: USERS -->
@@ -441,7 +472,8 @@
                     availableModels: [],
                     days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
                     systemStatus: { investecOnline: false, lastTelegramHit: null, lastTelegramError: '', lastCheck: null },
-                    toast: { show: false, msg: '' }
+                    toast: { show: false, msg: '' },
+                    recentTransactions: []
                 }
             },
             mounted() {
@@ -504,6 +536,9 @@
                     }
                     const resSt = await this.api('/api/settings/status');
                     if (resSt.ok) this.systemStatus = await resSt.json();
+
+                    const resTx = await this.api('/api/settings/recent-transactions');
+                    if (resTx.ok) this.recentTransactions = await resTx.json();
                 },
                 async loadUsers() {
                     const res = await this.api('/api/users');
@@ -585,7 +620,9 @@
                     this.toast = { show: true, msg };
                     setTimeout(() => this.toast.show = false, 3000);
                 },
-                formatTime(d) { return d ? new Date(d).toLocaleTimeString() : 'Never'; }
+                formatTime(d) { return d ? new Date(d).toLocaleTimeString() : 'Never'; },
+                formatDate(d) { return d ? new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : ''; },
+                formatCurrency(v) { return new Intl.NumberFormat(this.settings.currencyCulture || 'en-ZA', { style: 'currency', currency: 'ZAR' }).format(v); }
             }
         }).mount('#app');
     </script>

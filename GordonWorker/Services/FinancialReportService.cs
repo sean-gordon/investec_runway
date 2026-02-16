@@ -42,7 +42,7 @@ public class FinancialReportService : IFinancialReportService
         _logger = logger;
     }
 
-    private async Task<(FinancialHealthReport Report, decimal CurrentBalance, string JsonStats, AppSettings Settings)> BuildHealthReportAsync(int userId)
+    private async Task<(FinancialHealthReport Report, decimal CurrentBalance, string JsonStats, AppSettings Settings, List<(string Text, bool IsUser, DateTime Timestamp)> RecentChats)> BuildHealthReportAsync(int userId)
     {
         var settings = await _settingsService.GetSettingsAsync(userId);
         _investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey, settings.InvestecBaseUrl);
@@ -60,6 +60,11 @@ public class FinancialReportService : IFinancialReportService
         var fullHistory = (await connection.QueryAsync<Transaction>(fullHistorySql, new { userId })).ToList();
         
         var healthReport = await _actuarialService.AnalyzeHealthAsync(fullHistory, currentBalance, settings);
+
+        // Fetch recent chat history for the email
+        var recentChats = (await connection.QueryAsync<(string Text, bool IsUser, DateTime Timestamp)>(
+            "SELECT message_text, is_user, timestamp FROM chat_history WHERE user_id = @userId ORDER BY timestamp DESC LIMIT 20",
+            new { userId })).Reverse().ToList();
 
         var stats = new
         {
@@ -83,11 +88,17 @@ public class FinancialReportService : IFinancialReportService
                     TotalAmountSpentThisPeriod = c.Amount.ToString("F2"), 
                     IncreasePercentFromLastPeriod = c.ChangePercentage,
                     IsFixedUncontrollableCost = c.IsFixedCost
-                }).ToList()
+                }).ToList(),
+            TransactionNotes = fullHistory
+                .Where(t => !string.IsNullOrWhiteSpace(t.Notes))
+                .Select(t => new { t.Description, t.Amount, t.Notes })
+                .ToList()
         };
 
-        return (healthReport, currentBalance, JsonSerializer.Serialize(stats), settings);
+        return (healthReport, currentBalance, JsonSerializer.Serialize(stats), settings, recentChats);
     }
+
+    private DateTime ToDate(DateTimeOffset dto) => dto.LocalDateTime.Date;
 
     public async Task<string> GetHealthStatsJsonAsync(int userId)
     {
@@ -103,6 +114,7 @@ public class FinancialReportService : IFinancialReportService
         var settings = data.Settings;
         var healthReport = data.Report;
         var currentBalance = data.CurrentBalance;
+        var recentChats = data.RecentChats;
 
         var culture = (System.Globalization.CultureInfo)System.Globalization.CultureInfo.InvariantCulture.Clone();
         culture.NumberFormat.CurrencySymbol = "R";
@@ -133,6 +145,23 @@ public class FinancialReportService : IFinancialReportService
                 </tr>";
         }
 
+        var chatRows = "";
+        foreach (var chat in recentChats)
+        {
+            var align = chat.IsUser ? "right" : "left";
+            var bg = chat.IsUser ? "#f1f5f9" : "#ffffff";
+            var label = chat.IsUser ? "You" : personaName;
+            var labelColor = chat.IsUser ? "#64748b" : "#0ea5e9";
+
+            chatRows += $@"
+                <div style='margin-bottom: 12px; text-align: {align};'>
+                    <div style='font-size: 10px; font-weight: 700; color: {labelColor}; text-transform: uppercase; margin-bottom: 2px;'>{label}</div>
+                    <div style='display: inline-block; padding: 8px 12px; background-color: {bg}; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; max-width: 80%; text-align: left;'>
+                        {System.Net.WebUtility.HtmlEncode(chat.Text)}
+                    </div>
+                </div>";
+        }
+
         var upcomingRows = "";
         foreach (var cost in healthReport.UpcomingFixedCosts)
         {
@@ -144,21 +173,7 @@ public class FinancialReportService : IFinancialReportService
                 </tr>";
         }
 
-        // Sanitize AI Output roughly by removing scripts (Basic protection)
-        // A full sanitizer library is better, but minimal fix here:
-        // We assume AI follows instructions to output p/ul/li/b only. 
-        // We will encode it IF it contains script tags, otherwise trust it (Risk acceptance per minimal deps)
-        // Better: Encode everything but allow specific tags.
-        // For this task, let's just encode the explanation to be safe, effectively disabling HTML from AI for now, 
-        // OR rely on trust. 
-        // To fix the finding "Unsanitized AI Output", we MUST sanitize or encode.
-        // If we encode, we lose formatting. 
-        // Let's implement a simple tag allowlist regex replacer or just encode for safety.
-        // Decision: Encode for safety. The user can see the raw text. 
-        // actually, the prompt asks for HTML output. 
-        // If I encode, it breaks the feature.
-        // I will add a comment about risk or use a regex to strip <script>
-        
+        // Sanitize AI Output
         var safeAiExplanation = aiExplanation
             .Replace("<script", "&lt;script", StringComparison.OrdinalIgnoreCase)
             .Replace("javascript:", "javascript_:", StringComparison.OrdinalIgnoreCase)
@@ -192,6 +207,7 @@ public class FinancialReportService : IFinancialReportService
         .highlight-bad {{ color: #dc2626; font-weight: 700; }}
         .highlight-warn {{ color: #d97706; font-weight: 700; }}
         .footer {{ text-align: center; padding: 24px; color: #9ca3af; font-size: 12px; }}
+        .chat-section {{ background-color: #f8fafc; padding: 20px; border-radius: 8px; margin-top: 24px; border: 1px solid #e2e8f0; }}
     </style>
 </head>
 <body>
@@ -232,6 +248,12 @@ public class FinancialReportService : IFinancialReportService
                         <tr><th>Category</th><th style='text-align: right;'>Amount</th><th style='text-align: right;'>Vs Last Period</th></tr>
                         {categoryRows}
                     </table>
+
+                    <div class='chat-section' style='display: {(recentChats.Any() ? "block" : "none")};'>
+                        <div style='font-size: 14px; font-weight: 700; color: #475569; margin-bottom: 16px; text-transform: uppercase; border-bottom: 1px solid #cbd5e1; padding-bottom: 8px;'>Recent Consultation History</div>
+                        {chatRows}
+                    </div>
+
                     <div class='stats-header'>Runway & Risk</div>
                     <table class='stats-table'>
                         <tr><th>Metric</th><th style='text-align: right;'>Value</th></tr>
@@ -240,9 +262,6 @@ public class FinancialReportService : IFinancialReportService
                         <tr><td>Projected Runway</td><td style='text-align: right;' class='{(healthReport.ExpectedRunwayDays < 30 ? "highlight-bad" : "highlight-good")}'>{healthReport.ExpectedRunwayDays:F0} Days</td></tr>
                         <tr><td>Survival Probability (To Payday)</td><td style='text-align: right;' class='{(healthReport.RunwayProbability < 80 ? "highlight-bad" : "highlight-good")}'>{healthReport.RunwayProbability:F1}%</td></tr>
                         <tr><td>Spending Trend</td><td style='text-align: right;'>{healthReport.TrendDirection}</td></tr>
-                    </table>
-                </td>
-            </tr>
                     </table>
                 </td>
             </tr>

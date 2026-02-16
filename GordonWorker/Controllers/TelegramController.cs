@@ -1,11 +1,9 @@
 using Dapper;
-using GordonWorker.Models;
 using GordonWorker.Services;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using System.Security.Claims;
 using System.Text.Json;
-using Telegram.Bot;
 using Telegram.Bot.Types;
 
 namespace GordonWorker.Controllers;
@@ -14,36 +12,27 @@ namespace GordonWorker.Controllers;
 [Route("telegram")]
 public class TelegramController : ControllerBase
 {
-    private readonly IAiService _aiService;
-    private readonly IActuarialService _actuarialService;
-    private readonly ITelegramService _telegramService;
+    private readonly ITelegramChatService _chatService;
     private readonly ISettingsService _settingsService;
     private readonly ISystemStatusService _statusService;
-    private readonly IInvestecClient _investecClient;
+    private readonly ITelegramService _telegramService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<TelegramController> _logger;
-    private readonly IServiceScopeFactory _scopeFactory;
 
     public TelegramController(
-        IAiService aiService,
-        IActuarialService actuarialService,
-        ITelegramService telegramService,
+        ITelegramChatService chatService,
         ISettingsService settingsService,
         ISystemStatusService statusService,
-        IInvestecClient investecClient,
+        ITelegramService telegramService,
         IConfiguration configuration,
-        ILogger<TelegramController> logger,
-        IServiceScopeFactory scopeFactory)
+        ILogger<TelegramController> logger)
     {
-        _aiService = aiService;
-        _actuarialService = actuarialService;
-        _telegramService = telegramService;
+        _chatService = chatService;
         _settingsService = settingsService;
         _statusService = statusService;
-        _investecClient = investecClient;
+        _telegramService = telegramService;
         _configuration = configuration;
         _logger = logger;
-        _scopeFactory = scopeFactory;
     }
 
     [HttpPost("webhook")]
@@ -55,7 +44,7 @@ public class TelegramController : ControllerBase
         try
         {
             var update = JsonSerializer.Deserialize<Update>(rawUpdate.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            
+
             // Prevent Bot Loop
             if (update?.Message?.From?.IsBot == true) return Ok();
 
@@ -64,6 +53,7 @@ public class TelegramController : ControllerBase
             var chatId = update.Message.Chat.Id.ToString();
             var messageText = update.Message.Text;
 
+            // Find matching user
             using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
             var allUsers = await connection.QueryAsync<int>("SELECT id FROM users");
             int? matchedUserId = null;
@@ -81,69 +71,11 @@ public class TelegramController : ControllerBase
             if (matchedUserId == null)
             {
                 _logger.LogWarning("Unauthorized Telegram message from Chat ID {ChatId}", chatId);
-                return Ok(); 
+                return Ok();
             }
 
-            var userId = matchedUserId.Value;
-            
-            // Fire-and-forget processing using ServiceScopeFactory
-            _ = Task.Run(async () => 
-            {
-                try 
-                {
-                    using var scope = _scopeFactory.CreateScope();
-                    var settingsService = scope.ServiceProvider.GetRequiredService<ISettingsService>();
-                    var telegramService = scope.ServiceProvider.GetRequiredService<ITelegramService>();
-                    var aiService = scope.ServiceProvider.GetRequiredService<IAiService>();
-                    var investecClient = scope.ServiceProvider.GetRequiredService<IInvestecClient>();
-                    var actuarialService = scope.ServiceProvider.GetRequiredService<IActuarialService>();
-                    var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
-                    var logger = scope.ServiceProvider.GetRequiredService<ILogger<TelegramController>>();
-
-                    var settings = await settingsService.GetSettingsAsync(userId);
-                    var botClient = new TelegramBotClient(settings.TelegramBotToken);
-                    await botClient.SendChatAction(chatId, Telegram.Bot.Types.Enums.ChatAction.Typing);
-
-                    investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
-                    
-                    using var db = new NpgsqlConnection(config.GetConnectionString("DefaultConnection"));
-                    var history = (await db.QueryAsync<Transaction>(
-                        "SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '90 days' ORDER BY transaction_date ASC", 
-                        new { userId })).ToList();
-
-                    var accounts = await investecClient.GetAccountsAsync();
-                    decimal currentBalance = 0;
-                    foreach (var acc in accounts) currentBalance += await investecClient.GetAccountBalanceAsync(acc.AccountId);
-
-                    var summary = await actuarialService.AnalyzeHealthAsync(history, currentBalance, settings);
-                    var summaryJson = JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true });
-
-                    var promptForSummary = $@"Use the provided financial summary to answer the user's question.
-If the summary does NOT contain the specific information needed, respond with EXACTLY 'NEED_SQL'.
-USER QUESTION: {messageText}";
-
-                    var aiResponse = await aiService.FormatResponseAsync(userId, promptForSummary, summaryJson, isWhatsApp: false);
-                    string finalAnswer;
-
-                    if (aiResponse.Trim().Equals("NEED_SQL", StringComparison.OrdinalIgnoreCase))
-                    {
-                        var sql = await aiService.GenerateSqlAsync(userId, messageText);
-                        try
-                        {
-                            var result = await db.QueryAsync(sql);
-                            finalAnswer = await aiService.FormatResponseAsync(userId, messageText, JsonSerializer.Serialize(result), isWhatsApp: false);
-                        }
-                        catch { finalAnswer = "I encountered an error looking that up."; }
-                    }
-                    else finalAnswer = aiResponse;
-
-                    await telegramService.SendMessageAsync(userId, finalAnswer, chatId);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Background processing error: {ex.Message}");
-                }
-            });
+            // Enqueue for background processing
+            await _chatService.EnqueueMessageAsync(matchedUserId.Value, chatId, messageText);
 
             return Ok();
         }
@@ -165,7 +97,7 @@ USER QUESTION: {messageText}";
             if (!body.TryGetProperty("Url", out var urlElement)) return BadRequest("Missing Url");
             var url = urlElement.GetString();
             if (string.IsNullOrWhiteSpace(url)) return BadRequest("Url empty");
-            
+
             if (User.Identity?.IsAuthenticated != true) return Unauthorized();
             var userId = int.Parse(User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier)!);
 

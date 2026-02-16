@@ -64,8 +64,8 @@ public class WeeklyReportWorker : BackgroundService
                 _logger.LogError(ex, "Error in Weekly Report Worker.");
             }
 
-            // Check every 30 mins
-            await Task.Delay(TimeSpan.FromMinutes(30), stoppingToken);
+            // Check every 5 mins
+            await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
         }
     }
 }

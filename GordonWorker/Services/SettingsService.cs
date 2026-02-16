@@ -28,6 +28,15 @@ public class AppSettings
     public decimal StabilityPercentageThreshold { get; set; } = 15m;
     public decimal StabilityAmountThreshold { get; set; } = 250m;
     public decimal TrendSensitivity { get; set; } = 0.1m; // 10% deviation for trend change
+    
+    // Advanced Actuarial
+    public decimal PulseBaselineThreshold { get; set; } = 0.1m;
+    public decimal HybridBaselineThreshold { get; set; } = 0.1m;
+    public int MinCycleDays { get; set; } = 20;
+    public int MaxCycleDays { get; set; } = 45;
+    public int DefaultCycleDays { get; set; } = 30;
+    public double VarConfidenceInterval { get; set; } = 1.645;
+
     public string InvestecBaseUrl { get; set; } = "https://openapi.investec.com/";
     public string InvestecClientId { get; set; } = "";
     public string InvestecSecret { get; set; } = "";

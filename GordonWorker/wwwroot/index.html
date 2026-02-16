@@ -231,6 +231,23 @@
                                     <textarea v-model="settings.salaryKeywords" rows="2" class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono"></textarea>
                                 </div>
                             </div>
+
+                            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
+                                <h3 class="font-bold text-slate-800 text-sm border-b pb-2 mb-4">Advanced Actuarial</h3>
+                                <div class="grid grid-cols-3 gap-4">
+                                    <div><label class="text-xs font-bold text-slate-700">Min Cycle</label><input v-model.number="settings.minCycleDays" type="number" class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm"></div>
+                                    <div><label class="text-xs font-bold text-slate-700">Default Cycle</label><input v-model.number="settings.defaultCycleDays" type="number" class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm"></div>
+                                    <div><label class="text-xs font-bold text-slate-700">Max Cycle</label><input v-model.number="settings.maxCycleDays" type="number" class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm"></div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div><label class="text-xs font-bold text-slate-700">Pulse Baseline ({{ settings.pulseBaselineThreshold }})</label><input v-model.number="settings.pulseBaselineThreshold" type="number" step="0.01" class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm"></div>
+                                    <div><label class="text-xs font-bold text-slate-700">Hybrid Baseline ({{ settings.hybridBaselineThreshold }})</label><input v-model.number="settings.hybridBaselineThreshold" type="number" step="0.01" class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm"></div>
+                                </div>
+                                <div>
+                                    <label class="text-xs font-bold text-slate-700">VaR Confidence ({{ settings.varConfidenceInterval }})</label>
+                                    <input v-model.number="settings.varConfidenceInterval" type="number" step="0.001" class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
+                                </div>
+                            </div>
                         </div>
 
                         <!-- CONNECTIONS -->
@@ -333,6 +350,12 @@
             </div>
         </template>
 
+        <!-- TOAST NOTIFICATION -->
+        <div v-if="toast.show" class="fixed top-4 right-4 z-[200] bg-slate-800 text-white px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-bounce">
+            <span class="text-xl">🔔</span>
+            <span class="font-bold text-sm">{{ toast.msg }}</span>
+        </div>
+
         <!-- USER MODAL -->
         <div v-if="isUserModalOpen" class="fixed inset-0 z-[150] bg-black/50 flex items-center justify-center p-4">
             <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
@@ -381,7 +404,9 @@
                         aiProvider: 'Ollama', ollamaBaseUrl: '', systemPersona: 'Gordon',
                         smtpPort: 587, reportDayOfWeek: 'Monday', reportHour: 9,
                         analysisWindowDays: 90, actuarialAlpha: 0.15, unexpectedPaymentThreshold: 3000, incomeAlertThreshold: 5000,
-                        historyDaysBack: 180, syncBufferDays: 0.05
+                        historyDaysBack: 180, syncBufferDays: 0.05,
+                        minCycleDays: 20, maxCycleDays: 45, defaultCycleDays: 30, 
+                        pulseBaselineThreshold: 0.1, hybridBaselineThreshold: 0.1, varConfidenceInterval: 1.645
                     },
                     availableModels: [],
                     days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],

@@ -116,7 +116,20 @@ public class FinancialReportService : IFinancialReportService
     public async Task GenerateAndSendReportAsync(int userId)
     {
         var data = await BuildHealthReportAsync(userId);
-        var aiExplanation = await _aiService.GenerateSimpleReportAsync(userId, data.JsonStats);
+        
+        string aiExplanation;
+        try 
+        {
+            aiExplanation = await _aiService.GenerateSimpleReportAsync(userId, data.JsonStats);
+            if (aiExplanation.Contains("Error:") || aiExplanation.Contains("I'm sorry"))
+            {
+                aiExplanation = "<i>Note: The executive AI summary is currently unavailable. Please review the automated data metrics below.</i>";
+            }
+        }
+        catch 
+        {
+            aiExplanation = "<i>Note: The executive AI summary is currently unavailable. Please review the automated data metrics below.</i>";
+        }
         
         var settings = data.Settings;
         var healthReport = data.Report;

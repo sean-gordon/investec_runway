@@ -8,6 +8,7 @@ namespace GordonWorker.Services;
 public interface IFinancialReportService
 {
     Task GenerateAndSendReportAsync(int userId);
+    Task<string> GetHealthStatsJsonAsync(int userId);
 }
 
 public class FinancialReportService : IFinancialReportService
@@ -41,25 +42,16 @@ public class FinancialReportService : IFinancialReportService
         _logger = logger;
     }
 
-    public async Task GenerateAndSendReportAsync(int userId)
+    private async Task<(FinancialHealthReport Report, decimal CurrentBalance, string JsonStats, AppSettings Settings, List<(string Text, bool IsUser, DateTime Timestamp)> RecentChats)> BuildHealthReportAsync(int userId)
     {
         var settings = await _settingsService.GetSettingsAsync(userId);
         _investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey, settings.InvestecBaseUrl);
 
-        var culture = (System.Globalization.CultureInfo)System.Globalization.CultureInfo.InvariantCulture.Clone();
-        culture.NumberFormat.CurrencySymbol = "R";
-        culture.NumberFormat.CurrencyGroupSeparator = ",";
-        culture.NumberFormat.CurrencyDecimalSeparator = ".";
-        culture.NumberFormat.CurrencyDecimalDigits = 2;
-        culture.NumberFormat.CurrencyPositivePattern = 0; 
-        culture.NumberFormat.CurrencyNegativePattern = 1; 
-
         var accounts = await _investecClient.GetAccountsAsync();
-        decimal currentBalance = 0;
-        foreach (var acc in accounts)
-        {
-            currentBalance += await _investecClient.GetAccountBalanceAsync(acc.AccountId);
-        }
+        
+        var balanceTasks = accounts.Select(acc => _investecClient.GetAccountBalanceAsync(acc.AccountId));
+        var balances = await Task.WhenAll(balanceTasks);
+        decimal currentBalance = balances.Sum();
 
         using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
         await connection.OpenAsync();
@@ -68,6 +60,11 @@ public class FinancialReportService : IFinancialReportService
         var fullHistory = (await connection.QueryAsync<Transaction>(fullHistorySql, new { userId })).ToList();
         
         var healthReport = await _actuarialService.AnalyzeHealthAsync(fullHistory, currentBalance, settings);
+
+        // Fetch recent chat history for the email
+        var recentChats = (await connection.QueryAsync<(string Text, bool IsUser, DateTime Timestamp)>(
+            "SELECT message_text, is_user, timestamp FROM chat_history WHERE user_id = @userId ORDER BY timestamp DESC LIMIT 20",
+            new { userId })).Reverse().ToList();
 
         var stats = new
         {
@@ -79,6 +76,7 @@ public class FinancialReportService : IFinancialReportService
             SpendLastPeriod = healthReport.SpendLastMonth.ToString("F2"),
             ProjectedTotalSpendForCycle = healthReport.ProjectedMonthEndSpend.ToString("F2"),
             UpcomingExpectedPaymentsTotal = healthReport.UpcomingExpectedPayments.ToString("F2"),
+            UpcomingExpectedSalaryAmount = healthReport.LastDetectedSalaryAmount.ToString("F2"),
             RunwayDays = healthReport.ExpectedRunwayDays.ToString("F1"),
             ProbabilityToReachPayday = healthReport.RunwayProbability.ToString("F1") + "%",
             CurrencySymbol = "R",
@@ -91,11 +89,60 @@ public class FinancialReportService : IFinancialReportService
                     TotalAmountSpentThisPeriod = c.Amount.ToString("F2"), 
                     IncreasePercentFromLastPeriod = c.ChangePercentage,
                     IsFixedUncontrollableCost = c.IsFixedCost
-                }).ToList()
+                }).ToList(),
+            TransactionNotes = fullHistory
+                .Where(t => !string.IsNullOrWhiteSpace(t.Notes))
+                .Select(t => new { t.Description, t.Amount, t.Notes })
+                .ToList(),
+            RecentSignificantTransactions = fullHistory
+                .Where(t => Math.Abs(t.Amount) > 500)
+                .OrderByDescending(t => t.TransactionDate)
+                .Take(10)
+                .Select(t => new { t.TransactionDate, t.Description, t.Amount, t.Category })
+                .ToList()
         };
 
-        var jsonStats = JsonSerializer.Serialize(stats);
-        var aiExplanation = await _aiService.GenerateSimpleReportAsync(userId, jsonStats);
+        return (healthReport, currentBalance, JsonSerializer.Serialize(stats), settings, recentChats);
+    }
+
+    private DateTime ToDate(DateTimeOffset dto) => dto.LocalDateTime.Date;
+
+    public async Task<string> GetHealthStatsJsonAsync(int userId)
+    {
+        var data = await BuildHealthReportAsync(userId);
+        return data.JsonStats;
+    }
+
+    public async Task GenerateAndSendReportAsync(int userId)
+    {
+        var data = await BuildHealthReportAsync(userId);
+        
+        string aiExplanation;
+        try 
+        {
+            aiExplanation = await _aiService.GenerateSimpleReportAsync(userId, data.JsonStats);
+            if (string.IsNullOrWhiteSpace(aiExplanation) || aiExplanation.Contains("Error:") || aiExplanation.Contains("I'm sorry"))
+            {
+                aiExplanation = "<i>Note: The executive AI summary is currently unavailable. Please review the automated data metrics below.</i>";
+            }
+        }
+        catch 
+        {
+            aiExplanation = "<i>Note: The executive AI summary is currently unavailable. Please review the automated data metrics below.</i>";
+        }
+        
+        var settings = data.Settings;
+        var healthReport = data.Report;
+        var currentBalance = data.CurrentBalance;
+        var recentChats = data.RecentChats;
+
+        var culture = (System.Globalization.CultureInfo)System.Globalization.CultureInfo.InvariantCulture.Clone();
+        culture.NumberFormat.CurrencySymbol = "R";
+        culture.NumberFormat.CurrencyGroupSeparator = ",";
+        culture.NumberFormat.CurrencyDecimalSeparator = ".";
+        culture.NumberFormat.CurrencyDecimalDigits = 2;
+        culture.NumberFormat.CurrencyPositivePattern = 0;
+        culture.NumberFormat.CurrencyNegativePattern = 1;
 
         var subject = $"Weekly Financial Report - {DateTime.Now:dd MMM yyyy}";
         var personaName = !string.IsNullOrWhiteSpace(settings.SystemPersona) ? settings.SystemPersona : "Gordon";
@@ -112,10 +159,27 @@ public class FinancialReportService : IFinancialReportService
 
             categoryRows += $@"
                 <tr>
-                    <td>{cat.Name}</td>
+                    <td>{System.Net.WebUtility.HtmlEncode(cat.Name)}</td>
                     <td style='text-align: right;' class='amount'>{cat.Amount.ToString("C", culture)}</td>
                     <td style='text-align: right; color: {changeColor}; font-size: 12px; font-weight: 600;'>{changeSign} {changeText}</td>
                 </tr>";
+        }
+
+        var chatRows = "";
+        foreach (var chat in recentChats)
+        {
+            var align = chat.IsUser ? "right" : "left";
+            var bg = chat.IsUser ? "#f1f5f9" : "#ffffff";
+            var label = chat.IsUser ? "You" : personaName;
+            var labelColor = chat.IsUser ? "#64748b" : "#0ea5e9";
+
+            chatRows += $@"
+                <div style='margin-bottom: 12px; text-align: {align};'>
+                    <div style='font-size: 10px; font-weight: 700; color: {labelColor}; text-transform: uppercase; margin-bottom: 2px;'>{label}</div>
+                    <div style='display: inline-block; padding: 8px 12px; background-color: {bg}; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; max-width: 80%; text-align: left;'>
+                        {System.Net.WebUtility.HtmlEncode(chat.Text)}
+                    </div>
+                </div>";
         }
 
         var upcomingRows = "";
@@ -123,11 +187,17 @@ public class FinancialReportService : IFinancialReportService
         {
             upcomingRows += $@"
                 <tr>
-                    <td>{cost.Name}</td>
+                    <td>{System.Net.WebUtility.HtmlEncode(cost.Name)}</td>
                     <td style='text-align: right;' class='amount'>{cost.ExpectedAmount.ToString("C", culture)}</td>
                     <td style='text-align: right; color: #6b7280; font-size: 12px;'>Expected</td>
                 </tr>";
         }
+
+        // Sanitize AI Output
+        var safeAiExplanation = aiExplanation
+            .Replace("<script", "&lt;script", StringComparison.OrdinalIgnoreCase)
+            .Replace("javascript:", "javascript_:", StringComparison.OrdinalIgnoreCase)
+            .Replace("onclick", "on_click", StringComparison.OrdinalIgnoreCase);
 
         var body = $@"
 <!DOCTYPE html>
@@ -157,6 +227,7 @@ public class FinancialReportService : IFinancialReportService
         .highlight-bad {{ color: #dc2626; font-weight: 700; }}
         .highlight-warn {{ color: #d97706; font-weight: 700; }}
         .footer {{ text-align: center; padding: 24px; color: #9ca3af; font-size: 12px; }}
+        .chat-section {{ background-color: #f8fafc; padding: 20px; border-radius: 8px; margin-top: 24px; border: 1px solid #e2e8f0; }}
     </style>
 </head>
 <body>
@@ -166,9 +237,9 @@ public class FinancialReportService : IFinancialReportService
             <tr><td class='header'><h1>Gordon Finance Engine</h1></td></tr>
             <tr>
                 <td class='content'>
-                    <div class='ai-box' style='display: {(string.IsNullOrWhiteSpace(aiExplanation) ? "none" : "block")};'>
-                        <h3>💡 Insights from {personaName}</h3>
-                        {aiExplanation}
+                    <div class='ai-box' style='display: {(string.IsNullOrWhiteSpace(safeAiExplanation) ? "none" : "block")};'>
+                        <h3>💡 Insights from {System.Net.WebUtility.HtmlEncode(personaName)}</h3>
+                        {safeAiExplanation}
                     </div>
                     <div class='stats-header'>Financial Pulse (Salary Period)</div>
                     <table class='stats-table'>
@@ -197,6 +268,12 @@ public class FinancialReportService : IFinancialReportService
                         <tr><th>Category</th><th style='text-align: right;'>Amount</th><th style='text-align: right;'>Vs Last Period</th></tr>
                         {categoryRows}
                     </table>
+
+                    <div class='chat-section' style='display: {(recentChats.Any() ? "block" : "none")};'>
+                        <div style='font-size: 14px; font-weight: 700; color: #475569; margin-bottom: 16px; text-transform: uppercase; border-bottom: 1px solid #cbd5e1; padding-bottom: 8px;'>Recent Consultation History</div>
+                        {chatRows}
+                    </div>
+
                     <div class='stats-header'>Runway & Risk</div>
                     <table class='stats-table'>
                         <tr><th>Metric</th><th style='text-align: right;'>Value</th></tr>
@@ -205,9 +282,6 @@ public class FinancialReportService : IFinancialReportService
                         <tr><td>Projected Runway</td><td style='text-align: right;' class='{(healthReport.ExpectedRunwayDays < 30 ? "highlight-bad" : "highlight-good")}'>{healthReport.ExpectedRunwayDays:F0} Days</td></tr>
                         <tr><td>Survival Probability (To Payday)</td><td style='text-align: right;' class='{(healthReport.RunwayProbability < 80 ? "highlight-bad" : "highlight-good")}'>{healthReport.RunwayProbability:F1}%</td></tr>
                         <tr><td>Spending Trend</td><td style='text-align: right;'>{healthReport.TrendDirection}</td></tr>
-                    </table>
-                </td>
-            </tr>
                     </table>
                 </td>
             </tr>

@@ -22,6 +22,10 @@ public class InvestecAccount
     public string AccountId { get; set; } = string.Empty;
     public string AccountNumber { get; set; } = string.Empty;
     public string AccountName { get; set; } = string.Empty;
+    public string ProductPath { get; set; } = string.Empty;
+    
+    public bool IsLiability => ProductPath.Contains("Credit Card", StringComparison.OrdinalIgnoreCase) || 
+                               ProductPath.Contains("Loan", StringComparison.OrdinalIgnoreCase);
 }
 
 public class InvestecClient : IInvestecClient
@@ -33,7 +37,9 @@ public class InvestecClient : IInvestecClient
     private string? _secret;
     private string? _apiKey;
     private string? _accessToken;
+    private string _baseUrl = "https://openapi.investec.com/";
     private DateTime _tokenExpiry;
+    private List<InvestecAccount> _cachedAccounts = new();
 
     public InvestecClient(HttpClient httpClient, ILogger<InvestecClient> logger)
     {
@@ -46,20 +52,40 @@ public class InvestecClient : IInvestecClient
         _clientId = clientId;
         _secret = secret;
         _apiKey = apiKey;
-        _httpClient.BaseAddress = new Uri(baseUrl);
+        var effectiveUrl = string.IsNullOrWhiteSpace(baseUrl) ? "https://openapi.investec.com/" : baseUrl;
+        _baseUrl = effectiveUrl.EndsWith("/") ? effectiveUrl : effectiveUrl + "/";
         _accessToken = null; // Reset token on reconfig
+        _cachedAccounts.Clear();
     }
+
+    private Uri GetUri(string path) => new Uri(new Uri(_baseUrl), path);
 
     public async Task<decimal> GetAccountBalanceAsync(string accountId)
     {
         if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry) await AuthenticateAsync();
-        var request = new HttpRequestMessage(HttpMethod.Get, $"za/pb/v1/accounts/{accountId}/balance");
+        
+        // Find account type from cache or fetch if missing
+        if (!_cachedAccounts.Any()) await GetAccountsAsync();
+        var account = _cachedAccounts.FirstOrDefault(a => a.AccountId == accountId);
+
+        var request = new HttpRequestMessage(HttpMethod.Get, GetUri($"za/pb/v1/accounts/{accountId}/balance"));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
         var response = await _httpClient.SendAsync(request);
         if (!response.IsSuccessStatusCode) return 0;
+        
         var content = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(content);
-        if (doc.RootElement.TryGetProperty("data", out var data) && data.TryGetProperty("currentBalance", out var currentBalance)) return currentBalance.GetDecimal();
+        if (doc.RootElement.TryGetProperty("data", out var data) && data.TryGetProperty("currentBalance", out var currentBalance)) 
+        {
+            var val = currentBalance.GetDecimal();
+            // If it's a liability (Credit Card), Investec returns amount owed as POSITIVE. 
+            // We want to return it as NEGATIVE to represent debt in the total sum.
+            if (account != null && account.IsLiability && val > 0)
+            {
+                return -val;
+            }
+            return val;
+        }
         return 0;
     }
 
@@ -73,7 +99,7 @@ public class InvestecClient : IInvestecClient
     {
         if (string.IsNullOrEmpty(_clientId) || string.IsNullOrEmpty(_secret)) return string.Empty;
         
-        var request = new HttpRequestMessage(HttpMethod.Post, "identity/v2/oauth2/token");
+        var request = new HttpRequestMessage(HttpMethod.Post, GetUri("identity/v2/oauth2/token"));
         var authString = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_clientId}:{_secret}"));
         request.Headers.Authorization = new AuthenticationHeaderValue("Basic", authString);
         request.Headers.Add("x-api-key", _apiKey);
@@ -91,20 +117,21 @@ public class InvestecClient : IInvestecClient
     public async Task<List<InvestecAccount>> GetAccountsAsync()
     {
         if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry) await AuthenticateAsync();
-        var request = new HttpRequestMessage(HttpMethod.Get, "za/pb/v1/accounts");
+        var request = new HttpRequestMessage(HttpMethod.Get, GetUri("za/pb/v1/accounts"));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
         var response = await _httpClient.SendAsync(request);
         if (!response.IsSuccessStatusCode) return new List<InvestecAccount>();
         var content = await response.Content.ReadAsStringAsync();
         var root = JsonSerializer.Deserialize<InvestecAccountsResponse>(content, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-        return root?.Data?.Accounts ?? new List<InvestecAccount>();
+        _cachedAccounts = root?.Data?.Accounts ?? new List<InvestecAccount>();
+        return _cachedAccounts;
     }
 
     public async Task<List<Transaction>> GetTransactionsAsync(string accountId, DateTimeOffset fromDate)
     {
         if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry) await AuthenticateAsync();
         var url = $"za/pb/v1/accounts/{accountId}/transactions?fromDate={fromDate:yyyy-MM-dd}";
-        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        var request = new HttpRequestMessage(HttpMethod.Get, GetUri(url));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
         var response = await _httpClient.SendAsync(request);
         if (!response.IsSuccessStatusCode) return new List<Transaction>();

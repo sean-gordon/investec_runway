@@ -132,8 +132,18 @@ public class TelegramController : ControllerBase
                     var summary = await actuarialService.AnalyzeHealthAsync(history, currentBalance, settings);
                     var summaryJson = JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true });
 
-                    var promptForSummary = $@"Use the provided financial summary to answer the user's question.
-If the summary does NOT contain the specific information needed, respond with EXACTLY 'NEED_SQL'.
+                    // Construct Hardcoded Stats Block (Matches Email Logic)
+                    var culture = (System.Globalization.CultureInfo)System.Globalization.CultureInfo.InvariantCulture.Clone();
+                    culture.NumberFormat.CurrencySymbol = "R";
+                    var statsBlock = $"💰 *Balance:* {currentBalance.ToString("C", culture)}\n" +
+                                     $"📅 *Runway:* {summary.ExpectedRunwayDays:F0} Days\n" +
+                                     $"💸 *Next Pay:* In {summary.DaysUntilNextSalary} Days\n" +
+                                     $"📉 *Trend:* {summary.TrendDirection}\n\n";
+
+                    var promptForSummary = $@"You are a witty financial assistant.
+Using the provided summary, give a 1-2 sentence 'flavor' comment about the user's financial health.
+Do NOT repeat the balance or runway numbers (I will add them myself).
+Just give the insight/advice.
 USER QUESTION: {messageText}";
 
                     var aiResponse = await aiService.FormatResponseAsync(userId, promptForSummary, summaryJson, isWhatsApp: false);
@@ -149,7 +159,11 @@ USER QUESTION: {messageText}";
                         }
                         catch { finalAnswer = "I encountered an error looking that up."; }
                     }
-                    else finalAnswer = aiResponse;
+                    else 
+                    {
+                        // Combine Hardcoded Stats + AI Commentary
+                        finalAnswer = statsBlock + aiResponse;
+                    }
 
                     // 2. Edit Message with Final Answer
                     if (placeholderId > 0)

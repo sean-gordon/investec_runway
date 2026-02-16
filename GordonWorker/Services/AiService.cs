@@ -11,6 +11,7 @@ public interface IAiService
     Task<string> GenerateSimpleReportAsync(int userId, string statsJson);
     Task<(Guid? TransactionId, string? Note)> AnalyzeExpenseExplanationAsync(int userId, string userMessage, List<Transaction> recentTransactions);
     Task<(bool IsAffordabilityCheck, decimal? Amount, string? Description)> AnalyzeAffordabilityAsync(int userId, string userMessage);
+    Task<(bool IsChartRequest, string? ChartType, string? Sql, string? Title)> AnalyzeChartRequestAsync(int userId, string userMessage);
     Task<(bool Success, string Error)> TestConnectionAsync(int userId);
     Task<List<string>> GetAvailableModelsAsync(int userId);
 }
@@ -26,6 +27,50 @@ public class AiService : IAiService
         _httpClient = httpClient;
         _logger = logger;
         _settingsService = settingsService;
+    }
+
+    public async Task<(bool IsChartRequest, string? ChartType, string? Sql, string? Title)> AnalyzeChartRequestAsync(int userId, string userMessage)
+    {
+        var today = DateTime.Today.ToString("yyyy-MM-dd");
+        var systemPrompt = $@"You are a financial data architect. 
+Current Date: {today}
+Table 'transactions': id (uuid), user_id (int), transaction_date (timestamptz), description (text), amount (numeric), category (text).
+NOTE: Amount POSITIVE = Expense, NEGATIVE = Income.
+
+YOUR GOAL: Detect if the user wants a chart/graph of specific data.
+
+EXAMPLES:
+- 'Show me a barchart of Uber Eats' -> {{ ""isChart"": true, ""type"": ""bar"", ""sql"": ""SELECT description as Label, SUM(amount) as Value FROM transactions WHERE user_id = @userId AND description ILIKE '%UBER EATS%' GROUP BY description"", ""title"": ""Uber Eats Spending"" }}
+- 'Graph my total spending per day' -> {{ ""isChart"": true, ""type"": ""line"", ""sql"": ""SELECT transaction_date::date as Label, SUM(amount) as Value FROM transactions WHERE user_id = @userId AND amount > 0 GROUP BY 1 ORDER BY 1"", ""title"": ""Daily Spending Trend"" }}
+- 'Who are my top 5 categories?' -> {{ ""isChart"": true, ""type"": ""bar"", ""sql"": ""SELECT category as Label, SUM(amount) as Value FROM transactions WHERE user_id = @userId AND amount > 0 GROUP BY 1 ORDER BY 2 DESC LIMIT 5"", ""title"": ""Top 5 Categories"" }}
+
+OUTPUT FORMAT:
+JSON ONLY: {{ ""isChart"": boolean, ""type"": ""bar|line"", ""sql"": ""..."", ""title"": ""..."" }}
+If not a chart request, isChart = false.";
+
+        var jsonResponse = await GenerateCompletionAsync(userId, systemPrompt, $"USER REQUEST: \"{userMessage}\"");
+
+        try
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(jsonResponse, @"```json\s*(.*?)\s*```", System.Text.RegularExpressions.RegexOptions.Singleline);
+            var cleanJson = match.Success ? match.Groups[1].Value : jsonResponse.Trim();
+
+            using var doc = JsonDocument.Parse(cleanJson);
+            var root = doc.RootElement;
+            
+            if (root.TryGetProperty("isChart", out var isChartEl) && isChartEl.GetBoolean())
+            {
+                return (
+                    true, 
+                    root.GetProperty("type").GetString(), 
+                    root.GetProperty("sql").GetString(), 
+                    root.GetProperty("title").GetString()
+                );
+            }
+        }
+        catch { }
+
+        return (false, null, null, null);
     }
 
     public async Task<(bool IsAffordabilityCheck, decimal? Amount, string? Description)> AnalyzeAffordabilityAsync(int userId, string userMessage)

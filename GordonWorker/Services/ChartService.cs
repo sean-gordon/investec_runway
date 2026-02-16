@@ -5,10 +5,59 @@ namespace GordonWorker.Services;
 public interface IChartService
 {
     byte[] GenerateRunwayChart(List<Models.Transaction> history, decimal currentBalance, double averageDailyBurn);
+    byte[] GenerateGenericChart(string title, string type, List<(string Label, double Value)> data);
 }
 
 public class ChartService : IChartService
 {
+    public byte[] GenerateGenericChart(string title, string type, List<(string Label, double Value)> data)
+    {
+        var plt = new Plot();
+        try { ScottPlot.Fonts.Default = "DejaVu Sans"; } catch { }
+
+        plt.Title(title);
+        plt.FigureBackground.Color = Colors.White;
+        plt.DataBackground.Color = Colors.White;
+        plt.Axes.Color(Colors.Black);
+        plt.Grid.IsVisible = true;
+        plt.Grid.MajorLineColor = Colors.Black.WithOpacity(0.1);
+
+        if (type.ToLower() == "bar")
+        {
+            var values = data.Select(d => d.Value).ToArray();
+            var positions = Enumerable.Range(0, data.Count).Select(i => (double)i).ToArray();
+            
+            var bars = plt.Add.Bars(values);
+            
+            // Set X-axis ticks to labels
+            var ticks = data.Select((d, i) => new Tick((double)i, d.Label)).ToArray();
+            plt.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericManual(ticks);
+            plt.Axes.Bottom.TickLabelStyle.Rotation = 45;
+            plt.Axes.Bottom.TickLabelStyle.Alignment = Alignment.UpperLeft;
+        }
+        else // Default to line/scatter
+        {
+            var values = data.Select(d => d.Value).ToArray();
+            // Try to parse labels as dates for better formatting if possible
+            if (DateTime.TryParse(data.FirstOrDefault().Label, out _))
+            {
+                var dates = data.Select(d => DateTime.Parse(d.Label)).ToArray();
+                var sig = plt.Add.Scatter(dates, values);
+                plt.Axes.DateTimeTicksBottom();
+            }
+            else
+            {
+                var positions = Enumerable.Range(0, data.Count).Select(i => (double)i).ToArray();
+                plt.Add.Scatter(positions, values);
+                var ticks = data.Select((d, i) => new Tick((double)i, d.Label)).ToArray();
+                plt.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericManual(ticks);
+            }
+        }
+
+        plt.Axes.AutoScale();
+        return plt.GetImageBytes(1000, 600, ImageFormat.Png);
+    }
+
     public byte[] GenerateRunwayChart(List<Models.Transaction> history, decimal currentBalance, double averageDailyBurn)
     {
         var plt = new Plot();

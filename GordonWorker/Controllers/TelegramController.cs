@@ -131,12 +131,53 @@ public class TelegramController : ControllerBase
                     var summary = await actuarialService.AnalyzeHealthAsync(history, currentBalance, settings);
                     var summaryJson = JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true });
 
-                    // --- 0. Check for Explicit Chart Request ---
-                    if (messageText.ToLower().Contains("chart") || messageText.ToLower().Contains("graph"))
+                    // --- 0. Check for Chart Request (Explicit or AI-detected) ---
+                    var (isChart, chartType, chartSql, chartTitle) = await aiService.AnalyzeChartRequestAsync(userId, messageText);
+                    
+                    if (isChart && !string.IsNullOrWhiteSpace(chartSql))
+                    {
+                        try 
+                        {
+                            var chartDataRaw = await db.QueryAsync<dynamic>(chartSql, new { userId });
+                            var chartData = chartDataRaw.Select(d => {
+                                var dict = (IDictionary<string, object>)d;
+                                return (Label: dict["Label"]?.ToString() ?? "", Value: Convert.ToDouble(dict["Value"] ?? 0.0));
+                            }).ToList();
+
+                            if (chartData.Any())
+                            {
+                                var chartBytes = chartService.GenerateGenericChart(chartTitle!, chartType ?? "bar", chartData);
+                                
+                                // Generate AI Commentary for this specific data
+                                var dataJson = JsonSerializer.Serialize(chartData);
+                                var commentaryPrompt = $@"You are the user's Personal CFO. 
+The user requested a chart: '{chartTitle}'.
+DATA RETRIEVED: {dataJson}
+
+INSTRUCTIONS:
+- Provide a 2-sentence strategic observation about this specific data.
+- Mention any concerning trends or positive patterns.
+- Maintain a highly professional, boardroom tone.";
+
+                                var caption = await aiService.FormatResponseAsync(userId, commentaryPrompt, "", isWhatsApp: false);
+                                
+                                await telegramService.SendImageAsync(userId, chartBytes, $"📊 *{chartTitle}*\n\n{caption}", chatId);
+                                if (placeholderId > 0) await telegramService.EditMessageAsync(userId, placeholderId, "Analytical visualization complete.", chatId);
+                                return;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.LogWarning(ex, "Failed to generate dynamic chart for user {UserId}", userId);
+                        }
+                    }
+
+                    // --- 0.1 Check for Legacy Runway Chart Request ---
+                    if (messageText.ToLower().Contains("runway") && (messageText.ToLower().Contains("chart") || messageText.ToLower().Contains("graph")))
                     {
                         var chartBytes = chartService.GenerateRunwayChart(history, currentBalance, (double)summary.WeightedDailyBurn);
                         await telegramService.SendImageAsync(userId, chartBytes, "📉 *Financial Runway Projection*", chatId);
-                        await telegramService.EditMessageAsync(userId, placeholderId, "Here is your visual runway projection.", chatId);
+                        await telegramService.EditMessageAsync(userId, placeholderId, "Visual runway projection generated.", chatId);
                         return;
                     }
 

@@ -63,6 +63,18 @@ public class DatabaseInitializer
                 );";
             await connection.ExecuteAsync(settingsSql);
 
+            // 2.1 Chat History Table
+            var chatHistorySql = @"
+                CREATE TABLE IF NOT EXISTS chat_history (
+                    id SERIAL PRIMARY KEY,
+                    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    message_text TEXT NOT NULL,
+                    is_user BOOLEAN NOT NULL,
+                    timestamp TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_chat_history_user_date ON chat_history(user_id, timestamp DESC);";
+            await connection.ExecuteAsync(chatHistorySql);
+
             // 3. Transactions Table Migration
             // Always try to add the column safely
             try 

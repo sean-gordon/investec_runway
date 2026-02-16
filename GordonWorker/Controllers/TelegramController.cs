@@ -141,11 +141,23 @@ public class TelegramController : ControllerBase
                                      $"*Trend:* {summary.TrendDirection}\n" +
                                      $"---------------------------\n\n";
 
+                    // Retrieve recent chat history
+                    var recentHistory = (await db.QueryAsync<(string Text, bool IsUser)>(
+                        "SELECT message_text, is_user FROM chat_history WHERE user_id = @userId ORDER BY timestamp DESC LIMIT 10",
+                        new { userId })).Reverse().ToList();
+
+                    var historyContext = string.Join("\n", recentHistory.Select(h => h.IsUser ? $"User: {h.Text}" : $"CFO: {h.Text}"));
+
                     var promptForSummary = $@"You are acting as the user's Personal CFO. 
-The user has just asked: '{messageText}'
+
+**PREVIOUS CONVERSATION:**
+{historyContext}
+
+**CURRENT REQUEST:**
+User: {messageText}
 
 **INSTRUCTIONS:**
-- Provide a direct, data-driven answer based *only* on the provided financial summary.
+- Provide a direct, data-driven answer based *only* on the provided financial summary and previous conversation context.
 - If the user's question implies financial stress, provide a path to stability.
 - If the user's question implies good health, suggest how to optimize or invest.
 - Maintain a tone of calm, professional competence.
@@ -172,6 +184,15 @@ Demonstrate that you understand their financial reality better than they do, and
                         // Combine Hardcoded Stats + AI Commentary
                         finalAnswer = statsBlock + aiResponse;
                     }
+
+                    // Save history (User Request)
+                    await db.ExecuteAsync("INSERT INTO chat_history (user_id, message_text, is_user) VALUES (@UserId, @Text, TRUE)", 
+                        new { UserId = userId, Text = messageText });
+
+                    // Save history (AI Response - strip stats block for cleaner history if desired, but keeping mostly clean text is better)
+                    // We save the AI part only to avoid storing duplicate stats blocks in history context
+                    await db.ExecuteAsync("INSERT INTO chat_history (user_id, message_text, is_user) VALUES (@UserId, @Text, FALSE)", 
+                        new { UserId = userId, Text = aiResponse });
 
                     // 2. Edit Message with Final Answer
                     if (placeholderId > 0)

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using System.Security.Claims;
 using System.Text.Json;
+using System.Threading;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 
@@ -115,10 +116,33 @@ public class TelegramController : ControllerBase
                         "Consulting the actuarial models...",
                         "Analyzing your current burn rate...",
                         "Projecting your financial runway...",
-                        "Consolidating your financial position..."
+                        "Consolidating your financial position...",
+                        "Decoding transaction fingerprints...",
+                        "Simulating liquidity scenarios...",
+                        "Cross-referencing budget categories...",
+                        "Calibrating burn rate projections...",
+                        "Identifying spending anomalies..."
                     };
                     var witty = wittyComments[new Random().Next(wittyComments.Length)];
                     placeholderId = await telegramService.SendMessageWithIdAsync(userId, $"<i>Processing Request...</i> {TelegramService.EscapeHtml(witty)}", chatId);
+
+                    // Start progress heartbeat
+                    using var ctsHeartbeat = new CancellationTokenSource();
+                    var heartbeatTask = Task.Run(async () => {
+                        int index = new Random().Next(wittyComments.Length);
+                        while (!ctsHeartbeat.Token.IsCancellationRequested)
+                        {
+                            try {
+                                await Task.Delay(TimeSpan.FromSeconds(30), ctsHeartbeat.Token);
+                                var nextWitty = wittyComments[(++index) % wittyComments.Length];
+                                if (placeholderId > 0)
+                                {
+                                    await telegramService.EditMessageAsync(userId, placeholderId, $"<i>Processing Request...</i> {TelegramService.EscapeHtml(nextWitty)}", chatId);
+                                }
+                            } catch (TaskCanceledException) { break; }
+                            catch (Exception ex) { logger.LogWarning("Heartbeat error: {Msg}", ex.Message); }
+                        }
+                    });
 
                     investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
                     
@@ -164,6 +188,7 @@ INSTRUCTIONS:
 
                                 var caption = await aiService.FormatResponseAsync(userId, commentaryPrompt, "", isWhatsApp: false);
                                 
+                                ctsHeartbeat.Cancel(); // Stop the heartbeat
                                 await telegramService.SendImageAsync(userId, chartBytes, $"<b>📊 {TelegramService.EscapeHtml(chartTitle)}</b>\n\n{caption}", chatId);
                                 if (placeholderId > 0) await telegramService.EditMessageAsync(userId, placeholderId, "Analytical visualization complete.", chatId);
                                 return;
@@ -179,6 +204,7 @@ INSTRUCTIONS:
                     if (messageText.ToLower().Contains("runway") && (messageText.ToLower().Contains("chart") || messageText.ToLower().Contains("graph")))
                     {
                         var chartBytes = chartService.GenerateRunwayChart(history, currentBalance, (double)summary.WeightedDailyBurn);
+                        ctsHeartbeat.Cancel(); // Stop the heartbeat
                         await telegramService.SendImageAsync(userId, chartBytes, "<b>📉 Financial Runway Projection</b>", chatId);
                         await telegramService.EditMessageAsync(userId, placeholderId, "Visual runway projection generated.", chatId);
                         return;
@@ -203,6 +229,7 @@ INSTRUCTIONS:
                         await db.ExecuteAsync("INSERT INTO chat_history (user_id, message_text, is_user) VALUES (@UserId, @Text, FALSE)", 
                             new { UserId = userId, Text = confirmation });
 
+                        ctsHeartbeat.Cancel(); // Stop the heartbeat
                         if (placeholderId > 0) await telegramService.EditMessageAsync(userId, placeholderId, confirmation, chatId);
                         else await telegramService.SendMessageAsync(userId, confirmation, chatId);
                         
@@ -237,6 +264,7 @@ INSTRUCTIONS:
                                            $"<b>Risk Level:</b> {riskLevel}\n\n" +
                                            (riskLevel == "High" ? "🛑 <b>ADVISORY:</b> This purchase puts you in a dangerous liquidity position." : "✅ <b>ADVISORY:</b> You have sufficient buffer for this.");
 
+                            ctsHeartbeat.Cancel(); // Stop the heartbeat
                             if (placeholderId > 0) await telegramService.EditMessageAsync(userId, placeholderId, response, chatId);
                             else await telegramService.SendMessageAsync(userId, response, chatId);
 
@@ -330,6 +358,8 @@ If the provided data context appears incomplete (e.g. R0.00 expected income or m
                     // We save the AI part only to avoid storing duplicate stats blocks in history context
                     await db.ExecuteAsync("INSERT INTO chat_history (user_id, message_text, is_user) VALUES (@UserId, @Text, FALSE)", 
                         new { UserId = userId, Text = aiResponse });
+
+                    ctsHeartbeat.Cancel(); // Stop the heartbeat
 
                     // 2. Edit Message with Final Answer
                     if (placeholderId > 0)

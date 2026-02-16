@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using GordonWorker.Models;
 
 namespace GordonWorker.Services;
@@ -380,7 +381,7 @@ Context Information:
         if (string.IsNullOrWhiteSpace(model))
         {
             _logger.LogWarning("AI model name is not configured for user {UserId}.", userId);
-            return "I'm sorry, I don't have a model selected. Please check your settings.";
+            return null;
         }
 
         var request = new { model = model, prompt = $"{system}\n\n{prompt}", stream = false };
@@ -392,19 +393,33 @@ Context Information:
             
             _logger.LogInformation("Sending request to Ollama: {Url}, Model: {Model}", fullUrl, model);
             
-            var response = await _httpClient.PostAsync(fullUrl, content, ct);
+            // Use a specific timeout for the request to avoid hanging
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(90)); // Gateway usually kills at 90s
+
+            var response = await _httpClient.PostAsync(fullUrl, content, cts.Token);
             
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
-                return $"Error: The AI model '{model}' was not found on your Ollama server.";
+                _logger.LogWarning("Model '{Model}' not found on Ollama server {Url}", model, baseUrl);
+                return null;
             }
 
             response.EnsureSuccessStatusCode();
             var responseString = await response.Content.ReadAsStringAsync(ct);
             var result = JsonSerializer.Deserialize<OllamaResponse>(responseString);
-            return result?.Response?.Trim() ?? string.Empty;
+            return result?.Response?.Trim();
         }
-        catch (Exception ex) { _logger.LogError(ex, "Error calling Ollama at {Url}", baseUrl); return "I'm sorry, I couldn't process that request right now."; }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("Ollama request timed out for user {UserId} at {Url}", userId, baseUrl);
+            return null;
+        }
+        catch (Exception ex) 
+        { 
+            _logger.LogError(ex, "Error calling Ollama at {Url}", baseUrl); 
+            return null; 
+        }
     }
 
     private async Task<string> GenerateGeminiCompletionAsync(int userId, string system, string prompt, string apiKey, CancellationToken ct = default)
@@ -412,7 +427,10 @@ Context Information:
         try
         {
             var settings = await _settingsService.GetSettingsAsync(userId);
-            var model = !string.IsNullOrWhiteSpace(settings.OllamaModelName) ? settings.OllamaModelName : "gemini-1.5-flash";
+            var model = !string.IsNullOrWhiteSpace(settings.OllamaModelName) && settings.OllamaModelName.Contains("gemini") 
+                ? settings.OllamaModelName 
+                : "gemini-1.5-flash";
+                
             var url = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={apiKey}";
             var request = new
             {
@@ -426,17 +444,30 @@ Context Information:
                 }
             };
             var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
-            var response = await _httpClient.PostAsync(url, content, ct);
-            if (!response.IsSuccessStatusCode) { var errorBody = await response.Content.ReadAsStringAsync(ct); return $"Error: Gemini API returned {response.StatusCode}."; }
-            var responseString = await response.Content.ReadAsStringAsync(ct);
+            
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(60));
+
+            var response = await _httpClient.PostAsync(url, content, cts.Token);
+            if (!response.IsSuccessStatusCode) 
+            { 
+                var errorBody = await response.Content.ReadAsStringAsync(cts.Token); 
+                _logger.LogWarning("Gemini API error: {Status} - {Body}", response.StatusCode, errorBody);
+                return null; 
+            }
+            var responseString = await response.Content.ReadAsStringAsync(cts.Token);
             using var doc = JsonDocument.Parse(responseString);
             if (doc.RootElement.TryGetProperty("candidates", out var candidates) && candidates.GetArrayLength() > 0)
             {
-                return candidates[0].GetProperty("content").GetProperty("parts")[0].GetProperty("text").GetString()?.Trim() ?? "";
+                return candidates[0].GetProperty("content").GetProperty("parts")[0].GetProperty("text").GetString()?.Trim();
             }
-            return "Error: Gemini returned an empty response candidate.";
+            return null;
         }
-        catch (Exception ex) { _logger.LogError(ex, "Gemini API call failed."); return "I'm sorry, I couldn't process that request via Gemini."; }
+        catch (Exception ex) 
+        { 
+            _logger.LogError(ex, "Gemini API call failed for user {UserId}", userId); 
+            return null; 
+        }
     }
 
     private class OllamaResponse { [System.Text.Json.Serialization.JsonPropertyName("response")] public string? Response { get; set; } }

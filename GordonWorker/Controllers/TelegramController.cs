@@ -299,12 +299,19 @@ If the provided data context appears incomplete (e.g. R0.00 expected income or m
                     if (aiResponse.Trim().Equals("NEED_SQL", StringComparison.OrdinalIgnoreCase))
                     {
                         var sql = await aiService.GenerateSqlAsync(userId, messageText);
-                        try
+                        if (!string.IsNullOrWhiteSpace(sql))
                         {
-                            var result = await db.QueryAsync(sql);
-                            finalAnswer = statsBlock + await aiService.FormatResponseAsync(userId, messageText, JsonSerializer.Serialize(result), isWhatsApp: false);
+                            try
+                            {
+                                var result = await db.QueryAsync(sql);
+                                finalAnswer = statsBlock + await aiService.FormatResponseAsync(userId, messageText, JsonSerializer.Serialize(result), isWhatsApp: false);
+                            }
+                            catch { finalAnswer = statsBlock + "I encountered an error looking that up."; }
                         }
-                        catch { finalAnswer = statsBlock + "I encountered an error looking that up."; }
+                        else 
+                        {
+                            finalAnswer = statsBlock + "I was unable to generate a database query for that request.";
+                        }
                     }
                     else 
                     {

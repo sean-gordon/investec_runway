@@ -121,7 +121,7 @@ public class FinancialReportService : IFinancialReportService
         try 
         {
             aiExplanation = await _aiService.GenerateSimpleReportAsync(userId, data.JsonStats);
-            if (aiExplanation.Contains("Error:") || aiExplanation.Contains("I'm sorry"))
+            if (string.IsNullOrWhiteSpace(aiExplanation) || aiExplanation.Contains("Error:") || aiExplanation.Contains("I'm sorry"))
             {
                 aiExplanation = "<i>Note: The executive AI summary is currently unavailable. Please review the automated data metrics below.</i>";
             }

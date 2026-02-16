@@ -103,7 +103,14 @@ INSTRUCTIONS:
 
             var briefing = await aiService.FormatResponseAsync(userId, prompt, "", isWhatsApp: false);
             
-            await telegramService.SendMessageAsync(userId, $"🌅 <b>Morning Briefing</b>\n\n{briefing}");
+            if (!string.IsNullOrWhiteSpace(briefing))
+            {
+                await telegramService.SendMessageAsync(userId, $"🌅 <b>Morning Briefing</b>\n\n{briefing}");
+            }
+            else 
+            {
+                _logger.LogWarning("Skipping daily briefing for user {UserId} due to AI failure.", userId);
+            }
         }
         catch (Exception ex)
         {

@@ -52,7 +52,8 @@ public class InvestecClient : IInvestecClient
         _clientId = clientId;
         _secret = secret;
         _apiKey = apiKey;
-        _baseUrl = baseUrl.EndsWith("/") ? baseUrl : baseUrl + "/";
+        var effectiveUrl = string.IsNullOrWhiteSpace(baseUrl) ? "https://openapi.investec.com/" : baseUrl;
+        _baseUrl = effectiveUrl.EndsWith("/") ? effectiveUrl : effectiveUrl + "/";
         _accessToken = null; // Reset token on reconfig
         _cachedAccounts.Clear();
     }

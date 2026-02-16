@@ -160,13 +160,13 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
 
             try
             {
-                var telegramService = scope.ServiceProvider.GetRequiredService<ITelegramService>();
+                var telegramSvc = scope.ServiceProvider.GetRequiredService<ITelegramService>();
                 var errorMessage = "⚠️ <b>Analytical Error</b>\n\nI encountered an unexpected issue while processing your request. Your data is safe. Please try again in a moment.";
 
                 if (placeholderId > 0)
-                    await telegramService.EditMessageAsync(request.UserId, placeholderId, errorMessage, request.ChatId);
+                    await telegramSvc.EditMessageAsync(request.UserId, placeholderId, errorMessage, request.ChatId);
                 else
-                    await telegramService.SendMessageAsync(request.UserId, errorMessage, request.ChatId);
+                    await telegramSvc.SendMessageAsync(request.UserId, errorMessage, request.ChatId);
             }
             catch (Exception ex2)
             {

@@ -67,6 +67,8 @@ public class TransactionSyncService : ITransactionSyncService
         foreach (var account in accounts)
         {
             var txs = await _client.GetTransactionsAsync(account.AccountId, fromDate);
+            _logger.LogInformation("User {UserId}: Fetched {Count} transactions for account {AccountId} from {FromDate}", userId, txs.Count, account.AccountId, fromDate);
+
             foreach (var tx in txs)
             {
                 var insertSql = @"
@@ -91,6 +93,7 @@ public class TransactionSyncService : ITransactionSyncService
                 if (rowsAffected > 0)
                 {
                     totalNew++;
+                    _logger.LogDebug("User {UserId}: New transaction inserted: {Id} - {Description}", userId, tx.Id, tx.Description);
                     if (tx.Amount >= settings.UnexpectedPaymentThreshold)
                     {
                         var normalizedDesc = _actuarialService.NormalizeDescription(tx.Description);
@@ -114,11 +117,15 @@ public class TransactionSyncService : ITransactionSyncService
         
         if (totalNew > 0) 
         {
-            _logger.LogInformation("User {UserId}: Synced {Count} new transactions.", userId, totalNew);
+            _logger.LogInformation("User {UserId}: Sync complete. {Count} new records added to ledger.", userId, totalNew);
             if (triggerReport) await _reportService.GenerateAndSendReportAsync(userId);
             
             // Trigger Subscription Check
             await _subscriptionService.CheckSubscriptionsAsync(userId);
+        }
+        else 
+        {
+            _logger.LogInformation("User {UserId}: Sync complete. No new transactions found.", userId);
         }
     }
 

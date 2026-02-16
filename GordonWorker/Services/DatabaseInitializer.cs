@@ -84,13 +84,8 @@ public class DatabaseInitializer
                 // Backfill existing NULLs to Admin
                 await connection.ExecuteAsync("UPDATE transactions SET user_id = @AdminId WHERE user_id IS NULL", new { AdminId = adminId });
                 
-                // Add Foreign Key constraint if not exists (Postgres doesn't support IF NOT EXISTS for constraints directly easily in one line without check)
-                // We'll rely on the ALTER statement succeeding or failing harmlessly if constraint exists? No, duplicate constraint name throws.
-                // Simplified: Just add the column. The Create Table below handles the full definition for new setups.
-                // For existing setups, we just need the column and the data.
-                
-                // We can try to set NOT NULL now that data is backfilled
-                await connection.ExecuteAsync("ALTER TABLE transactions ALTER COLUMN user_id SET NOT NULL;");
+                // Set NOT NULL now that data is backfilled
+                try { await connection.ExecuteAsync("ALTER TABLE transactions ALTER COLUMN user_id SET NOT NULL;"); } catch {}
             } 
             catch (Exception ex) 
             { 
@@ -117,20 +112,19 @@ public class DatabaseInitializer
             try { await connection.ExecuteAsync("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS notes TEXT;"); } catch {}
 
             // 4. Index Migration
-            // Drop old constraints/indexes that conflict with multi-tenant unique index
-            try { await connection.ExecuteAsync("DROP INDEX IF EXISTS ux_transactions_id_date;"); } catch {}
-            try { await connection.ExecuteAsync("ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_pkey;"); } catch {}
-
-            // Create new multi-tenant unique index
+            // TimescaleDB hypertables require unique indexes to include the partitioning column (transaction_date)
             try 
             {
-                // Force recreate to be safe
-                await connection.ExecuteAsync("DROP INDEX IF EXISTS ux_transactions_id_date_user;");
-                await connection.ExecuteAsync("CREATE UNIQUE INDEX ux_transactions_id_date_user ON transactions (id, transaction_date, user_id);"); 
+                // Drop legacy indexes that might conflict with multi-tenant unique constraint
+                await connection.ExecuteAsync("DROP INDEX IF EXISTS ux_transactions_id_date;");
+                await connection.ExecuteAsync("ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_pkey;");
+                
+                // Create the definitive unique index required for Sync (ON CONFLICT target)
+                await connection.ExecuteAsync("CREATE UNIQUE INDEX IF NOT EXISTS ux_transactions_id_date_user ON transactions (id, transaction_date, user_id);"); 
             } 
             catch (Exception ex) 
             { 
-                _logger.LogError(ex, "Could not create unique index 'ux_transactions_id_date_user'."); 
+                _logger.LogError(ex, "CRITICAL: Could not ensure unique index 'ux_transactions_id_date_user'. Sync will fail."); 
             }
 
             // Convert to Hypertable

@@ -124,6 +124,15 @@ public class ChartService : IChartService
             hist.MarkerSize = 0; 
             hist.LegendText = "History";
         }
+        else
+        {
+            // Add a watermark if no data
+            var txt = plt.Add.Text("NO TRANSACTION DATA FOUND", 0, 0);
+            txt.LabelFontSize = 24;
+            txt.LabelBold = true;
+            txt.LabelFontColor = Colors.Red.WithOpacity(0.3);
+            txt.LabelAlignment = Alignment.MiddleCenter;
+        }
 
         var proj = plt.Add.Scatter(projDates.ToArray(), projBalances.ToArray());
         proj.Color = Colors.Red;

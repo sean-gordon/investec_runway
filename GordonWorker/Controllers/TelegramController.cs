@@ -283,7 +283,8 @@ User: {messageText}
 - Do NOT repeat the header stats (Balance, Runway, etc.) as they are already displayed above your message.
 
 **YOUR GOAL:**
-Demonstrate that you understand their financial reality better than they do, and guide them toward control.";
+Demonstrate that you understand their financial reality better than they do, and guide them toward control.
+If the provided data context appears incomplete (e.g. R0.00 expected income or missing notes), acknowledge this limitation professionally and suggest the user sync their accounts or provide manual clarification.";
 
                     var aiResponse = await aiService.FormatResponseAsync(userId, promptForSummary, summaryJson, isWhatsApp: false);
                     string finalAnswer;

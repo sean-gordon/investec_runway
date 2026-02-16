@@ -13,113 +13,99 @@ public class ChartService : IChartService
     {
         var plt = new Plot();
         
+        // Setup font for Linux/Docker environments
+        try { ScottPlot.Fonts.Default = "DejaVu Sans"; } catch { }
+
         // 1. Data Preparation
-        // We want to show the last 30 days of balance history
-        var relevantHistory = history
-            .Where(t => t.TransactionDate >= DateTimeOffset.UtcNow.AddDays(-30))
-            .OrderByDescending(t => t.TransactionDate) // newest first for walking back
+        var now = DateTime.UtcNow;
+        var cutoff = DateTimeOffset.UtcNow.AddDays(-30);
+        
+        // Sort history NEWEST to OLDEST for reconstruction
+        var sortedHistory = history
+            .Where(t => t.TransactionDate >= cutoff)
+            .OrderByDescending(t => t.TransactionDate)
             .ToList();
 
-        var dates = new List<DateTime>();
-        var balances = new List<double>();
+        var plotPoints = new List<(DateTime Date, double Balance)>();
 
-        // Reconstruct historical balances (running total backwards from current)
-        // Start at current
+        // Reconstruct historical balances
         double runner = (double)currentBalance;
-        dates.Add(DateTime.UtcNow);
-        balances.Add(runner);
+        
+        // Add "Now" point
+        plotPoints.Add((now, runner));
 
-        foreach (var tx in relevantHistory)
+        foreach (var tx in sortedHistory)
         {
-            // Reverse the transaction effect to find previous balance
-            // If tx.Amount was +100 (Expense), balance *before* was Current + 100? 
-            // Wait: Balance After = Balance Before - Amount (if Amount is expense/positive).
-            // So: Balance Before = Balance After + Amount.
-            // Investec: Debits are positive. Credits are negative.
-            // Balance = Previous - Debit. => Previous = Balance + Debit.
-            
+            // Reverse spend (Debit +) and income (Credit -)
             runner += (double)tx.Amount; 
-            
-            dates.Add(tx.TransactionDate.UtcDateTime);
-            balances.Add(runner);
+            plotPoints.Add((tx.TransactionDate.UtcDateTime, runner));
         }
 
-        // The lists are now Newest -> Oldest. Reverse them for plotting.
-        dates.Reverse();
-        balances.Reverse();
+        // Sort chronologically for plotting (Oldest -> Newest)
+        var finalPoints = plotPoints.OrderBy(p => p.Date).ToList();
+        var histDates = finalPoints.Select(p => p.Date).ToArray();
+        var histBalances = finalPoints.Select(p => p.Balance).ToArray();
 
-        // 2. Projection (Runway)
-        var lastDate = DateTime.UtcNow;
-        var lastBalance = (double)currentBalance;
+        // 2. Projection
+        var projDates = new List<DateTime>();
+        var projBalances = new List<double>();
+
+        projDates.Add(now);
+        projBalances.Add((double)currentBalance);
+
+        double projRunner = (double)currentBalance;
+        var projDate = now;
         
-        var projectedDates = new List<DateTime>();
-        var projectedBalances = new List<double>();
-
-        projectedDates.Add(lastDate);
-        projectedBalances.Add(lastBalance);
-
-        // Project until 0 or 60 days out
-        for (int i = 1; i <= 60; i++)
+        // Project 30 days
+        for (int i = 1; i <= 30; i++)
         {
-            lastDate = lastDate.AddDays(1);
-            lastBalance -= averageDailyBurn;
-            
-            projectedDates.Add(lastDate);
-            projectedBalances.Add(lastBalance);
-
-            if (lastBalance <= 0) break;
+            projDate = projDate.AddDays(1);
+            projRunner -= averageDailyBurn;
+            projDates.Add(projDate);
+            projBalances.Add(projRunner);
+            if (projRunner <= -5000) break;
         }
 
         // 3. Plotting
-        // Historical Line (Blue)
-        var histScatter = plt.Add.Scatter(dates.ToArray(), balances.ToArray());
-        histScatter.Color = Colors.Blue;
-        histScatter.LineWidth = 3;
-        histScatter.LegendText = "History";
+        if (histDates.Length > 1)
+        {
+            var hist = plt.Add.Scatter(histDates, histBalances);
+            hist.Color = Colors.Blue;
+            hist.LineWidth = 3;
+            hist.MarkerSize = 0; 
+            hist.LegendText = "History";
+        }
 
-        // Projected Line (Red dashed)
-        var projScatter = plt.Add.Scatter(projectedDates.ToArray(), projectedBalances.ToArray());
-        projScatter.Color = Colors.Red;
-        projScatter.LineWidth = 2;
-        projScatter.LinePattern = LinePattern.Dashed;
-        projScatter.LegendText = "Burn Projection";
+        var proj = plt.Add.Scatter(projDates.ToArray(), projBalances.ToArray());
+        proj.Color = Colors.Red;
+        proj.LineWidth = 2;
+        proj.LinePattern = LinePattern.Dashed;
+        proj.MarkerSize = 0;
+        proj.LegendText = $"Burn (R{averageDailyBurn:N0}/day)";
 
         // Formatting
-        plt.Title("Financial Runway");
-        
-        // Y-Axis Currency
+        plt.Title("Financial Outlook & Projection");
         plt.YLabel("Balance (ZAR)");
-        plt.Axes.Left.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic();
-        plt.Axes.Left.Label.Text = "Balance (ZAR)";
-
-        // Custom Y-axis formatter for currency
-        // ScottPlot 5 uses TickGenerators. I'll stick to basic numeric labels if complex formatting is hard, 
-        // but let's try to set the format string.
-        
         plt.XLabel("Date");
+        
         plt.Axes.DateTimeTicksBottom();
         
-        // Style adjustments for visibility
         plt.FigureBackground.Color = Colors.White;
         plt.DataBackground.Color = Colors.White;
+        plt.Axes.Color(Colors.Black);
         
-        // Axis line colors and tick colors
-        plt.Axes.Left.FrameLineStyle.Color = Colors.Black;
-        plt.Axes.Bottom.FrameLineStyle.Color = Colors.Black;
-        
-        // Add Grid
-        plt.Grid.MajorLineColor = Colors.Black.WithOpacity(0.1);
+        plt.Grid.MajorLineColor = Colors.Black.WithOpacity(0.15);
         plt.Grid.IsVisible = true;
-
-        // Add Legend
-        plt.ShowLegend(Edge.Right);
         
-        // Add a horizontal line at 0
+        var legend = plt.ShowLegend(Edge.Right);
+        
         var zeroLine = plt.Add.HorizontalLine(0);
-        zeroLine.Color = Colors.Black.WithOpacity(0.5);
+        zeroLine.Color = Colors.Gray;
+        zeroLine.LineWidth = 1;
         zeroLine.LinePattern = LinePattern.Dotted;
 
-        // 4. Render
+        plt.Axes.AutoScale();
+
         return plt.GetImageBytes(1000, 600, ImageFormat.Png);
     }
 }

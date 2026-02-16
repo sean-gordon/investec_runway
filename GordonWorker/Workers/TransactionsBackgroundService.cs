@@ -37,20 +37,8 @@ public class TransactionsBackgroundService : BackgroundService
                     userIds = await connection.QueryAsync<int>("SELECT id FROM users");
                 }
 
-                foreach (var userId in userIds)
-                {
-                    try
-                    {
-                        // Create a NEW scope for each user to ensure fresh Scoped services (like InvestecClient)
-                        using var userScope = _serviceProvider.CreateScope();
-                        var syncService = userScope.ServiceProvider.GetRequiredService<ITransactionSyncService>();
-                        await syncService.SyncTransactionsAsync(userId, stoppingToken);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error syncing transactions for user {UserId}", userId);
-                    }
-                }
+                var tasks = userIds.Select(userId => SyncUserTransactionsAsync(userId, stoppingToken));
+                await Task.WhenAll(tasks);
             }
             catch (Exception ex)
             {
@@ -58,6 +46,21 @@ public class TransactionsBackgroundService : BackgroundService
             }
 
             await Task.Delay(TimeSpan.FromSeconds(60), stoppingToken);
+        }
+    }
+
+    private async Task SyncUserTransactionsAsync(int userId, CancellationToken token)
+    {
+        try
+        {
+            // Create a NEW scope for each user to ensure fresh Scoped services (like InvestecClient)
+            using var userScope = _serviceProvider.CreateScope();
+            var syncService = userScope.ServiceProvider.GetRequiredService<ITransactionSyncService>();
+            await syncService.SyncTransactionsAsync(userId, token);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error syncing transactions for user {UserId}", userId);
         }
     }
 }

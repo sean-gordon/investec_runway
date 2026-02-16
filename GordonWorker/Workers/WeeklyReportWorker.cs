@@ -36,38 +36,8 @@ public class WeeklyReportWorker : BackgroundService
 
                 var now = DateTime.Now;
 
-                foreach (var user in users)
-                {
-                    // Optimization: Skip immediately if already sent today
-                    if (user.LastWeeklyReportSent.HasValue && user.LastWeeklyReportSent.Value.Date == now.Date) continue;
-
-                    // Create per-user scope
-                    using var userScope = _serviceProvider.CreateScope();
-                    var settingsService = userScope.ServiceProvider.GetRequiredService<ISettingsService>();
-                    var reportService = userScope.ServiceProvider.GetRequiredService<IFinancialReportService>();
-                    var config = userScope.ServiceProvider.GetRequiredService<IConfiguration>(); // Get config from scope if needed, or use class field
-
-                    var settings = await settingsService.GetSettingsAsync(user.Id);
-                    
-                    if (Enum.TryParse<DayOfWeek>(settings.ReportDayOfWeek, true, out var targetDay) &&
-                        now.DayOfWeek == targetDay && 
-                        now.Hour == settings.ReportHour)
-                    {
-                        try
-                        {
-                            await reportService.GenerateAndSendReportAsync(user.Id);
-                            
-                            // Update DB immediately to prevent double-send (using a new connection or the shared config)
-                            using var updateConnection = new NpgsqlConnection(config.GetConnectionString("DefaultConnection"));
-                            await updateConnection.ExecuteAsync("UPDATE users SET last_weekly_report_sent = @Now WHERE id = @Id", new { Now = now, user.Id });
-                            _logger.LogInformation("Weekly report sent for user {UserId}", user.Id);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Failed to send weekly report for user {UserId}", user.Id);
-                        }
-                    }
-                }
+                var tasks = users.Select(user => ProcessUserReportAsync(user, now, stoppingToken));
+                await Task.WhenAll(tasks);
             }
             catch (Exception ex)
             {
@@ -76,6 +46,39 @@ public class WeeklyReportWorker : BackgroundService
 
             // Check every 5 mins
             await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
+        }
+    }
+
+    private async Task ProcessUserReportAsync(UserReportStatus user, DateTime now, CancellationToken token)
+    {
+        try
+        {
+            // Optimization: Skip immediately if already sent today
+            if (user.LastWeeklyReportSent.HasValue && user.LastWeeklyReportSent.Value.Date == now.Date) return;
+
+            // Create per-user scope
+            using var userScope = _serviceProvider.CreateScope();
+            var settingsService = userScope.ServiceProvider.GetRequiredService<ISettingsService>();
+            var reportService = userScope.ServiceProvider.GetRequiredService<IFinancialReportService>();
+            var config = userScope.ServiceProvider.GetRequiredService<IConfiguration>();
+
+            var settings = await settingsService.GetSettingsAsync(user.Id);
+
+            if (Enum.TryParse<DayOfWeek>(settings.ReportDayOfWeek, true, out var targetDay) &&
+                now.DayOfWeek == targetDay &&
+                now.Hour == settings.ReportHour)
+            {
+                await reportService.GenerateAndSendReportAsync(user.Id);
+
+                // Update DB immediately to prevent double-send
+                using var updateConnection = new NpgsqlConnection(config.GetConnectionString("DefaultConnection"));
+                await updateConnection.ExecuteAsync("UPDATE users SET last_weekly_report_sent = @Now WHERE id = @Id", new { Now = now, user.Id });
+                _logger.LogInformation("Weekly report sent for user {UserId}", user.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to process weekly report for user {UserId}", user.Id);
         }
     }
 }

@@ -18,6 +18,7 @@ public record FinancialHealthReport(
     decimal ProjectedMonthEndSpend,
     decimal ProjectedBalanceAtNextSalary,
     decimal UpcomingExpectedPayments,
+    decimal LastDetectedSalaryAmount,
     int DaysUntilNextSalary,
     double RunwayProbability,
     List<CategorySpend> TopCategories,
@@ -112,8 +113,11 @@ public class ActuarialService : IActuarialService
         
         // Calculate average cycle from history or default to 30
         var cycleHistory = salaryPayments.Zip(salaryPayments.Skip(1), (a, b) => (a.TransactionDate - b.TransactionDate).TotalDays).ToList();
-        var avgCycleDays = cycleHistory.Any() ? cycleHistory.Average() : 30;
-        if (avgCycleDays < 20 || avgCycleDays > 45) avgCycleDays = 30; 
+        var avgCycleDays = cycleHistory.Any() ? cycleHistory.Average() : settings.DefaultCycleDays;
+        
+        // Clamp to min/max range first
+        if (avgCycleDays < settings.MinCycleDays) avgCycleDays = settings.MinCycleDays;
+        else if (avgCycleDays > settings.MaxCycleDays) avgCycleDays = settings.MaxCycleDays;
 
         var nextExpectedSalary = periodStart.AddDays(avgCycleDays);
         var daysUntilNextSalary = Math.Max(1, (nextExpectedSalary - today).TotalDays);
@@ -136,7 +140,7 @@ public class ActuarialService : IActuarialService
         var spendLastPeriodPtd = lastPeriodPtdExpenses.Sum(t => t.Amount);
         
         // Pulse Comparison: If PTD spend is suspiciously low (< 10% of full), use Full month as baseline to avoid "700% increase" errors
-        var pulseBaseline = (spendLastPeriodPtd < (spendLastPeriodFull * 0.1m)) ? spendLastPeriodFull : spendLastPeriodPtd;
+        var pulseBaseline = (spendLastPeriodPtd < (spendLastPeriodFull * settings.PulseBaselineThreshold)) ? spendLastPeriodFull : spendLastPeriodPtd;
 
         var topCategories = thisPeriodExpenses
             .Where(t => !IsFixedCost(NormalizeDescription(t.Description), settings))
@@ -151,7 +155,7 @@ public class ActuarialService : IActuarialService
             var fullLastSpend = lastPeriodFullExpenses.Where(t => NormalizeDescription(t.Description) == cat.Name).Sum(t => t.Amount);
             
             // Hybrid Baseline: If it's a significant amount and PTD is zero, use full month to avoid spike hallucinations
-            decimal baseline = (ptdLastSpend < (fullLastSpend * 0.1m)) ? fullLastSpend : ptdLastSpend;
+            decimal baseline = (ptdLastSpend < (fullLastSpend * settings.HybridBaselineThreshold)) ? fullLastSpend : ptdLastSpend;
             
             decimal diff = cat.Amount - baseline;
             decimal percent = baseline > 0 ? (diff / baseline) * 100 : 100;
@@ -219,6 +223,8 @@ public class ActuarialService : IActuarialService
         var trendMultiplierLower = 1.0m - settings.TrendSensitivity;
         string trendDirection = (decimal)weightedMean > (decimal)dailyAvgSimple * trendMultiplierUpper ? "Increasing" : ((decimal)weightedMean < (decimal)dailyAvgSimple * trendMultiplierLower ? "Decreasing" : "Stable");
 
+        var lastSalaryAmount = salaryPayments.Any() ? Math.Abs(salaryPayments[0].Amount) : 0m;
+
         return await Task.FromResult(new FinancialHealthReport(
             CurrentBalance: currentBalance,
             WeightedDailyBurn: baseBurn,
@@ -227,13 +233,14 @@ public class ActuarialService : IActuarialService
             SafeRunwayDays: (currentBalance - upcomingOverhead) / (decimal)((double)baseBurn + stdDev),
             ExpectedRunwayDays: (currentBalance - upcomingOverhead) / baseBurn,
             OptimisticRunwayDays: (currentBalance - upcomingOverhead) / (decimal)Math.Max((double)baseBurn - stdDev, 1.0),
-            ValueAtRisk95: (decimal)(weightedMean + (1.645 * stdDev)),
+            ValueAtRisk95: (decimal)(weightedMean + (settings.VarConfidenceInterval * stdDev)),
             TrendDirection: trendDirection,
             SpendThisMonth: spendThisPeriod,
             SpendLastMonth: pulseBaseline,
             ProjectedMonthEndSpend: projectedMonthEndSpend,
             ProjectedBalanceAtNextSalary: projectedBalance,
             UpcomingExpectedPayments: upcomingOverhead,
+            LastDetectedSalaryAmount: lastSalaryAmount,
             DaysUntilNextSalary: (int)Math.Round(daysUntilNextSalary),
             RunwayProbability: Math.Min(Math.Max(probSurvival, 0), 100),
             TopCategories: categoryReport.OrderByDescending(c => c.Amount).Take(3).ToList(),

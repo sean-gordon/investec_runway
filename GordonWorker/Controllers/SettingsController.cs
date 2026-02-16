@@ -1,8 +1,11 @@
+using GordonWorker.Models;
 using GordonWorker.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using System.Text.Json;
+using Dapper;
+using Npgsql;
 
 namespace GordonWorker.Controllers;
 
@@ -20,6 +23,7 @@ public class SettingsController : ControllerBase
     private readonly IInvestecClient _investecClient;
     private readonly ITwilioService _twilioService;
     private readonly ITelegramService _telegramService;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<SettingsController> _logger;
 
     public SettingsController(
@@ -32,6 +36,7 @@ public class SettingsController : ControllerBase
         IInvestecClient investecClient,
         ITwilioService twilioService,
         ITelegramService telegramService,
+        IConfiguration configuration,
         ILogger<SettingsController> logger)
     {
         _settingsService = settingsService;
@@ -43,6 +48,7 @@ public class SettingsController : ControllerBase
         _investecClient = investecClient;
         _twilioService = twilioService;
         _telegramService = telegramService;
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -184,5 +190,14 @@ public class SettingsController : ControllerBase
         {
             return StatusCode(500, $"Failed to repull data: {ex.Message}");
         }
+    }
+
+    [HttpGet("recent-transactions")]
+    public async Task<IActionResult> GetRecentTransactions()
+    {
+        using var connection = new Npgsql.NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+        var sql = "SELECT * FROM transactions WHERE user_id = @UserId ORDER BY transaction_date DESC LIMIT 10";
+        var txs = await connection.QueryAsync<Transaction>(sql, new { UserId });
+        return Ok(txs);
     }
 }

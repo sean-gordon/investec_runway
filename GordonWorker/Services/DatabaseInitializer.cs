@@ -37,6 +37,7 @@ public class DatabaseInitializer
             // Ensure columns exist (migration for existing DB)
             try { await connection.ExecuteAsync("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'User';"); } catch {}
             try { await connection.ExecuteAsync("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_system BOOLEAN DEFAULT FALSE;"); } catch {}
+            try { await connection.ExecuteAsync("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_weekly_report_sent TIMESTAMPTZ;"); } catch {}
 
             // Seed System Admin
             var adminUser = _configuration["ADMIN_USERNAME"] ?? "admin";
@@ -62,61 +63,68 @@ public class DatabaseInitializer
                 );";
             await connection.ExecuteAsync(settingsSql);
 
-            // 3. Transactions Table Migration
-            // Always try to add the column safely
-            try 
-            {
-                await connection.ExecuteAsync("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS user_id INT;");
-                
-                // Backfill existing NULLs to Admin
-                await connection.ExecuteAsync("UPDATE transactions SET user_id = @AdminId WHERE user_id IS NULL", new { AdminId = adminId });
-                
-                // Add Foreign Key constraint if not exists (Postgres doesn't support IF NOT EXISTS for constraints directly easily in one line without check)
-                // We'll rely on the ALTER statement succeeding or failing harmlessly if constraint exists? No, duplicate constraint name throws.
-                // Simplified: Just add the column. The Create Table below handles the full definition for new setups.
-                // For existing setups, we just need the column and the data.
-                
-                // We can try to set NOT NULL now that data is backfilled
-                await connection.ExecuteAsync("ALTER TABLE transactions ALTER COLUMN user_id SET NOT NULL;");
-            } 
-            catch (Exception ex) 
-            { 
-                _logger.LogWarning("Migration warning (user_id): {Message}", ex.Message); 
-            }
+            // 2.1 Chat History Table
+            var chatHistorySql = @"
+                CREATE TABLE IF NOT EXISTS chat_history (
+                    id SERIAL PRIMARY KEY,
+                    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    message_text TEXT NOT NULL,
+                    is_user BOOLEAN NOT NULL,
+                    timestamp TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_chat_history_user_date ON chat_history(user_id, timestamp DESC);";
+            await connection.ExecuteAsync(chatHistorySql);
 
+            // 3. Transactions Table Migration
             // Ensure Transactions Table exists (for new installs)
             var transactionsSql = @"
                 CREATE TABLE IF NOT EXISTS transactions (
                     id UUID NOT NULL,
-                    user_id INT NOT NULL, 
                     account_id TEXT,
                     transaction_date TIMESTAMPTZ NOT NULL,
                     description TEXT,
                     amount DECIMAL(18, 2),
                     balance DECIMAL(18, 2),
                     category TEXT,
-                    is_ai_processed BOOLEAN DEFAULT FALSE
+                    is_ai_processed BOOLEAN DEFAULT FALSE,
+                    notes TEXT
                 );";
             await connection.ExecuteAsync(transactionsSql);
 
-            // 4. Index Migration
-            // Drop old constraints/indexes that conflict with multi-tenant unique index
-            try { await connection.ExecuteAsync("DROP INDEX IF EXISTS ux_transactions_id_date;"); } catch {}
-            try { await connection.ExecuteAsync("ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_pkey;"); } catch {}
+            // Add user_id if missing (migration)
+            var colCheckSql = "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'transactions' AND column_name = 'user_id'";
+            var hasUserId = await connection.ExecuteScalarAsync<int>(colCheckSql) > 0;
+            if (!hasUserId)
+            {
+                _logger.LogInformation("Adding 'user_id' column to 'transactions' table...");
+                await connection.ExecuteAsync("ALTER TABLE transactions ADD COLUMN user_id INT;");
+                await connection.ExecuteAsync("UPDATE transactions SET user_id = @AdminId WHERE user_id IS NULL", new { AdminId = adminId });
+                await connection.ExecuteAsync("ALTER TABLE transactions ALTER COLUMN user_id SET NOT NULL;");
+            }
 
-            // Create new multi-tenant unique index
+            // Migration for notes
+            try { await connection.ExecuteAsync("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS notes TEXT;"); } catch {}
+
+            // 4. Index Migration
+            // TimescaleDB hypertables require unique indexes to include the partitioning column (transaction_date)
             try 
             {
+                // Drop legacy indexes/constraints
+                await connection.ExecuteAsync("DROP INDEX IF EXISTS ux_transactions_id_date;");
+                await connection.ExecuteAsync("ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_pkey;");
+                
+                // Create the definitive unique index required for Sync (ON CONFLICT target)
                 await connection.ExecuteAsync("CREATE UNIQUE INDEX IF NOT EXISTS ux_transactions_id_date_user ON transactions (id, transaction_date, user_id);"); 
             } 
             catch (Exception ex) 
             { 
-                _logger.LogError(ex, "Could not create unique index 'ux_transactions_id_date_user'."); 
+                _logger.LogError(ex, "CRITICAL: Could not ensure unique index 'ux_transactions_id_date_user'. Sync will fail."); 
             }
 
             // Convert to Hypertable
             try 
             { 
+                // Note: migrate_data => true is required if data already exists
                 await connection.ExecuteAsync("SELECT create_hypertable('transactions', 'transaction_date', if_not_exists => TRUE, migrate_data => TRUE);"); 
             } 
             catch (Exception ex)

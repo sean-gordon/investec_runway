@@ -98,7 +98,11 @@ USER QUESTION: {Body}";
             var aiResponse = await _aiService.FormatResponseAsync(userId, promptForSummary, summaryJson, isWhatsApp: true);
             string finalAnswer;
 
-            if (aiResponse.Trim().Equals("NEED_SQL", StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrWhiteSpace(aiResponse))
+            {
+                finalAnswer = "I'm currently experiencing some latency in my analytical engine. Please try again in a few minutes.";
+            }
+            else if (aiResponse.Trim().Equals("NEED_SQL", StringComparison.OrdinalIgnoreCase))
             {
                 // Temporarily disabled SQL generation for multi-tenant safety or ensure it uses userId filter
                 // Ideally: var sql = await _aiService.GenerateSqlAsync(userId, Body);

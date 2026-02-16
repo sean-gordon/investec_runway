@@ -56,7 +56,7 @@ public class TransactionsBackgroundService : BackgroundService
             // Create a NEW scope for each user to ensure fresh Scoped services (like InvestecClient)
             using var userScope = _serviceProvider.CreateScope();
             var syncService = userScope.ServiceProvider.GetRequiredService<ITransactionSyncService>();
-            await syncService.SyncTransactionsAsync(userId, token);
+            await syncService.SyncTransactionsAsync(userId, token: token);
         }
         catch (Exception ex)
         {

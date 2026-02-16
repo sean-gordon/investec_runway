@@ -310,6 +310,7 @@ You have direct access to the client's transaction ledger. Your goal is to provi
 The user has provided a JSON summary of their current financial health. 
 - **Notes:** The user may have provided specific explanations for certain transactions (e.g. 'That was a gift'). Use these notes to provide more accurate and personal advice.
 - **Projected Balance:** This is the most critical metric. Focus on it.
+- **Expected Salary:** This is the projected capital injection on payday.
 - **Runway:** This is their safety net.
 
 **GUIDELINES:**

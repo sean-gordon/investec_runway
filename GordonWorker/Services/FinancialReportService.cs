@@ -76,6 +76,7 @@ public class FinancialReportService : IFinancialReportService
             SpendLastPeriod = healthReport.SpendLastMonth.ToString("F2"),
             ProjectedTotalSpendForCycle = healthReport.ProjectedMonthEndSpend.ToString("F2"),
             UpcomingExpectedPaymentsTotal = healthReport.UpcomingExpectedPayments.ToString("F2"),
+            UpcomingExpectedSalaryAmount = healthReport.LastDetectedSalaryAmount.ToString("F2"),
             RunwayDays = healthReport.ExpectedRunwayDays.ToString("F1"),
             ProbabilityToReachPayday = healthReport.RunwayProbability.ToString("F1") + "%",
             CurrencySymbol = "R",
@@ -92,6 +93,12 @@ public class FinancialReportService : IFinancialReportService
             TransactionNotes = fullHistory
                 .Where(t => !string.IsNullOrWhiteSpace(t.Notes))
                 .Select(t => new { t.Description, t.Amount, t.Notes })
+                .ToList(),
+            RecentSignificantTransactions = fullHistory
+                .Where(t => Math.Abs(t.Amount) > 500)
+                .OrderByDescending(t => t.TransactionDate)
+                .Take(10)
+                .Select(t => new { t.TransactionDate, t.Description, t.Amount, t.Category })
                 .ToList()
         };
 

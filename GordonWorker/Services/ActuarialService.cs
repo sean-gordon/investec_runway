@@ -18,6 +18,7 @@ public record FinancialHealthReport(
     decimal ProjectedMonthEndSpend,
     decimal ProjectedBalanceAtNextSalary,
     decimal UpcomingExpectedPayments,
+    decimal LastDetectedSalaryAmount,
     int DaysUntilNextSalary,
     double RunwayProbability,
     List<CategorySpend> TopCategories,
@@ -222,6 +223,8 @@ public class ActuarialService : IActuarialService
         var trendMultiplierLower = 1.0m - settings.TrendSensitivity;
         string trendDirection = (decimal)weightedMean > (decimal)dailyAvgSimple * trendMultiplierUpper ? "Increasing" : ((decimal)weightedMean < (decimal)dailyAvgSimple * trendMultiplierLower ? "Decreasing" : "Stable");
 
+        var lastSalaryAmount = salaryPayments.Any() ? Math.Abs(salaryPayments[0].Amount) : 0m;
+
         return await Task.FromResult(new FinancialHealthReport(
             CurrentBalance: currentBalance,
             WeightedDailyBurn: baseBurn,
@@ -237,6 +240,7 @@ public class ActuarialService : IActuarialService
             ProjectedMonthEndSpend: projectedMonthEndSpend,
             ProjectedBalanceAtNextSalary: projectedBalance,
             UpcomingExpectedPayments: upcomingOverhead,
+            LastDetectedSalaryAmount: lastSalaryAmount,
             DaysUntilNextSalary: (int)Math.Round(daysUntilNextSalary),
             RunwayProbability: Math.Min(Math.Max(probSurvival, 0), 100),
             TopCategories: categoryReport.OrderByDescending(c => c.Amount).Take(3).ToList(),

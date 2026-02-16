@@ -78,8 +78,15 @@ public class SubscriptionService : ISubscriptionService
                     
                     if (percent > 0.5m && percent < 25m)
                     {
+                        // Escape Markdown reserved characters in the group key to prevent parsing errors
+                        var safeKey = group.Key
+                            .Replace("_", "\\_")
+                            .Replace("*", "\\*")
+                            .Replace("[", "\\[")
+                            .Replace("`", "\\`");
+
                         var msg = $"⚠️ **Subscription Creep Detected**\n" +
-                                  $"**{group.Key}** increased by {percent:F1}% ({latest.Amount:C} vs {previous.Amount:C}).\n" +
+                                  $"**{safeKey}** increased by {percent:F1}% ({latest.Amount:C} vs {previous.Amount:C}).\n" +
                                   "Check if this is a contract increase.";
                         
                         await _telegramService.SendMessageAsync(userId, msg);

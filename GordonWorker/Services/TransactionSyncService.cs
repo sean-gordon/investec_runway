@@ -18,6 +18,7 @@ public class TransactionSyncService : ITransactionSyncService
     private readonly ISettingsService _settingsService;
     private readonly IActuarialService _actuarialService;
     private readonly IFinancialReportService _reportService;
+    private readonly ISubscriptionService _subscriptionService;
 
     public TransactionSyncService(
         IInvestecClient client, 
@@ -25,7 +26,8 @@ public class TransactionSyncService : ITransactionSyncService
         ILogger<TransactionSyncService> logger,
         ISettingsService settingsService,
         IActuarialService actuarialService,
-        IFinancialReportService reportService)
+        IFinancialReportService reportService,
+        ISubscriptionService subscriptionService)
     {
         _client = client;
         _configuration = configuration;
@@ -33,6 +35,7 @@ public class TransactionSyncService : ITransactionSyncService
         _settingsService = settingsService;
         _actuarialService = actuarialService;
         _reportService = reportService;
+        _subscriptionService = subscriptionService;
     }
 
     public async Task SyncTransactionsAsync(int userId, CancellationToken token = default)
@@ -100,6 +103,9 @@ public class TransactionSyncService : ITransactionSyncService
         {
             _logger.LogInformation("User {UserId}: Synced {Count} new transactions.", userId, totalNew);
             if (triggerReport) await _reportService.GenerateAndSendReportAsync(userId);
+            
+            // Trigger Subscription Check
+            await _subscriptionService.CheckSubscriptionsAsync(userId);
         }
     }
 

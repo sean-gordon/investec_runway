@@ -9,7 +9,6 @@ public class WeeklyReportWorker : BackgroundService
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<WeeklyReportWorker> _logger;
     private readonly IConfiguration _configuration;
-    private readonly Dictionary<int, DateTime> _lastSentPerUser = new();
 
     public WeeklyReportWorker(IServiceProvider serviceProvider, ILogger<WeeklyReportWorker> logger, IConfiguration configuration)
     {
@@ -31,30 +30,32 @@ public class WeeklyReportWorker : BackgroundService
                 var reportService = scope.ServiceProvider.GetRequiredService<IFinancialReportService>();
 
                 using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-                var userIds = await connection.QueryAsync<int>("SELECT id FROM users");
+                var users = await connection.QueryAsync<UserReportStatus>("SELECT id, last_weekly_report_sent as LastWeeklyReportSent FROM users");
 
                 var now = DateTime.Now;
 
-                foreach (var userId in userIds)
+                foreach (var user in users)
                 {
-                    var settings = await settingsService.GetSettingsAsync(userId);
+                    // Optimization: Skip immediately if already sent today
+                    if (user.LastWeeklyReportSent.HasValue && user.LastWeeklyReportSent.Value.Date == now.Date) continue;
+
+                    var settings = await settingsService.GetSettingsAsync(user.Id);
                     
                     if (Enum.TryParse<DayOfWeek>(settings.ReportDayOfWeek, true, out var targetDay) &&
                         now.DayOfWeek == targetDay && 
                         now.Hour == settings.ReportHour)
                     {
-                        _lastSentPerUser.TryGetValue(userId, out var lastSent);
-                        if (lastSent.Date != now.Date)
+                        try
                         {
-                            try
-                            {
-                                await reportService.GenerateAndSendReportAsync(userId);
-                                _lastSentPerUser[userId] = now;
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.LogError(ex, "Failed to send weekly report for user {UserId}", userId);
-                            }
+                            await reportService.GenerateAndSendReportAsync(user.Id);
+                            
+                            // Update DB immediately to prevent double-send
+                            await connection.ExecuteAsync("UPDATE users SET last_weekly_report_sent = @Now WHERE id = @Id", new { Now = now, user.Id });
+                            _logger.LogInformation("Weekly report sent for user {UserId}", user.Id);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Failed to send weekly report for user {UserId}", user.Id);
                         }
                     }
                 }
@@ -69,3 +70,5 @@ public class WeeklyReportWorker : BackgroundService
         }
     }
 }
+
+public record UserReportStatus(int Id, DateTime? LastWeeklyReportSent);

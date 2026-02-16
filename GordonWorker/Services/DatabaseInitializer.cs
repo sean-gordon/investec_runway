@@ -37,6 +37,7 @@ public class DatabaseInitializer
             // Ensure columns exist (migration for existing DB)
             try { await connection.ExecuteAsync("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'User';"); } catch {}
             try { await connection.ExecuteAsync("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_system BOOLEAN DEFAULT FALSE;"); } catch {}
+            try { await connection.ExecuteAsync("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_weekly_report_sent TIMESTAMPTZ;"); } catch {}
 
             // Seed System Admin
             var adminUser = _configuration["ADMIN_USERNAME"] ?? "admin";

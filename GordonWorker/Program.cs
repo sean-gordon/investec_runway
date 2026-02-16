@@ -66,6 +66,7 @@ builder.Services.AddSingleton<ITelegramService, TelegramService>();
 builder.Services.AddTransient<IEmailService, EmailService>();
 builder.Services.AddScoped<IFinancialReportService, FinancialReportService>();
 builder.Services.AddScoped<ITransactionSyncService, TransactionSyncService>();
+builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
 builder.Services.AddTransient<DatabaseInitializer>();
 
 builder.Services.AddHostedService<TransactionsBackgroundService>();

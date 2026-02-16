@@ -113,7 +113,10 @@ public class ActuarialService : IActuarialService
         // Calculate average cycle from history or default to 30
         var cycleHistory = salaryPayments.Zip(salaryPayments.Skip(1), (a, b) => (a.TransactionDate - b.TransactionDate).TotalDays).ToList();
         var avgCycleDays = cycleHistory.Any() ? cycleHistory.Average() : settings.DefaultCycleDays;
-        if (avgCycleDays < settings.MinCycleDays || avgCycleDays > settings.MaxCycleDays) avgCycleDays = settings.DefaultCycleDays; 
+        
+        // Clamp to min/max range first
+        if (avgCycleDays < settings.MinCycleDays) avgCycleDays = settings.MinCycleDays;
+        else if (avgCycleDays > settings.MaxCycleDays) avgCycleDays = settings.MaxCycleDays;
 
         var nextExpectedSalary = periodStart.AddDays(avgCycleDays);
         var daysUntilNextSalary = Math.Max(1, (nextExpectedSalary - today).TotalDays);

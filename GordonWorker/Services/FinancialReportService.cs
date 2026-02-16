@@ -8,6 +8,7 @@ namespace GordonWorker.Services;
 public interface IFinancialReportService
 {
     Task GenerateAndSendReportAsync(int userId);
+    Task<string> GetHealthStatsJsonAsync(int userId);
 }
 
 public class FinancialReportService : IFinancialReportService
@@ -41,18 +42,10 @@ public class FinancialReportService : IFinancialReportService
         _logger = logger;
     }
 
-    public async Task GenerateAndSendReportAsync(int userId)
+    public async Task<string> GetHealthStatsJsonAsync(int userId)
     {
         var settings = await _settingsService.GetSettingsAsync(userId);
         _investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey, settings.InvestecBaseUrl);
-
-        var culture = (System.Globalization.CultureInfo)System.Globalization.CultureInfo.InvariantCulture.Clone();
-        culture.NumberFormat.CurrencySymbol = "R";
-        culture.NumberFormat.CurrencyGroupSeparator = ",";
-        culture.NumberFormat.CurrencyDecimalSeparator = ".";
-        culture.NumberFormat.CurrencyDecimalDigits = 2;
-        culture.NumberFormat.CurrencyPositivePattern = 0; 
-        culture.NumberFormat.CurrencyNegativePattern = 1; 
 
         var accounts = await _investecClient.GetAccountsAsync();
         decimal currentBalance = 0;
@@ -94,9 +87,39 @@ public class FinancialReportService : IFinancialReportService
                 }).ToList()
         };
 
-        var jsonStats = JsonSerializer.Serialize(stats);
-        var aiExplanation = await _aiService.GenerateSimpleReportAsync(userId, jsonStats);
+        return JsonSerializer.Serialize(stats);
+    }
 
+    public async Task GenerateAndSendReportAsync(int userId)
+    {
+        var settings = await _settingsService.GetSettingsAsync(userId);
+        
+        // Use shared logic
+        var jsonStats = await GetHealthStatsJsonAsync(userId);
+        var aiExplanation = await _aiService.GenerateSimpleReportAsync(userId, jsonStats);
+        
+        // Re-calculate health report for template rendering (inefficient but safe refactor for now without major DTO change)
+        // Ideally GetHealthStatsJsonAsync would return a complex object with both raw data and JSON.
+        // For now, let's just duplicate the fetch to keep changes minimal or refactor slightly more.
+        // Given constraints, duplicating the fetch is safest to avoid breaking changes in template logic which depends on exact object structure.
+        // Wait, I can just deserialize the jsonStats back? No, it's missing the raw lists needed for template.
+        
+        // Let's just do this:
+        _investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey, settings.InvestecBaseUrl);
+        var culture = (System.Globalization.CultureInfo)System.Globalization.CultureInfo.InvariantCulture.Clone();
+        culture.NumberFormat.CurrencySymbol = "R";
+        culture.NumberFormat.CurrencyGroupSeparator = ",";
+        culture.NumberFormat.CurrencyDecimalSeparator = ".";
+
+        var accounts = await _investecClient.GetAccountsAsync();
+        decimal currentBalance = 0;
+        foreach (var acc in accounts) currentBalance += await _investecClient.GetAccountBalanceAsync(acc.AccountId);
+
+        using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+        await connection.OpenAsync();
+        var fullHistory = (await connection.QueryAsync<Transaction>("SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '90 days'", new { userId })).ToList();
+        var healthReport = await _actuarialService.AnalyzeHealthAsync(fullHistory, currentBalance, settings);
+        
         var subject = $"Weekly Financial Report - {DateTime.Now:dd MMM yyyy}";
         var personaName = !string.IsNullOrWhiteSpace(settings.SystemPersona) ? settings.SystemPersona : "Gordon";
 

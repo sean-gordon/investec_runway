@@ -120,7 +120,9 @@ public class DatabaseInitializer
             // Create new multi-tenant unique index
             try 
             {
-                await connection.ExecuteAsync("CREATE UNIQUE INDEX IF NOT EXISTS ux_transactions_id_date_user ON transactions (id, transaction_date, user_id);"); 
+                // Force recreate to be safe
+                await connection.ExecuteAsync("DROP INDEX IF EXISTS ux_transactions_id_date_user;");
+                await connection.ExecuteAsync("CREATE UNIQUE INDEX ux_transactions_id_date_user ON transactions (id, transaction_date, user_id);"); 
             } 
             catch (Exception ex) 
             { 

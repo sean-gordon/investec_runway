@@ -77,8 +77,21 @@ public class TelegramService : ITelegramService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to send Telegram message to {ChatId}", chatId);
-            return 0;
+            _logger.LogWarning(ex, "Failed to send HTML Telegram message to {ChatId}. Retrying as plain text.", chatId);
+            try
+            {
+                var botClient = new TelegramBotClient(settings.TelegramBotToken);
+                var sentMsg = await botClient.SendMessage(
+                    chatId: chatId,
+                    text: message // No parse mode = plain text
+                );
+                return sentMsg.MessageId;
+            }
+            catch (Exception ex2)
+            {
+                _logger.LogError(ex2, "Failed to send plain text Telegram message to {ChatId}", chatId);
+                return 0;
+            }
         }
     }
 
@@ -102,7 +115,20 @@ public class TelegramService : ITelegramService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to edit Telegram message {MsgId}", messageId);
+            _logger.LogWarning(ex, "Failed to edit HTML Telegram message {MsgId}. Retrying as plain text.", messageId);
+            try
+            {
+                var botClient = new TelegramBotClient(settings.TelegramBotToken);
+                await botClient.EditMessageText(
+                    chatId: chatId,
+                    messageId: messageId,
+                    text: newMessage
+                );
+            }
+            catch (Exception ex2)
+            {
+                _logger.LogError(ex2, "Failed to edit plain text Telegram message {MsgId}", messageId);
+            }
         }
     }
 

@@ -89,6 +89,7 @@ public class TelegramController : ControllerBase
             // Fire-and-forget processing using ServiceScopeFactory
             _ = Task.Run(async () => 
             {
+                int placeholderId = 0;
                 try 
                 {
                     using var scope = _scopeFactory.CreateScope();
@@ -100,6 +101,8 @@ public class TelegramController : ControllerBase
                     var chartService = scope.ServiceProvider.GetRequiredService<IChartService>();
                     var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
                     var logger = scope.ServiceProvider.GetRequiredService<ILogger<TelegramController>>();
+
+                    logger.LogInformation("Processing Telegram message for user {UserId}", userId);
 
                     var settings = await settingsService.GetSettingsAsync(userId);
                     var botClient = new TelegramBotClient(settings.TelegramBotToken);
@@ -115,7 +118,7 @@ public class TelegramController : ControllerBase
                         "Consolidating your financial position..."
                     };
                     var witty = wittyComments[new Random().Next(wittyComments.Length)];
-                    var placeholderId = await telegramService.SendMessageWithIdAsync(userId, $"<i>Processing Request...</i> {TelegramService.EscapeHtml(witty)}", chatId);
+                    placeholderId = await telegramService.SendMessageWithIdAsync(userId, $"<i>Processing Request...</i> {TelegramService.EscapeHtml(witty)}", chatId);
 
                     investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
                     
@@ -340,7 +343,19 @@ If the provided data context appears incomplete (e.g. R0.00 expected income or m
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Background processing error: {ex.Message}");
+                    _logger.LogError(ex, "Background processing error for user {UserId}", userId);
+                    try 
+                    {
+                        using var scope = _scopeFactory.CreateScope();
+                        var telegramService = scope.ServiceProvider.GetRequiredService<ITelegramService>();
+                        var errorMessage = "⚠️ <b>Analytical Error</b>\nI encountered an unexpected issue while processing your request. Please ensure your accounts are synced and try again.";
+                        if (placeholderId > 0) await telegramService.EditMessageAsync(userId, placeholderId, errorMessage, chatId);
+                        else await telegramService.SendMessageAsync(userId, errorMessage, chatId);
+                    }
+                    catch (Exception ex2)
+                    {
+                        _logger.LogError(ex2, "Failed to send error message to Telegram for user {UserId}", userId);
+                    }
                 }
             });
 

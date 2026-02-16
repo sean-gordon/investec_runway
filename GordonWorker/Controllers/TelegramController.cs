@@ -107,16 +107,14 @@ public class TelegramController : ControllerBase
                     // 1. Send Placeholder
                     var wittyComments = new[]
                     {
-                        "Crunching the numbers faster than inflation...",
-                        "Consulting the actuarial oracle...",
-                        "Checking if you can afford that avocado toast...",
-                        "Running the simulation... results look interesting...",
-                        "Asking the ledger for forgiveness...",
-                        "Calculating runway... hopefully it's long...",
-                        "Doing the math so you don't have to..."
+                        "Reviewing your latest transaction history...",
+                        "Consulting the actuarial models...",
+                        "Analyzing your current burn rate...",
+                        "Projecting your financial runway...",
+                        "Consolidating your financial position..."
                     };
                     var witty = wittyComments[new Random().Next(wittyComments.Length)];
-                    var placeholderId = await telegramService.SendMessageWithIdAsync(userId, $"⏳ *Processing...* {witty}", chatId);
+                    var placeholderId = await telegramService.SendMessageWithIdAsync(userId, $"_Processing Request..._ {witty}", chatId);
 
                     investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
                     
@@ -132,19 +130,29 @@ public class TelegramController : ControllerBase
                     var summary = await actuarialService.AnalyzeHealthAsync(history, currentBalance, settings);
                     var summaryJson = JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true });
 
-                    // Construct Hardcoded Stats Block (Matches Email Logic)
+                    // Construct Hardcoded Stats Block (Formal)
                     var culture = (System.Globalization.CultureInfo)System.Globalization.CultureInfo.InvariantCulture.Clone();
                     culture.NumberFormat.CurrencySymbol = "R";
-                    var statsBlock = $"💰 *Balance:* {currentBalance.ToString("C", culture)}\n" +
-                                     $"📅 *Runway:* {summary.ExpectedRunwayDays:F0} Days\n" +
-                                     $"💸 *Next Pay:* In {summary.DaysUntilNextSalary} Days\n" +
-                                     $"📉 *Trend:* {summary.TrendDirection}\n\n";
+                    var statsBlock = $"*Financial Position Update*\n" +
+                                     $"---------------------------\n" +
+                                     $"*Current Balance:* {currentBalance.ToString("C", culture)}\n" +
+                                     $"*Projected Runway:* {summary.ExpectedRunwayDays:F0} Days\n" +
+                                     $"*Next Salary:* In {summary.DaysUntilNextSalary} Days\n" +
+                                     $"*Trend:* {summary.TrendDirection}\n" +
+                                     $"---------------------------\n\n";
 
-                    var promptForSummary = $@"You are a witty financial assistant.
-Using the provided summary, give a 1-2 sentence 'flavor' comment about the user's financial health.
-Do NOT repeat the balance or runway numbers (I will add them myself).
-Just give the insight/advice.
-USER QUESTION: {messageText}";
+                    var promptForSummary = $@"You are acting as the user's Personal CFO. 
+The user has just asked: '{messageText}'
+
+**INSTRUCTIONS:**
+- Provide a direct, data-driven answer based *only* on the provided financial summary.
+- If the user's question implies financial stress, provide a path to stability.
+- If the user's question implies good health, suggest how to optimize or invest.
+- Maintain a tone of calm, professional competence.
+- Do NOT repeat the header stats (Balance, Runway, etc.) as they are already displayed above your message.
+
+**YOUR GOAL:**
+Demonstrate that you understand their financial reality better than they do, and guide them toward control.";
 
                     var aiResponse = await aiService.FormatResponseAsync(userId, promptForSummary, summaryJson, isWhatsApp: false);
                     string finalAnswer;

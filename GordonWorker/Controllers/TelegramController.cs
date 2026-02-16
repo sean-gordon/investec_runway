@@ -104,6 +104,20 @@ public class TelegramController : ControllerBase
                     var botClient = new TelegramBotClient(settings.TelegramBotToken);
                     await botClient.SendChatAction(chatId, Telegram.Bot.Types.Enums.ChatAction.Typing);
 
+                    // 1. Send Placeholder
+                    var wittyComments = new[]
+                    {
+                        "Crunching the numbers faster than inflation...",
+                        "Consulting the actuarial oracle...",
+                        "Checking if you can afford that avocado toast...",
+                        "Running the simulation... results look interesting...",
+                        "Asking the ledger for forgiveness...",
+                        "Calculating runway... hopefully it's long...",
+                        "Doing the math so you don't have to..."
+                    };
+                    var witty = wittyComments[new Random().Next(wittyComments.Length)];
+                    var placeholderId = await telegramService.SendMessageWithIdAsync(userId, $"⏳ *Processing...* {witty}", chatId);
+
                     investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
                     
                     using var db = new NpgsqlConnection(config.GetConnectionString("DefaultConnection"));
@@ -137,7 +151,15 @@ USER QUESTION: {messageText}";
                     }
                     else finalAnswer = aiResponse;
 
-                    await telegramService.SendMessageAsync(userId, finalAnswer, chatId);
+                    // 2. Edit Message with Final Answer
+                    if (placeholderId > 0)
+                    {
+                        await telegramService.EditMessageAsync(userId, placeholderId, finalAnswer, chatId);
+                    }
+                    else
+                    {
+                        await telegramService.SendMessageAsync(userId, finalAnswer, chatId);
+                    }
                 }
                 catch (Exception ex)
                 {

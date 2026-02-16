@@ -213,12 +213,12 @@ Context Information:
     // I should implement it but it lacks userId. 
     // BETTER PLAN: Remove that overload from interface and fix ChatController to call `FormatResponseAsync(userId, msg, "")`.
     
-    public async Task<string> GenerateSimpleReportAsync(string message) 
+    public Task<string> GenerateSimpleReportAsync(string message) 
     {
         // This is a dummy implementation to satisfy the interface if I keep it, 
         // but it's dangerous because it doesn't know the user.
         // I will throw an exception to force me to fix the caller.
-        throw new NotImplementedException("Use the userId overload.");
+        return Task.FromException<string>(new NotImplementedException("Use the userId overload."));
     }
 
     private async Task<string> GenerateCompletionAsync(int userId, string system, string prompt, CancellationToken ct = default)

@@ -6,6 +6,8 @@ namespace GordonWorker.Services;
 public interface ITelegramService
 {
     Task SendMessageAsync(int userId, string message, string? targetChatId = null);
+    Task<int> SendMessageWithIdAsync(int userId, string message, string? targetChatId = null);
+    Task EditMessageAsync(int userId, int messageId, string newMessage, string? targetChatId = null);
     Task InstallWebhookAsync(int userId, string webhookUrl);
     Task<string> GetWebhookInfoAsync(int userId);
 }
@@ -46,6 +48,11 @@ public class TelegramService : ITelegramService
 
     public async Task SendMessageAsync(int userId, string message, string? targetChatId = null)
     {
+        await SendMessageWithIdAsync(userId, message, targetChatId);
+    }
+
+    public async Task<int> SendMessageWithIdAsync(int userId, string message, string? targetChatId = null)
+    {
         var settings = await _settingsService.GetSettingsAsync(userId);
         var chatId = targetChatId ?? settings.TelegramChatId;
 
@@ -53,22 +60,48 @@ public class TelegramService : ITelegramService
             string.IsNullOrWhiteSpace(chatId))
         {
             _logger.LogWarning("Telegram settings (Token or ChatId) are not fully configured for user {UserId}. Cannot send message.", userId);
-            return;
+            return 0;
         }
 
         try
         {
             var botClient = new TelegramBotClient(settings.TelegramBotToken);
-            await botClient.SendMessage(
+            var sentMsg = await botClient.SendMessage(
                 chatId: chatId,
                 text: message,
                 parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown
             );
             _logger.LogInformation("Telegram message sent to {ChatId} for user {UserId}", chatId, userId);
+            return sentMsg.MessageId;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send Telegram message to {ChatId} for user {UserId}", chatId, userId);
+            return 0;
+        }
+    }
+
+    public async Task EditMessageAsync(int userId, int messageId, string newMessage, string? targetChatId = null)
+    {
+        var settings = await _settingsService.GetSettingsAsync(userId);
+        var chatId = targetChatId ?? settings.TelegramChatId;
+
+        if (string.IsNullOrWhiteSpace(settings.TelegramBotToken) || string.IsNullOrWhiteSpace(chatId)) return;
+
+        try
+        {
+            var botClient = new TelegramBotClient(settings.TelegramBotToken);
+            await botClient.EditMessageText(
+                chatId: chatId,
+                messageId: messageId,
+                text: newMessage,
+                parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown
+            );
+            _logger.LogInformation("Telegram message {MsgId} edited for user {UserId}", messageId, userId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to edit Telegram message {MsgId}", messageId);
         }
     }
 }

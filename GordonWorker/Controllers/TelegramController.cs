@@ -254,10 +254,10 @@ INSTRUCTIONS:
                     culture.NumberFormat.CurrencySymbol = "R";
                     var statsBlock = $"*Financial Position Update*\n" +
                                      $"---------------------------\n" +
-                                     $"*Current Balance:* {currentBalance.ToString("C", culture)}\n" +
-                                     $"*Projected Runway:* {summary.ExpectedRunwayDays:F0} Days\n" +
+                                     $"*Current Balance:* {TelegramService.EscapeMarkdownV2(currentBalance.ToString("C", culture))}\n" +
+                                     $"*Projected Runway:* {TelegramService.EscapeMarkdownV2(summary.ExpectedRunwayDays.ToString("F0"))} Days\n" +
                                      $"*Next Salary:* In {summary.DaysUntilNextSalary} Days\n" +
-                                     $"*Trend:* {summary.TrendDirection}\n" +
+                                     $"*Trend:* {TelegramService.EscapeMarkdownV2(summary.TrendDirection)}\n" +
                                      $"---------------------------\n\n";
 
                     // Retrieve recent chat history

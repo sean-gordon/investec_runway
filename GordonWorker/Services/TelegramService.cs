@@ -95,16 +95,29 @@ public class TelegramService : ITelegramService
             var sentMsg = await botClient.SendMessage(
                 chatId: chatId,
                 text: message,
-                parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown
+                parseMode: Telegram.Bot.Types.Enums.ParseMode.MarkdownV2
             );
-            _logger.LogInformation("Telegram message sent to {ChatId} for user {UserId}", chatId, userId);
+            _logger.LogInformation("Telegram message {MsgId} delivered to {ChatId} for user {UserId}", sentMsg.MessageId, chatId, userId);
             return sentMsg.MessageId;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to send Telegram message to {ChatId} for user {UserId}", chatId, userId);
+            _logger.LogError(ex, "Failed to send Telegram message to {ChatId} for user {UserId}. Message: {Msg}", chatId, userId, message);
             return 0;
         }
+    }
+
+    public static string EscapeMarkdownV2(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return "";
+        // Characters that must be escaped in MarkdownV2
+        var reserved = new[] { "_", "*", "[", "]", "(", ")", "~", "`", ">", "#", "+", "-", "=", "|", "{", "}", ".", "!" };
+        var escaped = text;
+        foreach (var r in reserved)
+        {
+            escaped = escaped.Replace(r, "\\" + r);
+        }
+        return escaped;
     }
 
     public async Task EditMessageAsync(int userId, int messageId, string newMessage, string? targetChatId = null)

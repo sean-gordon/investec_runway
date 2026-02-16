@@ -97,6 +97,7 @@ public class TelegramController : ControllerBase
                     var aiService = scope.ServiceProvider.GetRequiredService<IAiService>();
                     var investecClient = scope.ServiceProvider.GetRequiredService<IInvestecClient>();
                     var actuarialService = scope.ServiceProvider.GetRequiredService<IActuarialService>();
+                    var chartService = scope.ServiceProvider.GetRequiredService<IChartService>();
                     var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
                     var logger = scope.ServiceProvider.GetRequiredService<ILogger<TelegramController>>();
 
@@ -129,6 +130,82 @@ public class TelegramController : ControllerBase
 
                     var summary = await actuarialService.AnalyzeHealthAsync(history, currentBalance, settings);
                     var summaryJson = JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true });
+
+                    // --- 0. Check for Explicit Chart Request ---
+                    if (messageText.ToLower().Contains("chart") || messageText.ToLower().Contains("graph"))
+                    {
+                        var chartBytes = chartService.GenerateRunwayChart(history, currentBalance, (double)summary.WeightedDailyBurn);
+                        await telegramService.SendImageAsync(userId, chartBytes, "📉 *Financial Runway Projection*", chatId);
+                        await telegramService.EditMessageAsync(userId, placeholderId, "Here is your visual runway projection.", chatId);
+                        return;
+                    }
+
+                    // --- 1. Check for Transaction Explanation ---
+                    var (explainedTxId, explanationNote) = await aiService.AnalyzeExpenseExplanationAsync(userId, messageText, history);
+                    
+                    if (explainedTxId != null)
+                    {
+                        // Update DB
+                        await db.ExecuteAsync("UPDATE transactions SET notes = @Note WHERE id = @Id", new { Note = explanationNote, Id = explainedTxId });
+                        
+                        var tx = history.FirstOrDefault(t => t.Id == explainedTxId);
+                        var confirmation = $"✅ *Noted.* I've updated the ledger:\n_{tx?.Description ?? "Transaction"}_: {explanationNote}";
+                        
+                        // Save history (User Request)
+                        await db.ExecuteAsync("INSERT INTO chat_history (user_id, message_text, is_user) VALUES (@UserId, @Text, TRUE)", 
+                            new { UserId = userId, Text = messageText });
+                        // Save history (AI Response)
+                        await db.ExecuteAsync("INSERT INTO chat_history (user_id, message_text, is_user) VALUES (@UserId, @Text, FALSE)", 
+                            new { UserId = userId, Text = confirmation });
+
+                        if (placeholderId > 0) await telegramService.EditMessageAsync(userId, placeholderId, confirmation, chatId);
+                        else await telegramService.SendMessageAsync(userId, confirmation, chatId);
+                        
+                        return; // Exit early, no need for full financial report
+                    }
+                    // --------------------------------------------
+
+                    // --- 2. Check for Affordability Question ---
+                    var (isAffordability, affordAmount, affordDesc) = await aiService.AnalyzeAffordabilityAsync(userId, messageText);
+                    
+                    if (isAffordability)
+                    {
+                        var amount = affordAmount ?? 0; // If null, maybe AI couldn't extract, or user didn't say. We can prompt back or just run generic.
+                        
+                        if (amount > 0)
+                        {
+                            // Simulate the purchase
+                            var simulatedBalance = currentBalance - amount;
+                            var simSummary = await actuarialService.AnalyzeHealthAsync(history, simulatedBalance, settings);
+                            
+                            var runwayImpact = summary.ExpectedRunwayDays - simSummary.ExpectedRunwayDays;
+                            var riskLevel = "Low";
+                            if (runwayImpact > 5) riskLevel = "Medium";
+                            if (simSummary.ExpectedRunwayDays < 10) riskLevel = "High";
+
+                            var response = $"*Affordability Analysis: {affordDesc}*\n" +
+                                           $"-----------------------------\n" +
+                                           $"*Price:* R{amount:N2}\n" +
+                                           $"*New Balance:* R{simulatedBalance:N2}\n" +
+                                           $"*Runway Impact:* -{runwayImpact:F1} days\n" +
+                                           $"*New Runway:* {simSummary.ExpectedRunwayDays:F1} days\n" +
+                                           $"*Risk Level:* {riskLevel}\n\n" +
+                                           (riskLevel == "High" ? "🛑 *ADVISORY:* This purchase puts you in a dangerous liquidity position." : "✅ *ADVISORY:* You have sufficient buffer for this.");
+
+                            if (placeholderId > 0) await telegramService.EditMessageAsync(userId, placeholderId, response, chatId);
+                            else await telegramService.SendMessageAsync(userId, response, chatId);
+
+                            // Send chart if High Risk
+                            if (riskLevel == "High")
+                            {
+                                var chartBytes = chartService.GenerateRunwayChart(history, simulatedBalance, (double)summary.WeightedDailyBurn);
+                                await telegramService.SendImageAsync(userId, chartBytes, "📉 *Projected Impact Visualization*", chatId);
+                            }
+
+                            return;
+                        }
+                    }
+                    // --------------------------------------------
 
                     // Construct Hardcoded Stats Block (Formal)
                     var culture = (System.Globalization.CultureInfo)System.Globalization.CultureInfo.InvariantCulture.Clone();

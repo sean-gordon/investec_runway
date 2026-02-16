@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using GordonWorker.Models;
 
 namespace GordonWorker.Services;
 
@@ -8,6 +9,8 @@ public interface IAiService
     Task<string> GenerateSqlAsync(int userId, string userPrompt);
     Task<string> FormatResponseAsync(int userId, string userPrompt, string dataContext, bool isWhatsApp = false);
     Task<string> GenerateSimpleReportAsync(int userId, string statsJson);
+    Task<(Guid? TransactionId, string? Note)> AnalyzeExpenseExplanationAsync(int userId, string userMessage, List<Transaction> recentTransactions);
+    Task<(bool IsAffordabilityCheck, decimal? Amount, string? Description)> AnalyzeAffordabilityAsync(int userId, string userMessage);
     Task<(bool Success, string Error)> TestConnectionAsync(int userId);
     Task<List<string>> GetAvailableModelsAsync(int userId);
 }
@@ -23,6 +26,103 @@ public class AiService : IAiService
         _httpClient = httpClient;
         _logger = logger;
         _settingsService = settingsService;
+    }
+
+    public async Task<(bool IsAffordabilityCheck, decimal? Amount, string? Description)> AnalyzeAffordabilityAsync(int userId, string userMessage)
+    {
+        var systemPrompt = @"You are a financial intent analyzer.
+YOUR GOAL: Detect if the user is asking if they can afford something.
+
+EXAMPLES:
+- 'Can I buy a new TV for R5000?' -> { ""isCheck"": true, ""amount"": 5000, ""desc"": ""New TV"" }
+- 'Can I afford a holiday?' -> { ""isCheck"": true, ""amount"": null, ""desc"": ""Holiday"" }
+- 'Do I have enough for dinner?' -> { ""isCheck"": true, ""amount"": null, ""desc"": ""Dinner"" }
+- 'What is my balance?' -> { ""isCheck"": false }
+
+OUTPUT FORMAT:
+JSON ONLY: { ""isCheck"": boolean, ""amount"": number_or_null, ""desc"": string_or_null }";
+
+        var jsonResponse = await GenerateCompletionAsync(userId, systemPrompt, $"USER MESSAGE: \"{userMessage}\"");
+
+        try
+        {
+            jsonResponse = jsonResponse.Replace("```json", "").Replace("```", "").Trim();
+            using var doc = JsonDocument.Parse(jsonResponse);
+            var root = doc.RootElement;
+            
+            if (root.TryGetProperty("isCheck", out var isCheckEl) && isCheckEl.GetBoolean())
+            {
+                decimal? amount = null;
+                if (root.TryGetProperty("amount", out var amountEl) && amountEl.ValueKind == JsonValueKind.Number)
+                    amount = amountEl.GetDecimal();
+                
+                var desc = root.TryGetProperty("desc", out var descEl) ? descEl.GetString() : null;
+                
+                return (true, amount, desc);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Failed to parse affordability analysis: {Message}", ex.Message);
+        }
+
+        return (false, null, null);
+    }
+
+    public async Task<(Guid? TransactionId, string? Note)> AnalyzeExpenseExplanationAsync(int userId, string userMessage, List<Transaction> recentTransactions)
+    {
+        var settings = await _settingsService.GetSettingsAsync(userId);
+        
+        // Filter for transactions that likely need explanation (high value or income)
+        var candidates = recentTransactions
+            .Where(t => Math.Abs(t.Amount) > 500) // Optimization: only look at significant ones
+            .OrderByDescending(t => t.TransactionDate)
+            .Take(10)
+            .Select(t => new { t.Id, t.Description, Amount = t.Amount, Date = t.TransactionDate.ToString("yyyy-MM-dd") })
+            .ToList();
+
+        if (!candidates.Any()) return (null, null);
+
+        var candidatesJson = JsonSerializer.Serialize(candidates);
+        var systemPrompt = @"You are a financial data assistant. Your ONLY job is to link a user's explanation to a specific transaction.
+
+INPUT DATA:
+1. User Message
+2. List of Recent Transactions (JSON)
+
+logic:
+- If the user's message clearly explains what a specific transaction was for (e.g., 'The 5000 was for a laptop', 'Woolworths was groceries'), identify the Transaction ID.
+- The Note should be the user's explanation cleaned up (e.g., 'Laptop purchase', 'Groceries').
+- If the user is just saying 'hello' or asking a general question, return NULL.
+
+OUTPUT FORMAT:
+Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": null }";
+
+        var prompt = $"USER MESSAGE: \"{userMessage}\"\n\nTRANSACTIONS:\n{candidatesJson}";
+        
+        var jsonResponse = await GenerateCompletionAsync(userId, systemPrompt, prompt);
+        
+        try 
+        {
+            // Clean up code blocks if the LLM adds them
+            jsonResponse = jsonResponse.Replace("```json", "").Replace("```", "").Trim();
+            using var doc = JsonDocument.Parse(jsonResponse);
+            if (doc.RootElement.TryGetProperty("id", out var idElement) && idElement.ValueKind == JsonValueKind.String)
+            {
+                var idStr = idElement.GetString();
+                if (Guid.TryParse(idStr, out var guid))
+                {
+                    var note = doc.RootElement.GetProperty("note").GetString();
+                    return (guid, note);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Failed to parse AI explanation analysis: {Message}", ex.Message);
+        }
+
+        return (null, null);
     }
 
     private async Task<(string Provider, string OllamaUrl, string OllamaModel, string GeminiKey)> GetConnectionDetailsAsync(int userId)

@@ -108,9 +108,13 @@ public class DatabaseInitializer
                     amount DECIMAL(18, 2),
                     balance DECIMAL(18, 2),
                     category TEXT,
-                    is_ai_processed BOOLEAN DEFAULT FALSE
+                    is_ai_processed BOOLEAN DEFAULT FALSE,
+                    notes TEXT
                 );";
             await connection.ExecuteAsync(transactionsSql);
+
+            // Migration for existing table
+            try { await connection.ExecuteAsync("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS notes TEXT;"); } catch {}
 
             // 4. Index Migration
             // Drop old constraints/indexes that conflict with multi-tenant unique index

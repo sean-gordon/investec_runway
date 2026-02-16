@@ -19,6 +19,7 @@ public class TransactionSyncService : ITransactionSyncService
     private readonly IActuarialService _actuarialService;
     private readonly IFinancialReportService _reportService;
     private readonly ISubscriptionService _subscriptionService;
+    private readonly ITelegramService _telegramService;
 
     public TransactionSyncService(
         IInvestecClient client, 
@@ -27,7 +28,8 @@ public class TransactionSyncService : ITransactionSyncService
         ISettingsService settingsService,
         IActuarialService actuarialService,
         IFinancialReportService reportService,
-        ISubscriptionService subscriptionService)
+        ISubscriptionService subscriptionService,
+        ITelegramService telegramService)
     {
         _client = client;
         _configuration = configuration;
@@ -36,6 +38,7 @@ public class TransactionSyncService : ITransactionSyncService
         _actuarialService = actuarialService;
         _reportService = reportService;
         _subscriptionService = subscriptionService;
+        _telegramService = telegramService;
     }
 
     public async Task SyncTransactionsAsync(int userId, CancellationToken token = default)
@@ -67,8 +70,8 @@ public class TransactionSyncService : ITransactionSyncService
             foreach (var tx in txs)
             {
                 var insertSql = @"
-                    INSERT INTO transactions (id, user_id, account_id, transaction_date, description, amount, balance, category, is_ai_processed)
-                    VALUES (@Id, @UserId, @AccountId, @TransactionDate, @Description, @Amount, @Balance, @Category, @IsAiProcessed)
+                    INSERT INTO transactions (id, user_id, account_id, transaction_date, description, amount, balance, category, is_ai_processed, notes)
+                    VALUES (@Id, @UserId, @AccountId, @TransactionDate, @Description, @Amount, @Balance, @Category, @IsAiProcessed, NULL)
                     ON CONFLICT (id, transaction_date, user_id) DO NOTHING";
 
                 var parameters = new
@@ -92,9 +95,19 @@ public class TransactionSyncService : ITransactionSyncService
                     {
                         var normalizedDesc = _actuarialService.NormalizeDescription(tx.Description);
                         if (!_actuarialService.IsFixedCost(normalizedDesc, settings) && !_actuarialService.IsSalary(tx, settings))
+                        {
                             triggerReport = true;
+                            // Immediate Interaction
+                            await _telegramService.SendMessageAsync(userId, 
+                                $"🚨 *High Spend Detected*\n{tx.Description}: R{tx.Amount:N2}\n\nWhat was this for?");
+                        }
                     }
-                    if (tx.Amount <= -settings.IncomeAlertThreshold) triggerReport = true;
+                    if (tx.Amount <= -settings.IncomeAlertThreshold) 
+                    {
+                        triggerReport = true;
+                         await _telegramService.SendMessageAsync(userId, 
+                                $"💰 *Large Income Detected*\n{tx.Description}: R{Math.Abs(tx.Amount):N2}\n\nIs this regular income or a windfall?");
+                    }
                 }
             }
         }

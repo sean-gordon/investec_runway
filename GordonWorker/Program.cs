@@ -63,6 +63,7 @@ builder.Services.AddSingleton<IActuarialService, ActuarialService>();
 builder.Services.AddSingleton<ISystemStatusService, SystemStatusService>();
 builder.Services.AddSingleton<ITwilioService, TwilioService>();
 builder.Services.AddSingleton<ITelegramService, TelegramService>();
+builder.Services.AddSingleton<IChartService, ChartService>();
 builder.Services.AddTransient<IEmailService, EmailService>();
 builder.Services.AddScoped<IFinancialReportService, FinancialReportService>();
 builder.Services.AddScoped<ITransactionSyncService, TransactionSyncService>();
@@ -71,6 +72,7 @@ builder.Services.AddTransient<DatabaseInitializer>();
 
 builder.Services.AddHostedService<TransactionsBackgroundService>();
 builder.Services.AddHostedService<WeeklyReportWorker>();
+builder.Services.AddHostedService<DailyBriefingWorker>();
 builder.Services.AddHostedService<ConnectivityWorker>();
 
 var app = builder.Build();

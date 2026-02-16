@@ -8,6 +8,7 @@ public interface ITelegramService
     Task SendMessageAsync(int userId, string message, string? targetChatId = null);
     Task<int> SendMessageWithIdAsync(int userId, string message, string? targetChatId = null);
     Task EditMessageAsync(int userId, int messageId, string newMessage, string? targetChatId = null);
+    Task SendImageAsync(int userId, byte[] imageData, string caption, string? targetChatId = null);
     Task InstallWebhookAsync(int userId, string webhookUrl);
     Task<string> GetWebhookInfoAsync(int userId);
 }
@@ -21,6 +22,31 @@ public class TelegramService : ITelegramService
     {
         _settingsService = settingsService;
         _logger = logger;
+    }
+
+    public async Task SendImageAsync(int userId, byte[] imageData, string caption, string? targetChatId = null)
+    {
+        var settings = await _settingsService.GetSettingsAsync(userId);
+        var chatId = targetChatId ?? settings.TelegramChatId;
+
+        if (string.IsNullOrWhiteSpace(settings.TelegramBotToken) || string.IsNullOrWhiteSpace(chatId)) return;
+
+        try
+        {
+            var botClient = new TelegramBotClient(settings.TelegramBotToken);
+            using var stream = new MemoryStream(imageData);
+            await botClient.SendPhoto(
+                chatId: chatId,
+                photo: Telegram.Bot.Types.InputFile.FromStream(stream),
+                caption: caption,
+                parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown
+            );
+            _logger.LogInformation("Telegram image sent to {ChatId} for user {UserId}", chatId, userId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send Telegram image.");
+        }
     }
 
     public async Task<string> GetWebhookInfoAsync(int userId)

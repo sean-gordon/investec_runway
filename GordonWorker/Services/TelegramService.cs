@@ -1,5 +1,6 @@
 using Telegram.Bot;
 using Telegram.Bot.Types;
+using System.Net;
 
 namespace GordonWorker.Services;
 
@@ -22,31 +23,6 @@ public class TelegramService : ITelegramService
     {
         _settingsService = settingsService;
         _logger = logger;
-    }
-
-    public async Task SendImageAsync(int userId, byte[] imageData, string caption, string? targetChatId = null)
-    {
-        var settings = await _settingsService.GetSettingsAsync(userId);
-        var chatId = targetChatId ?? settings.TelegramChatId;
-
-        if (string.IsNullOrWhiteSpace(settings.TelegramBotToken) || string.IsNullOrWhiteSpace(chatId)) return;
-
-        try
-        {
-            var botClient = new TelegramBotClient(settings.TelegramBotToken);
-            using var stream = new MemoryStream(imageData);
-            await botClient.SendPhoto(
-                chatId: chatId,
-                photo: Telegram.Bot.Types.InputFile.FromStream(stream),
-                caption: caption,
-                parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown
-            );
-            _logger.LogInformation("Telegram image sent to {ChatId} for user {UserId}", chatId, userId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to send Telegram image.");
-        }
     }
 
     public async Task<string> GetWebhookInfoAsync(int userId)
@@ -82,10 +58,9 @@ public class TelegramService : ITelegramService
         var settings = await _settingsService.GetSettingsAsync(userId);
         var chatId = targetChatId ?? settings.TelegramChatId;
 
-        if (string.IsNullOrWhiteSpace(settings.TelegramBotToken) || 
-            string.IsNullOrWhiteSpace(chatId))
+        if (string.IsNullOrWhiteSpace(settings.TelegramBotToken) || string.IsNullOrWhiteSpace(chatId))
         {
-            _logger.LogWarning("Telegram settings (Token or ChatId) are not fully configured for user {UserId}. Cannot send message.", userId);
+            _logger.LogWarning("Telegram settings incomplete for user {UserId}.", userId);
             return 0;
         }
 
@@ -95,29 +70,16 @@ public class TelegramService : ITelegramService
             var sentMsg = await botClient.SendMessage(
                 chatId: chatId,
                 text: message,
-                parseMode: Telegram.Bot.Types.Enums.ParseMode.MarkdownV2
+                parseMode: Telegram.Bot.Types.Enums.ParseMode.Html
             );
-            _logger.LogInformation("Telegram message {MsgId} delivered to {ChatId} for user {UserId}", sentMsg.MessageId, chatId, userId);
+            _logger.LogInformation("Telegram message {MsgId} delivered to {ChatId}", sentMsg.MessageId, chatId);
             return sentMsg.MessageId;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to send Telegram message to {ChatId} for user {UserId}. Message: {Msg}", chatId, userId, message);
+            _logger.LogError(ex, "Failed to send Telegram message to {ChatId}", chatId);
             return 0;
         }
-    }
-
-    public static string EscapeMarkdownV2(string? text)
-    {
-        if (string.IsNullOrEmpty(text)) return "";
-        // Characters that must be escaped in MarkdownV2
-        var reserved = new[] { "_", "*", "[", "]", "(", ")", "~", "`", ">", "#", "+", "-", "=", "|", "{", "}", ".", "!" };
-        var escaped = text;
-        foreach (var r in reserved)
-        {
-            escaped = escaped.Replace(r, "\\" + r);
-        }
-        return escaped;
     }
 
     public async Task EditMessageAsync(int userId, int messageId, string newMessage, string? targetChatId = null)
@@ -134,13 +96,45 @@ public class TelegramService : ITelegramService
                 chatId: chatId,
                 messageId: messageId,
                 text: newMessage,
-                parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown
+                parseMode: Telegram.Bot.Types.Enums.ParseMode.Html
             );
-            _logger.LogInformation("Telegram message {MsgId} edited for user {UserId}", messageId, userId);
+            _logger.LogInformation("Telegram message {MsgId} edited", messageId);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to edit Telegram message {MsgId}", messageId);
         }
+    }
+
+    public async Task SendImageAsync(int userId, byte[] imageData, string caption, string? targetChatId = null)
+    {
+        var settings = await _settingsService.GetSettingsAsync(userId);
+        var chatId = targetChatId ?? settings.TelegramChatId;
+
+        if (string.IsNullOrWhiteSpace(settings.TelegramBotToken) || string.IsNullOrWhiteSpace(chatId)) return;
+
+        try
+        {
+            var botClient = new TelegramBotClient(settings.TelegramBotToken);
+            using var stream = new MemoryStream(imageData);
+            await botClient.SendPhoto(
+                chatId: chatId,
+                photo: InputFile.FromStream(stream),
+                caption: caption,
+                parseMode: Telegram.Bot.Types.Enums.ParseMode.Html
+            );
+            _logger.LogInformation("Telegram image sent to {ChatId}", chatId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send Telegram image.");
+        }
+    }
+
+    public static string EscapeMarkdownV2(string? text)
+    {
+        // Now using HTML, so we use HtmlEncode
+        if (string.IsNullOrEmpty(text)) return "";
+        return WebUtility.HtmlEncode(text);
     }
 }

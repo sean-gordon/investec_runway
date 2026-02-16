@@ -293,7 +293,7 @@ Return ONLY the raw SQL query. Do NOT use Markdown formatting (no ```sql). Do NO
 
         var formattingRule = isWhatsApp 
             ? "4. **Formatting:** Use WhatsApp formatting: *bold* for bold, _italics_ for italics, and - for bullet points. Do NOT use HTML or standard Markdown bold (**)."
-            : "4. **Formatting:** Use standard Markdown (bold, lists) for readability. Do NOT use HTML.";
+            : "4. **Formatting:** Use semantic HTML tags for Telegram: <b>bold</b> and <i>italic</i>. For lists, use plain bullet points (•). Do NOT use standard Markdown (**, _, ###).";
 
         var systemPrompt = $@"You are {persona}, a distinguished Personal Chief Financial Officer and Actuary for {userName}.
         

@@ -102,14 +102,14 @@ public class TransactionSyncService : ITransactionSyncService
                             triggerReport = true;
                             // Immediate Interaction
                             await _telegramService.SendMessageAsync(userId, 
-                                $"🚨 *High Spend Detected*\n{tx.Description}: R{tx.Amount:N2}\n\nWhat was this for?");
+                                $"🚨 <b>High Spend Detected</b>\n{TelegramService.EscapeMarkdownV2(tx.Description)}: R{tx.Amount:N2}\n\nWhat was this for?");
                         }
                     }
                     if (tx.Amount <= -settings.IncomeAlertThreshold) 
                     {
                         triggerReport = true;
                          await _telegramService.SendMessageAsync(userId, 
-                                $"💰 *Large Income Detected*\n{tx.Description}: R{Math.Abs(tx.Amount):N2}\n\nIs this regular income or a windfall?");
+                                $"💰 <b>Large Income Detected</b>\n{TelegramService.EscapeMarkdownV2(tx.Description)}: R{Math.Abs(tx.Amount):N2}\n\nIs this regular income or a windfall?");
                     }
                 }
             }

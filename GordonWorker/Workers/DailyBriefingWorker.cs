@@ -103,7 +103,7 @@ INSTRUCTIONS:
 
             var briefing = await aiService.FormatResponseAsync(userId, prompt, "", isWhatsApp: false);
             
-            await telegramService.SendMessageAsync(userId, $"🌅 *Morning Briefing*\n\n{briefing}");
+            await telegramService.SendMessageAsync(userId, $"🌅 <b>Morning Briefing</b>\n\n{briefing}");
         }
         catch (Exception ex)
         {

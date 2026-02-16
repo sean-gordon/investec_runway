@@ -115,7 +115,7 @@ public class TelegramController : ControllerBase
                         "Consolidating your financial position..."
                     };
                     var witty = wittyComments[new Random().Next(wittyComments.Length)];
-                    var placeholderId = await telegramService.SendMessageWithIdAsync(userId, $"_Processing Request..._ {witty}", chatId);
+                    var placeholderId = await telegramService.SendMessageWithIdAsync(userId, $"<i>Processing Request...</i> {TelegramService.EscapeMarkdownV2(witty)}", chatId);
 
                     investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
                     
@@ -161,7 +161,7 @@ INSTRUCTIONS:
 
                                 var caption = await aiService.FormatResponseAsync(userId, commentaryPrompt, "", isWhatsApp: false);
                                 
-                                await telegramService.SendImageAsync(userId, chartBytes, $"📊 *{chartTitle}*\n\n{caption}", chatId);
+                                await telegramService.SendImageAsync(userId, chartBytes, $"<b>📊 {TelegramService.EscapeMarkdownV2(chartTitle)}</b>\n\n{caption}", chatId);
                                 if (placeholderId > 0) await telegramService.EditMessageAsync(userId, placeholderId, "Analytical visualization complete.", chatId);
                                 return;
                             }
@@ -176,7 +176,7 @@ INSTRUCTIONS:
                     if (messageText.ToLower().Contains("runway") && (messageText.ToLower().Contains("chart") || messageText.ToLower().Contains("graph")))
                     {
                         var chartBytes = chartService.GenerateRunwayChart(history, currentBalance, (double)summary.WeightedDailyBurn);
-                        await telegramService.SendImageAsync(userId, chartBytes, "📉 *Financial Runway Projection*", chatId);
+                        await telegramService.SendImageAsync(userId, chartBytes, "<b>📉 Financial Runway Projection</b>", chatId);
                         await telegramService.EditMessageAsync(userId, placeholderId, "Visual runway projection generated.", chatId);
                         return;
                     }
@@ -191,7 +191,7 @@ INSTRUCTIONS:
                             new { Note = explanationNote, Id = explainedTxId, UserId = userId });
                         
                         var tx = history.FirstOrDefault(t => t.Id == explainedTxId);
-                        var confirmation = $"✅ *Noted.* I've updated the ledger:\n_{tx?.Description ?? "Transaction"}_: {explanationNote}";
+                        var confirmation = $"✅ <b>Noted.</b> I've updated the ledger:\n<i>{TelegramService.EscapeMarkdownV2(tx?.Description ?? "Transaction")}</i>: {TelegramService.EscapeMarkdownV2(explanationNote)}";
                         
                         // Save history (User Request)
                         await db.ExecuteAsync("INSERT INTO chat_history (user_id, message_text, is_user) VALUES (@UserId, @Text, TRUE)", 
@@ -225,14 +225,14 @@ INSTRUCTIONS:
                             if (runwayImpact > 5) riskLevel = "Medium";
                             if (simSummary.ExpectedRunwayDays < 10) riskLevel = "High";
 
-                            var response = $"*Affordability Analysis: {affordDesc}*\n" +
+                            var response = $"<b>Affordability Analysis: {TelegramService.EscapeMarkdownV2(affordDesc)}</b>\n" +
                                            $"-----------------------------\n" +
-                                           $"*Price:* R{amount:N2}\n" +
-                                           $"*New Balance:* R{simulatedBalance:N2}\n" +
-                                           $"*Runway Impact:* -{runwayImpact:F1} days\n" +
-                                           $"*New Runway:* {simSummary.ExpectedRunwayDays:F1} days\n" +
-                                           $"*Risk Level:* {riskLevel}\n\n" +
-                                           (riskLevel == "High" ? "🛑 *ADVISORY:* This purchase puts you in a dangerous liquidity position." : "✅ *ADVISORY:* You have sufficient buffer for this.");
+                                           $"<b>Price:</b> R{amount:N2}\n" +
+                                           $"<b>New Balance:</b> R{simulatedBalance:N2}\n" +
+                                           $"<b>Runway Impact:</b> -{runwayImpact:F1} days\n" +
+                                           $"<b>New Runway:</b> {simSummary.ExpectedRunwayDays:F1} days\n" +
+                                           $"<b>Risk Level:</b> {riskLevel}\n\n" +
+                                           (riskLevel == "High" ? "🛑 <b>ADVISORY:</b> This purchase puts you in a dangerous liquidity position." : "✅ <b>ADVISORY:</b> You have sufficient buffer for this.");
 
                             if (placeholderId > 0) await telegramService.EditMessageAsync(userId, placeholderId, response, chatId);
                             else await telegramService.SendMessageAsync(userId, response, chatId);
@@ -241,7 +241,7 @@ INSTRUCTIONS:
                             if (riskLevel == "High")
                             {
                                 var chartBytes = chartService.GenerateRunwayChart(history, simulatedBalance, (double)summary.WeightedDailyBurn);
-                                await telegramService.SendImageAsync(userId, chartBytes, "📉 *Projected Impact Visualization*", chatId);
+                                await telegramService.SendImageAsync(userId, chartBytes, "<b>📉 Projected Impact Visualization</b>", chatId);
                             }
 
                             return;
@@ -252,12 +252,12 @@ INSTRUCTIONS:
                     // Construct Hardcoded Stats Block (Formal)
                     var culture = (System.Globalization.CultureInfo)System.Globalization.CultureInfo.InvariantCulture.Clone();
                     culture.NumberFormat.CurrencySymbol = "R";
-                    var statsBlock = $"*Financial Position Update*\n" +
+                    var statsBlock = $"<b>Financial Position Update</b>\n" +
                                      $"---------------------------\n" +
-                                     $"*Current Balance:* {TelegramService.EscapeMarkdownV2(currentBalance.ToString("C", culture))}\n" +
-                                     $"*Projected Runway:* {TelegramService.EscapeMarkdownV2(summary.ExpectedRunwayDays.ToString("F0"))} Days\n" +
-                                     $"*Next Salary:* In {summary.DaysUntilNextSalary} Days\n" +
-                                     $"*Trend:* {TelegramService.EscapeMarkdownV2(summary.TrendDirection)}\n" +
+                                     $"<b>Current Balance:</b> {TelegramService.EscapeMarkdownV2(currentBalance.ToString("C", culture))}\n" +
+                                     $"<b>Projected Runway:</b> {TelegramService.EscapeMarkdownV2(summary.ExpectedRunwayDays.ToString("F0"))} Days\n" +
+                                     $"<b>Next Salary:</b> In {summary.DaysUntilNextSalary} Days\n" +
+                                     $"<b>Trend:</b> {TelegramService.EscapeMarkdownV2(summary.TrendDirection)}\n" +
                                      $"---------------------------\n\n";
 
                     // Retrieve recent chat history

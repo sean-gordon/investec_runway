@@ -2,6 +2,7 @@ using Dapper;
 using Npgsql;
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace GordonWorker.Services;
 
@@ -19,6 +20,15 @@ public class AppSettings
     public string GeminiApiKey { get; set; } = "";
     public string AiProvider { get; set; } = "Ollama"; // "Ollama" or "Gemini"
     public string SystemPersona { get; set; } = "Gordon";
+
+    // AI Fallback Settings
+    public bool EnableAiFallback { get; set; } = true;
+    public string FallbackAiProvider { get; set; } = "Gemini"; // Fallback if primary fails
+    public string FallbackOllamaBaseUrl { get; set; } = "http://host.docker.internal:11434";
+    public string FallbackOllamaModelName { get; set; } = "llama3";
+    public string FallbackGeminiApiKey { get; set; } = "";
+    public int AiTimeoutSeconds { get; set; } = 90;
+    public int AiRetryAttempts { get; set; } = 2;
     
     // Actuarial Keywords & Thresholds
     public string FixedCostKeywords { get; set; } = "SCHOOL,MORTGAGE,LEVIES,HOME LOAN,INSURANCE,BOND,INVESTMENT,LIFE,MEDICAL,NEDBHL,DISC PREM,WILLOWBROOKE,ADAM";
@@ -70,6 +80,7 @@ public interface ISettingsService
 {
     Task<AppSettings> GetSettingsAsync(int userId);
     Task UpdateSettingsAsync(int userId, AppSettings newSettings);
+    void InvalidateCache(int userId);
 }
 
 public class SettingsService : ISettingsService
@@ -77,64 +88,75 @@ public class SettingsService : ISettingsService
     private readonly IConfiguration _configuration;
     private readonly ILogger<SettingsService> _logger;
     private readonly IDataProtector _protector;
-    private readonly Dictionary<int, AppSettings> _cache = new();
+    private readonly IMemoryCache _cache;
 
-    public SettingsService(IConfiguration configuration, ILogger<SettingsService> logger, IDataProtectionProvider dataProtectionProvider)
+    public SettingsService(IConfiguration configuration, ILogger<SettingsService> logger, IDataProtectionProvider dataProtectionProvider, IMemoryCache cache)
     {
         _configuration = configuration;
         _logger = logger;
         _protector = dataProtectionProvider.CreateProtector("GordonFinanceEngine.Settings.v1");
+        _cache = cache;
+    }
+
+    public void InvalidateCache(int userId)
+    {
+        _cache.Remove($"settings_{userId}");
+        _logger.LogInformation("Settings cache invalidated for user {UserId}", userId);
     }
 
     public async Task<AppSettings> GetSettingsAsync(int userId)
     {
-        if (_cache.TryGetValue(userId, out var cached)) return cached;
-
-        try
+        return await _cache.GetOrCreateAsync($"settings_{userId}", async entry =>
         {
-            using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-            await connection.OpenAsync();
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5);
+            entry.SlidingExpiration = TimeSpan.FromMinutes(2);
 
-            var json = await connection.QuerySingleOrDefaultAsync<string>(
-                "SELECT config FROM user_settings WHERE user_id = @userId", new { userId });
-
-            AppSettings settings;
-            if (string.IsNullOrEmpty(json))
+            try
             {
-                _logger.LogInformation("No settings found for user {UserId}. Initialising defaults.", userId);
-                settings = new AppSettings();
-                await SaveToDbAsync(userId, settings);
-            }
-            else
-            {
-                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                settings = JsonSerializer.Deserialize<AppSettings>(json, options) ?? new AppSettings();
-                
-                // Decrypt sensitive fields
-                settings.GeminiApiKey = TryDecrypt(settings.GeminiApiKey);
-                settings.InvestecSecret = TryDecrypt(settings.InvestecSecret);
-                settings.InvestecApiKey = TryDecrypt(settings.InvestecApiKey);
-                settings.SmtpPass = TryDecrypt(settings.SmtpPass);
-                settings.TwilioAuthToken = TryDecrypt(settings.TwilioAuthToken);
-                settings.InvestecClientId = TryDecrypt(settings.InvestecClientId);
-                settings.TwilioAccountSid = TryDecrypt(settings.TwilioAccountSid);
-                settings.TelegramBotToken = TryDecrypt(settings.TelegramBotToken);
-            }
+                using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+                await connection.OpenAsync();
 
-            _cache[userId] = settings;
-            return settings;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to load settings for user {UserId}", userId);
-            return new AppSettings();
-        }
+                var json = await connection.QuerySingleOrDefaultAsync<string>(
+                    "SELECT config FROM user_settings WHERE user_id = @userId", new { userId });
+
+                AppSettings settings;
+                if (string.IsNullOrEmpty(json))
+                {
+                    _logger.LogInformation("No settings found for user {UserId}. Initialising defaults.", userId);
+                    settings = new AppSettings();
+                    await SaveToDbAsync(userId, settings);
+                }
+                else
+                {
+                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    settings = JsonSerializer.Deserialize<AppSettings>(json, options) ?? new AppSettings();
+
+                    // Decrypt sensitive fields
+                    settings.GeminiApiKey = TryDecrypt(settings.GeminiApiKey);
+                    settings.FallbackGeminiApiKey = TryDecrypt(settings.FallbackGeminiApiKey);
+                    settings.InvestecSecret = TryDecrypt(settings.InvestecSecret);
+                    settings.InvestecApiKey = TryDecrypt(settings.InvestecApiKey);
+                    settings.SmtpPass = TryDecrypt(settings.SmtpPass);
+                    settings.TwilioAuthToken = TryDecrypt(settings.TwilioAuthToken);
+                    settings.InvestecClientId = TryDecrypt(settings.InvestecClientId);
+                    settings.TwilioAccountSid = TryDecrypt(settings.TwilioAccountSid);
+                    settings.TelegramBotToken = TryDecrypt(settings.TelegramBotToken);
+                }
+
+                return settings;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to load settings for user {UserId}", userId);
+                return new AppSettings();
+            }
+        }) ?? new AppSettings();
     }
 
     public async Task UpdateSettingsAsync(int userId, AppSettings newSettings)
     {
-        _cache[userId] = newSettings;
         await SaveToDbAsync(userId, newSettings);
+        InvalidateCache(userId);
     }
 
     private async Task SaveToDbAsync(int userId, AppSettings settings)
@@ -148,6 +170,7 @@ public class SettingsService : ISettingsService
             var encryptedSettings = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(settings))!;
             
             encryptedSettings.GeminiApiKey = TryEncrypt(settings.GeminiApiKey);
+            encryptedSettings.FallbackGeminiApiKey = TryEncrypt(settings.FallbackGeminiApiKey);
             encryptedSettings.InvestecSecret = TryEncrypt(settings.InvestecSecret);
             encryptedSettings.InvestecApiKey = TryEncrypt(settings.InvestecApiKey);
             encryptedSettings.SmtpPass = TryEncrypt(settings.SmtpPass);

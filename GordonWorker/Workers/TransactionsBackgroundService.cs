@@ -9,6 +9,7 @@ public class TransactionsBackgroundService : BackgroundService
     private readonly ILogger<TransactionsBackgroundService> _logger;
     private readonly IServiceProvider _serviceProvider;
     private readonly IConfiguration _configuration;
+    private readonly SemaphoreSlim _syncSemaphore = new(5); // Max 5 concurrent syncs
 
     public TransactionsBackgroundService(
         ILogger<TransactionsBackgroundService> logger,
@@ -37,7 +38,19 @@ public class TransactionsBackgroundService : BackgroundService
                     userIds = await connection.QueryAsync<int>("SELECT id FROM users");
                 }
 
-                var tasks = userIds.Select(userId => SyncUserTransactionsAsync(userId, stoppingToken));
+                // Sync with rate limiting to prevent API throttling
+                var tasks = userIds.Select(async userId =>
+                {
+                    await _syncSemaphore.WaitAsync(stoppingToken);
+                    try
+                    {
+                        await SyncUserTransactionsAsync(userId, stoppingToken);
+                    }
+                    finally
+                    {
+                        _syncSemaphore.Release();
+                    }
+                });
                 await Task.WhenAll(tasks);
             }
             catch (Exception ex)

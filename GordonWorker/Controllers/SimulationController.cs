@@ -1,12 +1,14 @@
 using Dapper;
 using GordonWorker.Models;
 using GordonWorker.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using System.Security.Claims;
 
 namespace GordonWorker.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class SimulationController : ControllerBase
@@ -27,11 +29,9 @@ public class SimulationController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> RunSimulation([FromBody] SimulationRequest request)
     {
-        // Default to user 1 if no auth context (POC)
-        int userId = 1;
-        if (User?.Identity?.IsAuthenticated == true) 
+        if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
         {
-             int.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out userId);
+            return Unauthorized();
         }
 
         var settings = await _settingsService.GetSettingsAsync(userId);
@@ -39,13 +39,12 @@ public class SimulationController : ControllerBase
         using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
         var history = (await connection.QueryAsync<Transaction>("SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '90 days'", new { userId })).ToList();
         
-        // Use client directly or assume balance is passed? 
-        // For simulation, fetching live balance might be slow. 
-        // Let's rely on cached balance or fetch it.
         _investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
         var accounts = await _investecClient.GetAccountsAsync();
-        decimal currentBalance = 0;
-        foreach (var acc in accounts) currentBalance += await _investecClient.GetAccountBalanceAsync(acc.AccountId);
+        
+        var balanceTasks = accounts.Select(acc => _investecClient.GetAccountBalanceAsync(acc.AccountId));
+        var balances = await Task.WhenAll(balanceTasks);
+        decimal currentBalance = balances.Sum();
 
         // Apply Adjustments
         foreach (var adj in request.Adjustments)

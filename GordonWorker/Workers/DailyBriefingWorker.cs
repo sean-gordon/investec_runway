@@ -45,41 +45,49 @@ public class DailyBriefingWorker : BackgroundService
     private async Task SendDailyBriefingsAsync(CancellationToken token)
     {
         using var scope = _serviceProvider.CreateScope();
-        var settingsService = scope.ServiceProvider.GetRequiredService<ISettingsService>();
-        var telegramService = scope.ServiceProvider.GetRequiredService<ITelegramService>();
-        var actuarialService = scope.ServiceProvider.GetRequiredService<IActuarialService>();
-        var investecClient = scope.ServiceProvider.GetRequiredService<IInvestecClient>();
         var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
-        var aiService = scope.ServiceProvider.GetRequiredService<IAiService>();
 
         // Get all users
         using var db = new Npgsql.NpgsqlConnection(config.GetConnectionString("DefaultConnection"));
         var userIds = await Dapper.SqlMapper.QueryAsync<int>(db, "SELECT id FROM users");
 
-        foreach (var userId in userIds)
+        var tasks = userIds.Select(userId => SendSingleBriefingAsync(userId, token));
+        await Task.WhenAll(tasks);
+    }
+
+    private async Task SendSingleBriefingAsync(int userId, CancellationToken token)
+    {
+        try
         {
-            try
-            {
-                var settings = await settingsService.GetSettingsAsync(userId);
-                if (string.IsNullOrWhiteSpace(settings.TelegramBotToken) || string.IsNullOrWhiteSpace(settings.TelegramChatId)) continue;
+            using var scope = _serviceProvider.CreateScope();
+            var settingsService = scope.ServiceProvider.GetRequiredService<ISettingsService>();
+            var telegramService = scope.ServiceProvider.GetRequiredService<ITelegramService>();
+            var actuarialService = scope.ServiceProvider.GetRequiredService<IActuarialService>();
+            var investecClient = scope.ServiceProvider.GetRequiredService<IInvestecClient>();
+            var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+            var aiService = scope.ServiceProvider.GetRequiredService<IAiService>();
 
-                // Sync data first (light sync)
-                investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
-                var accounts = await investecClient.GetAccountsAsync();
-                if (!accounts.Any()) continue;
+            var settings = await settingsService.GetSettingsAsync(userId);
+            if (string.IsNullOrWhiteSpace(settings.TelegramBotToken) || string.IsNullOrWhiteSpace(settings.TelegramChatId)) return;
 
-                decimal currentBalance = 0;
-                foreach (var acc in accounts) currentBalance += await investecClient.GetAccountBalanceAsync(acc.AccountId);
+            // Sync data first (light sync)
+            investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
+            var accounts = await investecClient.GetAccountsAsync();
+            if (!accounts.Any()) return;
 
-                // Get minimal history for context
-                var history = (await Dapper.SqlMapper.QueryAsync<Models.Transaction>(db,
-                    "SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '60 days' ORDER BY transaction_date ASC",
-                    new { userId })).ToList();
+            decimal currentBalance = 0;
+            foreach (var acc in accounts) currentBalance += await investecClient.GetAccountBalanceAsync(acc.AccountId);
 
-                var summary = await actuarialService.AnalyzeHealthAsync(history, currentBalance, settings);
+            using var db = new Npgsql.NpgsqlConnection(config.GetConnectionString("DefaultConnection"));
+            // Get minimal history for context
+            var history = (await Dapper.SqlMapper.QueryAsync<Models.Transaction>(db,
+                "SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '60 days' ORDER BY transaction_date ASC",
+                new { userId })).ToList();
 
-                // Generate Briefing with AI
-                var prompt = $@"You are {settings.SystemPersona}, the user's Personal CFO.
+            var summary = await actuarialService.AnalyzeHealthAsync(history, currentBalance, settings);
+
+            // Generate Briefing with AI
+            var prompt = $@"You are {settings.SystemPersona}, the user's Personal CFO.
 It is 8:00 AM. Provide a 2-sentence morning briefing.
 - Current Balance: R{currentBalance:N2}
 - Days to Payday: {summary.DaysUntilNextSalary}
@@ -93,14 +101,13 @@ INSTRUCTIONS:
 - Otherwise, wish them a productive day.
 - Do NOT use 'Subject:' lines.";
 
-                var briefing = await aiService.FormatResponseAsync(userId, prompt, "", isWhatsApp: false);
-                
-                await telegramService.SendMessageAsync(userId, $"🌅 *Morning Briefing*\n\n{briefing}");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to send daily briefing for user {UserId}", userId);
-            }
+            var briefing = await aiService.FormatResponseAsync(userId, prompt, "", isWhatsApp: false);
+            
+            await telegramService.SendMessageAsync(userId, $"🌅 *Morning Briefing*\n\n{briefing}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send daily briefing for user {UserId}", userId);
         }
     }
 }

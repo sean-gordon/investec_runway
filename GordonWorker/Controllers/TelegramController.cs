@@ -146,7 +146,8 @@ public class TelegramController : ControllerBase
                     if (explainedTxId != null)
                     {
                         // Update DB
-                        await db.ExecuteAsync("UPDATE transactions SET notes = @Note WHERE id = @Id", new { Note = explanationNote, Id = explainedTxId });
+                        await db.ExecuteAsync("UPDATE transactions SET notes = @Note WHERE id = @Id AND user_id = @UserId", 
+                            new { Note = explanationNote, Id = explainedTxId, UserId = userId });
                         
                         var tx = history.FirstOrDefault(t => t.Id == explainedTxId);
                         var confirmation = $"✅ *Noted.* I've updated the ledger:\n_{tx?.Description ?? "Transaction"}_: {explanationNote}";

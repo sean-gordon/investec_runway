@@ -46,8 +46,10 @@ JSON ONLY: { ""isCheck"": boolean, ""amount"": number_or_null, ""desc"": string_
 
         try
         {
-            jsonResponse = jsonResponse.Replace("```json", "").Replace("```", "").Trim();
-            using var doc = JsonDocument.Parse(jsonResponse);
+            var match = System.Text.RegularExpressions.Regex.Match(jsonResponse, @"```json\s*(.*?)\s*```", System.Text.RegularExpressions.RegexOptions.Singleline);
+            var cleanJson = match.Success ? match.Groups[1].Value : jsonResponse.Trim();
+
+            using var doc = JsonDocument.Parse(cleanJson);
             var root = doc.RootElement;
             
             if (root.TryGetProperty("isCheck", out var isCheckEl) && isCheckEl.GetBoolean())
@@ -104,9 +106,10 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
         
         try 
         {
-            // Clean up code blocks if the LLM adds them
-            jsonResponse = jsonResponse.Replace("```json", "").Replace("```", "").Trim();
-            using var doc = JsonDocument.Parse(jsonResponse);
+            var match = System.Text.RegularExpressions.Regex.Match(jsonResponse, @"```json\s*(.*?)\s*```", System.Text.RegularExpressions.RegexOptions.Singleline);
+            var cleanJson = match.Success ? match.Groups[1].Value : jsonResponse.Trim();
+
+            using var doc = JsonDocument.Parse(cleanJson);
             if (doc.RootElement.TryGetProperty("id", out var idElement) && idElement.ValueKind == JsonValueKind.String)
             {
                 var idStr = idElement.GetString();

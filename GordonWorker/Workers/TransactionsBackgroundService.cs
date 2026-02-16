@@ -9,6 +9,7 @@ public class TransactionsBackgroundService : BackgroundService
     private readonly ILogger<TransactionsBackgroundService> _logger;
     private readonly IServiceProvider _serviceProvider;
     private readonly IConfiguration _configuration;
+    private readonly SemaphoreSlim _syncSemaphore = new(5); // Max 5 concurrent syncs
 
     public TransactionsBackgroundService(
         ILogger<TransactionsBackgroundService> logger,
@@ -28,24 +29,29 @@ public class TransactionsBackgroundService : BackgroundService
         {
             try
             {
-                using var scope = _serviceProvider.CreateScope();
-                var syncService = scope.ServiceProvider.GetRequiredService<ITransactionSyncService>();
-                
-                // Get all users
-                using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-                var userIds = await connection.QueryAsync<int>("SELECT id FROM users");
-
-                foreach (var userId in userIds)
+                // Get all users first
+                IEnumerable<int> userIds;
+                using (var scope = _serviceProvider.CreateScope())
                 {
+                    var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+                    using var connection = new NpgsqlConnection(configuration.GetConnectionString("DefaultConnection"));
+                    userIds = await connection.QueryAsync<int>("SELECT id FROM users");
+                }
+
+                // Sync with rate limiting to prevent API throttling
+                var tasks = userIds.Select(async userId =>
+                {
+                    await _syncSemaphore.WaitAsync(stoppingToken);
                     try
                     {
-                        await syncService.SyncTransactionsAsync(userId, stoppingToken);
+                        await SyncUserTransactionsAsync(userId, stoppingToken);
                     }
-                    catch (Exception ex)
+                    finally
                     {
-                        _logger.LogError(ex, "Error syncing transactions for user {UserId}", userId);
+                        _syncSemaphore.Release();
                     }
-                }
+                });
+                await Task.WhenAll(tasks);
             }
             catch (Exception ex)
             {
@@ -53,6 +59,21 @@ public class TransactionsBackgroundService : BackgroundService
             }
 
             await Task.Delay(TimeSpan.FromSeconds(60), stoppingToken);
+        }
+    }
+
+    private async Task SyncUserTransactionsAsync(int userId, CancellationToken token)
+    {
+        try
+        {
+            // Create a NEW scope for each user to ensure fresh Scoped services (like InvestecClient)
+            using var userScope = _serviceProvider.CreateScope();
+            var syncService = userScope.ServiceProvider.GetRequiredService<ITransactionSyncService>();
+            await syncService.SyncTransactionsAsync(userId, token: token);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error syncing transactions for user {UserId}", userId);
         }
     }
 }

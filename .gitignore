@@ -1,3 +1,13 @@
+# Keys (Data Protection)
+keys/
+
+# IDEs
+.vscode/
+.idea/
+
+# Local Dev Settings
+appsettings.Development.json
+
 # .NET
 bin/
 obj/

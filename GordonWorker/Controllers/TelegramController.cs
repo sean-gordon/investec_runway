@@ -112,32 +112,105 @@ public class TelegramController : ControllerBase
                     // 1. Send Placeholder
                     var wittyComments = new[]
                     {
-                        "Reviewing your latest transaction history...",
-                        "Consulting the actuarial models...",
-                        "Analyzing your current burn rate...",
-                        "Projecting your financial runway...",
-                        "Consolidating your financial position...",
-                        "Decoding transaction fingerprints...",
-                        "Simulating liquidity scenarios...",
-                        "Cross-referencing budget categories...",
-                        "Calibrating burn rate projections...",
-                        "Identifying spending anomalies..."
+                        "Stress-testing current liquidity buffers...",
+                        "Assessing variance in discretionary expenditure...",
+                        "Optimizing capital allocation projections...",
+                        "Benchmarking against historical salary cycles...",
+                        "Recalibrating actuarial risk parameters...",
+                        "Synthesizing transaction metadata...",
+                        "Running Monte-Carlo runway simulations...",
+                        "Auditing ledger for deterministic fingerprints...",
+                        "Evaluating solvency relative to next payday...",
+                        "Analyzing burn-rate velocity trends...",
+                        "Projecting net-worth lifecycle trajectory...",
+                        "Cross-referencing fiscal category variances...",
+                        "Calibrating treasury liquidity requirements...",
+                        "Reconciling off-balance sheet liabilities...",
+                        "Quantifying exposure to lifestyle inflation...",
+                        "Auditing the coffee-to-savings ratio...",
+                        "Analyzing fiscal elasticity across categories...",
+                        "Decoupling fixed costs from variable headwinds...",
+                        "Evaluating fiscal drag on emergency reserves...",
+                        "Forecasting liquidity through the next quarter...",
+                        "Mapping capital flows against strategic goals...",
+                        "Optimizing tax-advantaged positioning...",
+                        "Recalibrating debt-to-income sensitivity...",
+                        "Running sensitivity analysis on discretionary spend...",
+                        "Stress-testing the weekend entertainment budget...",
+                        "Assessing the impact of impulse acquisition...",
+                        "Benchmarking savings rate against peer group...",
+                        "Calculating the cost of fiscal procrastination...",
+                        "Cross-checking vendor billing for anomalies...",
+                        "Detecting patterns in subscription leakage...",
+                        "Estimating net-worth velocity at current trajectory...",
+                        "Filtering signal from noise in transaction data...",
+                        "Gauging the resilience of the primary buffer...",
+                        "Identifying opportunities for cost-center reduction...",
+                        "Investigating variance in grocery-related spend...",
+                        "Justifying capital expenditure on luxury assets...",
+                        "Kinetic analysis of outgoing cash flow...",
+                        "Leveling up the internal audit protocol...",
+                        "Measuring fiscal discipline across time-horizons...",
+                        "Normalizing data for seasonal spending peaks...",
+                        "Overseeing the redistribution of surplus liquidity...",
+                        "Performing a deep-dive on historical anomalies...",
+                        "Quantizing the impact of interest rate shifts...",
+                        "Re-evaluating the ROI of your dining habits...",
+                        "Scrutinizing the ledger for ghost subscriptions...",
+                        "Triangulating solvency across multiple accounts...",
+                        "Uncovering hidden patterns in weekend burn...",
+                        "Validating the integrity of the runway model...",
+                        "Weather-proofing the budget for unexpected costs...",
+                        "X-raying the portfolio for risk concentration...",
+                        "Yield-mapping across your current cash positions...",
+                        "Zero-basing the budget for the coming cycle...",
+                        "Adjusting for inflationary fiscal pressure...",
+                        "Balancing the scales of short-term satisfaction...",
+                        "Coordinating with the central bank (my brain)...",
+                        "Diversifying the mental model of your wealth...",
+                        "Extracting insights from recurring overheads...",
+                        "Factoring in the 'Treat Yourself' variance...",
+                        "Harmonizing the ledger with real-world activity...",
+                        "Interpreting the delta in your net liquidity...",
+                        "Navigating the minefield of bank service fees...",
+                        "Peer-reviewing your recent fiscal decisions...",
+                        "Resolving conflicts between heart and wallet..."
                     };
-                    var witty = wittyComments[new Random().Next(wittyComments.Length)];
-                    placeholderId = await telegramService.SendMessageWithIdAsync(userId, $"<i>Processing Request...</i> {TelegramService.EscapeHtml(witty)}", chatId);
+
+                    placeholderId = await telegramService.SendMessageWithIdAsync(userId, 
+                        "<b>Analytical Engine Working</b>\n" +
+                        "<code>▱▱▱▱▱▱▱</code>\n" +
+                        "<i>Initializing financial analysis...</i>", chatId);
 
                     // Start progress heartbeat
                     using var ctsHeartbeat = new CancellationTokenSource();
                     var heartbeatTask = Task.Run(async () => {
-                        int index = new Random().Next(wittyComments.Length);
+                        int stageIndex = 0;
+                        string[] progressStages = { "▰▱▱▱▱▱▱", "▰▰▱▱▱▱▱", "▰▰▰▱▱▱▱", "▰▰▰▰▱▱▱", "▰▰▰▰▰▱▱", "▰▰▰▰▰▰▱", "▰▰▰▰▰▰▰" };
                         while (!ctsHeartbeat.Token.IsCancellationRequested)
                         {
                             try {
-                                await Task.Delay(TimeSpan.FromSeconds(30), ctsHeartbeat.Token);
-                                var nextWitty = wittyComments[(++index) % wittyComments.Length];
+                                await Task.Delay(TimeSpan.FromSeconds(15), ctsHeartbeat.Token);
+                                
+                                var bar = progressStages[Math.Min(stageIndex, progressStages.Length - 1)];
+                                var nextWitty = stageIndex switch {
+                                    0 => "Synchronizing Investec ledger data...",
+                                    1 => "Running actuarial burn-rate simulations...",
+                                    2 => "Generating strategic CFO commentary...",
+                                    3 => "Finalizing liquidity risk assessment...",
+                                    4 => "Stress-testing capital allocation...",
+                                    5 => "Recalibrating solvency parameters...",
+                                    _ => wittyComments[new Random().Next(wittyComments.Length)]
+                                };
+
+                                stageIndex++;
+
                                 if (placeholderId > 0)
                                 {
-                                    await telegramService.EditMessageAsync(userId, placeholderId, $"<i>Processing Request...</i> {TelegramService.EscapeHtml(nextWitty)}", chatId);
+                                    await telegramService.EditMessageAsync(userId, placeholderId, 
+                                        $"<b>Analytical Engine Working</b>\n" +
+                                        $"<code>{bar}</code>\n" +
+                                        $"<i>{TelegramService.EscapeHtml(nextWitty)}</i>", chatId);
                                 }
                             } catch (TaskCanceledException) { break; }
                             catch (Exception ex) { logger.LogWarning("Heartbeat error: {Msg}", ex.Message); }

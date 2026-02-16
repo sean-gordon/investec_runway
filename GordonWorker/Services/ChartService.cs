@@ -14,30 +14,39 @@ public class ChartService : IChartService
         var plt = new Plot();
         
         // 1. Data Preparation
-        // We want to show the last 30 days of balance history + 30 days of projection
+        // We want to show the last 30 days of balance history
         var relevantHistory = history
             .Where(t => t.TransactionDate >= DateTimeOffset.UtcNow.AddDays(-30))
-            .OrderBy(t => t.TransactionDate)
+            .OrderByDescending(t => t.TransactionDate) // newest first for walking back
             .ToList();
 
         var dates = new List<DateTime>();
         var balances = new List<double>();
 
         // Reconstruct historical balances (running total backwards from current)
-        // Note: history contains 'balance' field from bank, use that if available and reliable, 
-        // but bank balance snapshots might be sparse. Best to plot the snapshots we have.
+        // Start at current
+        double runner = (double)currentBalance;
+        dates.Add(DateTime.UtcNow);
+        balances.Add(runner);
+
         foreach (var tx in relevantHistory)
         {
-            if (tx.Balance != 0) // Only use points where balance was captured
-            {
-                dates.Add(tx.TransactionDate.UtcDateTime);
-                balances.Add((double)tx.Balance);
-            }
+            // Reverse the transaction effect to find previous balance
+            // If tx.Amount was +100 (Expense), balance *before* was Current + 100? 
+            // Wait: Balance After = Balance Before - Amount (if Amount is expense/positive).
+            // So: Balance Before = Balance After + Amount.
+            // Investec: Debits are positive. Credits are negative.
+            // Balance = Previous - Debit. => Previous = Balance + Debit.
+            
+            runner += (double)tx.Amount; 
+            
+            dates.Add(tx.TransactionDate.UtcDateTime);
+            balances.Add(runner);
         }
 
-        // Add current point
-        dates.Add(DateTime.UtcNow);
-        balances.Add((double)currentBalance);
+        // The lists are now Newest -> Oldest. Reverse them for plotting.
+        dates.Reverse();
+        balances.Reverse();
 
         // 2. Projection (Runway)
         var lastDate = DateTime.UtcNow;
@@ -77,9 +86,22 @@ public class ChartService : IChartService
 
         // Formatting
         plt.Title("Financial Runway");
+        
+        // Y-Axis Currency
+        // ScottPlot 5 uses Label factories or custom tick generators.
+        // Simplest way is to set the Label string directly if supported, or let it auto-format.
+        // We will stick to auto for now but add the currency label.
         plt.YLabel("Balance (ZAR)");
+        
         plt.XLabel("Date");
         plt.Axes.DateTimeTicksBottom();
+        
+        // Add Grid
+        plt.Grid.MajorLineColor = Colors.Black.WithOpacity(0.1);
+        plt.Grid.IsVisible = true;
+
+        // Add Legend
+        plt.ShowLegend();
         
         // Add a horizontal line at 0
         var zeroLine = plt.Add.HorizontalLine(0);
@@ -87,6 +109,6 @@ public class ChartService : IChartService
         zeroLine.LinePattern = LinePattern.Dotted;
 
         // 4. Render
-        return plt.GetImageBytes(600, 400, ImageFormat.Png);
+        return plt.GetImageBytes(800, 500, ImageFormat.Png);
     }
 }

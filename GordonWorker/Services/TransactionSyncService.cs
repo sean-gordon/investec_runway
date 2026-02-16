@@ -6,7 +6,7 @@ namespace GordonWorker.Services;
 
 public interface ITransactionSyncService
 {
-    Task SyncTransactionsAsync(int userId, CancellationToken token = default);
+    Task SyncTransactionsAsync(int userId, bool silent = false, CancellationToken token = default);
     Task ForceRepullAsync(int userId);
 }
 
@@ -41,7 +41,7 @@ public class TransactionSyncService : ITransactionSyncService
         _telegramService = telegramService;
     }
 
-    public async Task SyncTransactionsAsync(int userId, CancellationToken token = default)
+    public async Task SyncTransactionsAsync(int userId, bool silent = false, CancellationToken token = default)
     {
         var settings = await _settingsService.GetSettingsAsync(userId);
         
@@ -58,11 +58,15 @@ public class TransactionSyncService : ITransactionSyncService
         var countSql = "SELECT COUNT(*) FROM transactions WHERE user_id = @userId";
         var transactionCount = await connection.ExecuteScalarAsync<int>(countSql, new { userId });
         
+        // Initial sync or force repull should always be silent to prevent notification storms
+        if (transactionCount == 0) silent = true;
+
         var daysBack = transactionCount == 0 ? settings.HistoryDaysBack : settings.SyncBufferDays; 
         var fromDate = DateTimeOffset.UtcNow.AddDays(-daysBack);
 
         bool triggerReport = false;
         int totalNew = 0;
+        var pendingAlerts = new List<string>();
 
         foreach (var account in accounts)
         {
@@ -94,22 +98,23 @@ public class TransactionSyncService : ITransactionSyncService
                 {
                     totalNew++;
                     _logger.LogDebug("User {UserId}: New transaction inserted: {Id} - {Description}", userId, tx.Id, tx.Description);
-                    if (tx.Amount >= settings.UnexpectedPaymentThreshold)
+                    
+                    if (!silent)
                     {
-                        var normalizedDesc = _actuarialService.NormalizeDescription(tx.Description);
-                        if (!_actuarialService.IsFixedCost(normalizedDesc, settings) && !_actuarialService.IsSalary(tx, settings))
+                        if (tx.Amount >= settings.UnexpectedPaymentThreshold)
+                        {
+                            var normalizedDesc = _actuarialService.NormalizeDescription(tx.Description);
+                            if (!_actuarialService.IsFixedCost(normalizedDesc, settings) && !_actuarialService.IsSalary(tx, settings))
+                            {
+                                triggerReport = true;
+                                pendingAlerts.Add($"🚨 <b>High Spend:</b> {TelegramService.EscapeHtml(tx.Description)} (R{tx.Amount:N2})");
+                            }
+                        }
+                        if (tx.Amount <= -settings.IncomeAlertThreshold) 
                         {
                             triggerReport = true;
-                            // Immediate Interaction
-                            await _telegramService.SendMessageAsync(userId, 
-                                $"🚨 <b>High Spend Detected</b>\n{TelegramService.EscapeHtml(tx.Description)}: R{tx.Amount:N2}\n\nWhat was this for?");
+                            pendingAlerts.Add($"💰 <b>Large Income:</b> {TelegramService.EscapeHtml(tx.Description)} (R{Math.Abs(tx.Amount):N2})");
                         }
-                    }
-                    if (tx.Amount <= -settings.IncomeAlertThreshold) 
-                    {
-                        triggerReport = true;
-                         await _telegramService.SendMessageAsync(userId, 
-                                $"💰 <b>Large Income Detected</b>\n{TelegramService.EscapeHtml(tx.Description)}: R{Math.Abs(tx.Amount):N2}\n\nIs this regular income or a windfall?");
                     }
                 }
             }
@@ -118,6 +123,24 @@ public class TransactionSyncService : ITransactionSyncService
         if (totalNew > 0) 
         {
             _logger.LogInformation("User {UserId}: Sync complete. {Count} new records added to ledger.", userId, totalNew);
+            
+            // Handle Alerts (Aggregation to prevent flooding)
+            if (pendingAlerts.Any())
+            {
+                if (pendingAlerts.Count > 2)
+                {
+                    await _telegramService.SendMessageAsync(userId, 
+                        $"🔔 <b>Activity Summary</b>\nI have detected {pendingAlerts.Count} significant transactions in this sync. I am generating a full briefing for your review.");
+                }
+                else 
+                {
+                    foreach (var msg in pendingAlerts)
+                    {
+                        await _telegramService.SendMessageAsync(userId, msg + "\n\nWhat was this for?");
+                    }
+                }
+            }
+
             if (triggerReport) await _reportService.GenerateAndSendReportAsync(userId);
             
             // Trigger Subscription Check
@@ -134,6 +157,6 @@ public class TransactionSyncService : ITransactionSyncService
         using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
         await connection.OpenAsync();
         await connection.ExecuteAsync("DELETE FROM transactions WHERE user_id = @userId", new { userId });
-        await SyncTransactionsAsync(userId);
+        await SyncTransactionsAsync(userId, silent: true);
     }
 }

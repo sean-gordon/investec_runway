@@ -150,9 +150,9 @@ public class SettingsController : ControllerBase
     }
 
     [HttpGet("models")]
-    public async Task<IActionResult> GetModels()
+    public async Task<IActionResult> GetModels([FromQuery] bool useFallback = false)
     {
-        var models = await _aiService.GetAvailableModelsAsync(UserId);
+        var models = await _aiService.GetAvailableModelsAsync(UserId, useFallback);
         return Ok(models);
     }
 

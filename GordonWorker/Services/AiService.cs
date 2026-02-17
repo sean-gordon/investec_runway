@@ -14,9 +14,14 @@ public interface IAiService
     Task<(bool IsAffordabilityCheck, decimal? Amount, string? Description)> AnalyzeAffordabilityAsync(int userId, string userMessage);
     Task<(bool IsChartRequest, string? ChartType, string? Sql, string? Title)> AnalyzeChartRequestAsync(int userId, string userMessage);
     Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false);
-    Task<List<string>> GetAvailableModelsAsync(int userId);
+    Task<List<string>> GetAvailableModelsAsync(int userId, bool useFallback = false);
 }
 
+/// <summary>
+/// This is Gordon's "Brain." It handles talking to the AI—whether you're using 
+/// local LLMs (Ollama) or cloud ones (Gemini). It also makes sure Gordon always 
+/// responds by switching over to a backup AI automatically if the primary one is busy.
+/// </summary>
 public class AiService : IAiService
 {
     private readonly HttpClient _httpClient;
@@ -204,9 +209,9 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
         };
     }
 
-    public async Task<List<string>> GetAvailableModelsAsync(int userId)
+    public async Task<List<string>> GetAvailableModelsAsync(int userId, bool useFallback = false)
     {
-        var config = await GetProviderConfigAsync(userId);
+        var config = await GetProviderConfigAsync(userId, useFallback);
 
         if (config.Provider == "Gemini")
         {
@@ -250,7 +255,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
             var tagsResponse = JsonSerializer.Deserialize<OllamaTagsResponse>(responseString);
             return tagsResponse?.Models?.Select(m => m.Name).Where(n => !string.IsNullOrEmpty(n)).Cast<string>().ToList() ?? new List<string>();
         }
-        catch (Exception ex) { _logger.LogError(ex, "Failed to fetch models from Ollama."); return new List<string>(); }
+        catch (Exception ex) { _logger.LogError(ex, "Failed to fetch models from {Provider}.", useFallback ? "Fallback AI" : "Primary AI"); return new List<string>(); }
     }
 
     public async Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false)
@@ -384,69 +389,73 @@ Context Information:
     }
 
     /// <summary>
-    /// Generate completion with automatic fallback on failure. This is the core reliability improvement.
+    /// This is where the magic happens. We try to get a response from your primary AI.
+    /// If that fails, we'll try again (giving it a bit more time each time).
+    /// If it still doesn't respond, we'll switch over to your backup "fallback" AI.
     /// </summary>
     private async Task<string> GenerateCompletionWithFallbackAsync(int userId, string system, string prompt, CancellationToken ct = default)
     {
         var settings = await _settingsService.GetSettingsAsync(userId);
         var maxAttempts = settings.AiRetryAttempts;
 
-        // Try primary provider
+        // Step 1: Give your primary AI a go...
         for (int attempt = 1; attempt <= maxAttempts; attempt++)
         {
             try
             {
-                _logger.LogInformation("AI request attempt {Attempt}/{Max} using primary provider for user {UserId}", attempt, maxAttempts, userId);
+                _logger.LogInformation("Trying to reach your primary AI (attempt {Attempt}/{Max}) for user {UserId}", attempt, maxAttempts, userId);
                 var result = await GenerateCompletionAsync(userId, system, prompt, useFallback: false, ct);
 
                 if (!string.IsNullOrWhiteSpace(result))
                 {
-                    _logger.LogInformation("AI request succeeded on attempt {Attempt} (primary)", attempt);
+                    _logger.LogInformation("Success! Primary AI responded on attempt {Attempt}", attempt);
                     return result;
                 }
 
-                _logger.LogWarning("AI request returned empty result on attempt {Attempt}", attempt);
+                _logger.LogWarning("The primary AI gave us an empty response on attempt {Attempt}", attempt);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "AI request failed on attempt {Attempt}/{Max} (primary)", attempt, maxAttempts);
+                _logger.LogWarning(ex, "Primary AI request failed on attempt {Attempt}/{Max}", attempt, maxAttempts);
                 if (attempt == maxAttempts) break;
-                await Task.Delay(TimeSpan.FromSeconds(2 * attempt), ct); // Exponential backoff
+                
+                // Wait a bit longer each time before we try again (exponential backoff)
+                await Task.Delay(TimeSpan.FromSeconds(2 * attempt), ct); 
             }
         }
 
-        // Try fallback provider if enabled
+        // Step 2: If the primary AI is having a bad day, let's try the backup...
         if (settings.EnableAiFallback)
         {
-            _logger.LogWarning("Primary AI provider failed after {Max} attempts. Switching to fallback provider.", maxAttempts);
+            _logger.LogWarning("Primary AI is currently unavailable. Switching to your backup provider now.");
 
             for (int attempt = 1; attempt <= maxAttempts; attempt++)
             {
                 try
                 {
-                    _logger.LogInformation("AI request attempt {Attempt}/{Max} using FALLBACK provider for user {UserId}", attempt, maxAttempts, userId);
+                    _logger.LogInformation("Trying to reach your BACKUP AI (attempt {Attempt}/{Max}) for user {UserId}", attempt, maxAttempts, userId);
                     var result = await GenerateCompletionAsync(userId, system, prompt, useFallback: true, ct);
 
                     if (!string.IsNullOrWhiteSpace(result))
                     {
-                        _logger.LogInformation("AI request succeeded on attempt {Attempt} (fallback)", attempt);
+                        _logger.LogInformation("Success! Backup AI saved the day on attempt {Attempt}", attempt);
                         return result;
                     }
 
-                    _logger.LogWarning("Fallback AI request returned empty result on attempt {Attempt}", attempt);
+                    _logger.LogWarning("The backup AI also gave us an empty response on attempt {Attempt}", attempt);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Fallback AI request failed on attempt {Attempt}/{Max}", attempt, maxAttempts);
+                    _logger.LogWarning(ex, "Backup AI request failed on attempt {Attempt}/{Max}", attempt, maxAttempts);
                     if (attempt < maxAttempts)
                         await Task.Delay(TimeSpan.FromSeconds(2 * attempt), ct);
                 }
             }
         }
 
-        // If everything fails, return a graceful error message
-        _logger.LogError("All AI providers failed for user {UserId}. Returning fallback message.", userId);
-        return "I apologise, but I'm experiencing temporary difficulties connecting to my analytical engine. Your financial data is safe, and the system will continue to sync. Please try again in a few moments, or check the AI configuration in your settings.";
+        // If both brains are down, we'll let you know gracefully.
+        _logger.LogError("All AI providers failed for user {UserId}. Returning a polite error message.", userId);
+        return "I'm so sorry, but I'm having a bit of trouble connecting to my 'analytical engine' right now. Your financial data is perfectly safe and I'm still syncing your transactions in the background. Please try again in a few minutes, or double-check your AI settings on the dashboard.";
     }
 
     private async Task<string> GenerateCompletionAsync(int userId, string system, string prompt, bool useFallback, CancellationToken ct = default)

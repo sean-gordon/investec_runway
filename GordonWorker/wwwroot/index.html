@@ -391,14 +391,17 @@
                                     <div class="grid grid-cols-2 gap-4">
                                         <div>
                                             <label class="text-xs font-bold text-slate-700">Fallback Provider</label>
-                                            <select v-model="settings.fallbackAiProvider" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                            <select v-model="settings.fallbackAiProvider" @change="loadModels(true)" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
                                                 <option value="Ollama">Ollama</option>
                                                 <option value="Gemini">Gemini</option>
                                             </select>
                                         </div>
                                         <div>
                                             <label class="text-xs font-bold text-slate-700">Fallback Model</label>
-                                            <input v-model="settings.fallbackOllamaModelName" type="text" placeholder="e.g. llama3 or gemini-1.5-flash" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                            <select v-model="settings.fallbackOllamaModelName" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                                <option v-if="availableFallbackModels.length === 0" :value="settings.fallbackOllamaModelName">{{ settings.fallbackOllamaModelName }}</option>
+                                                <option v-for="m in availableFallbackModels" :key="m" :value="m">{{ m }}</option>
+                                            </select>
                                         </div>
                                     </div>
                                     <div>
@@ -521,6 +524,7 @@
                         fallbackOllamaModelName: 'llama3', fallbackGeminiApiKey: '', aiTimeoutSeconds: 90, aiRetryAttempts: 2
                     },
                     availableModels: [],
+                    availableFallbackModels: [],
                     days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
                     systemStatus: { investecOnline: false, lastTelegramHit: null, lastTelegramError: '', lastCheck: null },
                     toast: { show: false, msg: '' },
@@ -583,7 +587,8 @@
                     const resS = await this.api('/api/settings');
                     if (resS.ok) {
                         this.settings = await resS.json();
-                        this.loadModels(); // Load models after settings loaded
+                        this.loadModels(false); // Load primary models
+                        this.loadModels(true);  // Load fallback models
                     }
                     const resSt = await this.api('/api/settings/status');
                     if (resSt.ok) this.systemStatus = await resSt.json();
@@ -595,9 +600,12 @@
                     const res = await this.api('/api/users');
                     if (res.ok) this.users = await res.json();
                 },
-                async loadModels() {
-                    const res = await this.api('/api/settings/models');
-                    if (res.ok) this.availableModels = await res.json();
+                async loadModels(useFallback = false) {
+                    const res = await this.api(`/api/settings/models?useFallback=${useFallback}`);
+                    if (res.ok) {
+                        if (useFallback) this.availableFallbackModels = await res.json();
+                        else this.availableModels = await res.json();
+                    }
                 },
                 openUserModal(u = null) {
                     this.userForm = u ? { ...u, password: '' } : { id: 0, username: '', password: '', role: 'User' };
@@ -637,7 +645,7 @@
                 async testFallbackAi() {
                     await this.saveSettings();
                     const res = await this.api('/api/settings/test-fallback-ai', 'POST');
-                    if (res.ok) { this.showToast("Fallback AI Connected"); } else this.showToast("Fallback Failed");
+                    if (res.ok) { this.showToast("Fallback AI Connected"); this.loadModels(true); } else this.showToast("Fallback Failed");
                 },
                 async testTelegram() {
                     await this.saveSettings();

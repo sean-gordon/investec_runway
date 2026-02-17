@@ -349,49 +349,68 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
     public async Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false)
     {
         var config = await GetProviderConfigAsync(userId, useFallback);
-        // Use a shorter timeout for status tests than for real generation
-        var testTimeout = TimeSpan.FromSeconds(10); 
+        // Status tests use a more forgiving timeout (15s) and a single retry to handle "waking up" local models.
+        var testTimeout = TimeSpan.FromSeconds(15); 
+        var maxAttempts = 2;
 
-        try
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            if (config.Provider == "Gemini")
+            try
             {
-                if (string.IsNullOrWhiteSpace(config.GeminiKey)) return (false, "Gemini API Key is missing.");
-                var result = await GenerateGeminiCompletionAsync(userId, "System", "Say 'OK'", config.GeminiKey, timeoutSeconds: 10);
-                if (string.IsNullOrWhiteSpace(result) || result.Contains("Error:")) return (false, result ?? "Empty response.");
+                if (config.Provider == "Gemini")
+                {
+                    if (string.IsNullOrWhiteSpace(config.GeminiKey)) return (false, "Gemini API Key is missing.");
+                    var result = await GenerateGeminiCompletionAsync(userId, "System", "Say 'OK'", config.GeminiKey, config.OllamaModel, timeoutSeconds: 15);
+                    if (string.IsNullOrWhiteSpace(result) || result.Contains("Error:")) return (false, result ?? "Empty response.");
+                    return (true, string.Empty);
+                }
+
+                if (string.IsNullOrWhiteSpace(config.OllamaUrl)) return (false, "Ollama URL is not configured.");
+                if (string.IsNullOrWhiteSpace(config.OllamaModel)) return (false, "Please select a model first.");
+
+                var baseUri = config.OllamaUrl.EndsWith("/") ? config.OllamaUrl : config.OllamaUrl + "/";
+                var fullUrl = new Uri(new Uri(baseUri), "api/generate");
+                var request = new { model = config.OllamaModel, prompt = "Say 'OK'", stream = false };
+                var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
+
+                _logger.LogInformation("Testing {Type} AI connection (Attempt {Attempt}): {Url}, Model: {Model}", 
+                    useFallback ? "Fallback" : "Primary", attempt, fullUrl, config.OllamaModel);
+
+                using var cts = new CancellationTokenSource(testTimeout);
+                var response = await _httpClient.PostAsync(fullUrl, content, cts.Token);
+
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    return (false, $"Model '{config.OllamaModel}' not found on Ollama server.");
+                }
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    if (attempt < maxAttempts) continue;
+                    return (false, $"Ollama error ({response.StatusCode})");
+                }
+
                 return (true, string.Empty);
             }
-
-            if (string.IsNullOrWhiteSpace(config.OllamaUrl)) return (false, "Ollama URL is not configured.");
-            if (string.IsNullOrWhiteSpace(config.OllamaModel)) return (false, "Please select a model first.");
-
-            var baseUri = config.OllamaUrl.EndsWith("/") ? config.OllamaUrl : config.OllamaUrl + "/";
-            var fullUrl = new Uri(new Uri(baseUri), "api/generate");
-            var request = new { model = config.OllamaModel, prompt = "Say 'OK'", stream = false };
-            var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
-
-            _logger.LogInformation("Testing {Type} AI connection: {Url}, Model: {Model}", useFallback ? "Fallback" : "Primary", fullUrl, config.OllamaModel);
-
-            using var cts = new CancellationTokenSource(testTimeout);
-            var response = await _httpClient.PostAsync(fullUrl, content, cts.Token);
-
-            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            catch (OperationCanceledException)
             {
-                return (false, $"Model '{config.OllamaModel}' not found on Ollama server.");
+                if (attempt < maxAttempts) continue;
+                return (false, "Connection timed out after 15s.");
             }
+            catch (HttpRequestException ex) when (ex.Message.Contains("refused") || ex.Message.Contains("known"))
+            {
+                if (attempt < maxAttempts) continue;
+                return (false, $"Could not reach AI service at {config.OllamaUrl}.");
+            }
+            catch (Exception ex) 
+            { 
+                if (attempt < maxAttempts) continue;
+                _logger.LogError(ex, "AI Connection test failed."); 
+                return (false, ex.Message); 
+            }
+        }
 
-            if (!response.IsSuccessStatusCode) return (false, $"Ollama error ({response.StatusCode})");
-            return (true, string.Empty);
-        }
-        catch (OperationCanceledException)
-        {
-            return (false, "Connection timed out after 10s.");
-        }
-        catch (HttpRequestException ex) when (ex.Message.Contains("refused") || ex.Message.Contains("known"))
-        {
-            return (false, $"Could not reach AI service at {config.OllamaUrl}.");
-        }
-        catch (Exception ex) { _logger.LogError(ex, "AI Connection test failed."); return (false, ex.Message); }
+        return (false, "Unknown failure during AI connection test.");
     }
 
     public async Task<string> GenerateSqlAsync(int userId, string userPrompt)
@@ -570,7 +589,7 @@ Context Information:
 
         if (config.Provider == "Gemini")
         {
-            return await GenerateGeminiCompletionAsync(userId, system, prompt, config.GeminiKey, ct, config.TimeoutSeconds);
+            return await GenerateGeminiCompletionAsync(userId, system, prompt, config.GeminiKey, config.OllamaModel, ct, config.TimeoutSeconds);
         }
 
         if (string.IsNullOrWhiteSpace(config.OllamaModel))
@@ -604,12 +623,11 @@ Context Information:
         return result?.Response?.Trim() ?? throw new InvalidOperationException("Ollama returned empty response.");
     }
 
-    private async Task<string> GenerateGeminiCompletionAsync(int userId, string system, string prompt, string apiKey, CancellationToken ct = default, int timeoutSeconds = 60)
+    private async Task<string> GenerateGeminiCompletionAsync(int userId, string system, string prompt, string apiKey, string modelName, CancellationToken ct = default, int timeoutSeconds = 60)
     {
-        var settings = await _settingsService.GetSettingsAsync(userId);
-        var model = !string.IsNullOrWhiteSpace(settings.OllamaModelName) && settings.OllamaModelName.Contains("gemini")
-            ? settings.OllamaModelName
-            : "gemini-2.5-flash";
+        var model = !string.IsNullOrWhiteSpace(modelName) && modelName.Contains("gemini")
+            ? modelName
+            : "gemini-1.5-flash";
 
         // The base URL path expected by Google is v1/models/{model}:generateContent
         // We ensure we don't have double 'models/' in the path.

@@ -125,7 +125,7 @@
                                 <button @click="forceRepull" class="text-xs bg-white border border-slate-200 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-50">🔄 Sync</button>
                             </div>
                         </div>
-                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                             <!-- Investec -->
                             <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
                                 <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Investec API</p>
@@ -152,26 +152,42 @@
 
                             <!-- AI Primary -->
                             <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
-                                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Primary AI ({{ settings.aiProvider }})</p>
+                                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Primary AI</p>
                                 <div class="mt-1 flex items-center justify-between">
                                     <span class="text-lg font-bold" :class="systemStatus.aiPrimaryOnline ? 'text-green-600' : 'text-red-600'">
                                         {{ systemStatus.aiPrimaryOnline ? 'Ready' : 'Offline' }}
                                     </span>
                                     <div class="w-8 h-8 rounded-lg flex items-center justify-center text-lg" :class="systemStatus.aiPrimaryOnline ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'">🧠</div>
                                 </div>
-                                <p class="text-[10px] text-slate-400 mt-1">{{ settings.ollamaModelName }}</p>
+                                <p class="text-[10px] text-slate-400 mt-1 truncate">{{ settings.ollamaModelName }}</p>
                             </div>
 
                             <!-- AI Fallback -->
                             <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
-                                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Backup AI ({{ settings.fallbackAiProvider }})</p>
+                                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Backup AI</p>
                                 <div class="mt-1 flex items-center justify-between">
                                     <span class="text-lg font-bold" :class="systemStatus.aiFallbackOnline ? 'text-green-600' : 'text-amber-600'">
                                         {{ settings.enableAiFallback ? (systemStatus.aiFallbackOnline ? 'Standby' : 'Offline') : 'Disabled' }}
                                     </span>
                                     <div class="w-8 h-8 rounded-lg flex items-center justify-center text-lg" :class="systemStatus.aiFallbackOnline ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'">🛡️</div>
                                 </div>
-                                <p class="text-[10px] text-slate-400 mt-1">{{ settings.fallbackOllamaModelName }}</p>
+                                <p class="text-[10px] text-slate-400 mt-1 truncate">{{ settings.fallbackOllamaModelName || 'Gemini' }}</p>
+                            </div>
+
+                            <!-- YoY Seasonality -->
+                            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+                                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">YoY Seasonality</p>
+                                <div v-if="healthStats && healthStats.SpendSameMonthLastYear > 0" class="mt-1 flex items-center justify-between">
+                                    <span class="text-lg font-bold" :class="healthStats.YoYChangePercentage > 5 ? 'text-red-600' : (healthStats.YoYChangePercentage < -5 ? 'text-green-600' : 'text-slate-600')">
+                                        {{ healthStats.YoYChangePercentage > 0 ? '+' : '' }}{{ healthStats.YoYChangePercentage }}%
+                                    </span>
+                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-lg bg-indigo-50 text-indigo-600">🗓️</div>
+                                </div>
+                                <div v-else class="mt-1 flex items-center justify-between">
+                                    <span class="text-lg font-bold text-slate-300 italic">No Data</span>
+                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-lg bg-slate-50 text-slate-300">🗓️</div>
+                                </div>
+                                <p class="text-[10px] text-slate-400 mt-1">Vs. Same Month 2025</p>
                             </div>
                         </div>
 
@@ -574,78 +590,81 @@
                         lastTelegramError: '', 
                         lastCheck: null,
                         lastAiCheck: null,
-                        lastInvestecCheck: null
-                    },
-                    toast: { show: false, msg: '' },
-                    recentTransactions: []
-                }
-            },
-            mounted() {
-                if (this.auth.token) {
-                    this.loadData();
-                    if (this.auth.role === 'Admin') this.loadUsers();
-                }
-            },
-            methods: {
-                async api(path, method = 'GET', body = null) {
-                    const headers = { 'Authorization': `Bearer ${this.auth.token}` };
-                    if (body) headers['Content-Type'] = 'application/json';
-                    const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : null });
-                    if (res.status === 401) this.logout();
-                    return res;
-                },
-                async login() {
-                    this.loading = true;
-                    try {
-                        const res = await fetch('/api/auth/login', {
-                            method: 'POST', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(this.loginForm)
-                        });
-                        if (res.ok) {
-                            const data = await res.json();
-                            const payload = JSON.parse(atob(data.token.split('.')[1]));
-                            const role = payload.role || 'User';
-                            
-                            this.auth = { token: data.token, username: data.username, role: role };
-                            localStorage.setItem('token', data.token);
-                            localStorage.setItem('username', data.username);
-                            localStorage.setItem('role', role);
-                            
-                            this.loadData();
-                            if (role === 'Admin') this.loadUsers();
-                        } else this.showToast("Login Failed");
-                    } catch { this.showToast("Network Error"); } 
-                    finally { this.loading = false; }
-                },
-                async register() {
-                    this.loading = true;
-                    try {
-                        const res = await fetch('/api/auth/register', {
-                            method: 'POST', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(this.registerForm)
-                        });
-                        if (res.ok) { this.showToast("Registered! Please login."); this.authView = 'login'; }
-                        else this.showToast("Registration Failed");
-                    } finally { this.loading = false; }
-                },
-                logout() {
-                    this.auth = { token: null, username: null, role: null };
-                    localStorage.clear();
-                },
-                async loadData() {
-                    const resS = await this.api('/api/settings');
-                    if (resS.ok) {
-                        this.settings = await resS.json();
-                        this.loadModels(false); // Load primary models
-                        this.loadModels(true);  // Load fallback models
-                    }
-                    const resSt = await this.api('/api/settings/status');
-                    if (resSt.ok) this.systemStatus = await resSt.json();
-
-                    const resTx = await this.api('/api/settings/recent-transactions');
-                    if (resTx.ok) this.recentTransactions = await resTx.json();
-                },
-                async loadUsers() {
+                                            lastInvestecCheck: null
+                                        },
+                                        healthStats: null,
+                                        toast: { show: false, msg: '' },
+                                        recentTransactions: []
+                                    }
+                                },
+                                mounted() {
+                                    if (this.auth.token) {
+                                        this.loadData();
+                                        if (this.auth.role === 'Admin') this.loadUsers();
+                                    }
+                                },
+                                methods: {
+                                    async api(path, method = 'GET', body = null) {
+                                        const headers = { 'Authorization': `Bearer ${this.auth.token}` };
+                                        if (body) headers['Content-Type'] = 'application/json';
+                                        const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : null });
+                                        if (res.status === 401) this.logout();
+                                        return res;
+                                    },
+                                    async login() {
+                                        this.loading = true;
+                                        try {
+                                            const res = await fetch('/api/auth/login', {
+                                                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify(this.loginForm)
+                                            });
+                                            if (res.ok) {
+                                                const data = await res.json();
+                                                const payload = JSON.parse(atob(data.token.split('.')[1]));
+                                                const role = payload.role || 'User';
+                                                
+                                                this.auth = { token: data.token, username: data.username, role: role };
+                                                localStorage.setItem('token', data.token);
+                                                localStorage.setItem('username', data.username);
+                                                localStorage.setItem('role', role);
+                                                
+                                                this.loadData();
+                                                if (role === 'Admin') this.loadUsers();
+                                            } else this.showToast("Login Failed");
+                                        } catch { this.showToast("Network Error"); } 
+                                        finally { this.loading = false; }
+                                    },
+                                    async register() {
+                                        this.loading = true;
+                                        try {
+                                            const res = await fetch('/api/auth/register', {
+                                                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify(this.registerForm)
+                                            });
+                                            if (res.ok) { this.showToast("Registered! Please login."); this.authView = 'login'; }
+                                            else this.showToast("Registration Failed");
+                                        } finally { this.loading = false; }
+                                    },
+                                    logout() {
+                                        this.auth = { token: null, username: null, role: null };
+                                        localStorage.clear();
+                                    },
+                                    async loadData() {
+                                        const resS = await this.api('/api/settings');
+                                        if (resS.ok) {
+                                            this.settings = await resS.json();
+                                            this.loadModels(false); 
+                                            this.loadModels(true);  
+                                        }
+                                        const resSt = await this.api('/api/settings/status');
+                                        if (resSt.ok) this.systemStatus = await resSt.json();
+                        
+                                        const resStats = await this.api('/api/settings/stats');
+                                        if (resStats.ok) this.healthStats = await resStats.json();
+                        
+                                        const resTx = await this.api('/api/settings/recent-transactions');
+                                        if (resTx.ok) this.recentTransactions = await resTx.json();
+                                    },                async loadUsers() {
                     const res = await this.api('/api/users');
                     if (res.ok) this.users = await res.json();
                 },

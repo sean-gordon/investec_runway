@@ -280,4 +280,18 @@ public class SettingsController : ControllerBase
         var txs = await connection.QueryAsync<Transaction>(sql, new { UserId });
         return Ok(txs);
     }
+
+    [HttpGet("stats")]
+    public async Task<IActionResult> GetStats()
+    {
+        try
+        {
+            var statsJson = await _reportService.GetHealthStatsJsonAsync(UserId);
+            return Content(statsJson, "application/json");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Error = ex.Message });
+        }
+    }
 }

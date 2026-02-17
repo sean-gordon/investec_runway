@@ -56,7 +56,7 @@ public class FinancialReportService : IFinancialReportService
         using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
         await connection.OpenAsync();
 
-        var fullHistorySql = "SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '90 days'";
+        var fullHistorySql = "SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '400 days'";
         var fullHistory = (await connection.QueryAsync<Transaction>(fullHistorySql, new { userId })).ToList();
         
         var healthReport = await _actuarialService.AnalyzeHealthAsync(fullHistory, currentBalance, settings);
@@ -74,6 +74,8 @@ public class FinancialReportService : IFinancialReportService
             ProjectedBalanceAtPayday = healthReport.ProjectedBalanceAtNextSalary.ToString("F2"),
             SpendThisPeriod = healthReport.SpendThisMonth.ToString("F2"),
             SpendLastPeriod = healthReport.SpendLastMonth.ToString("F2"),
+            SpendSameMonthLastYear = healthReport.SpendSameMonthLastYear.ToString("F2"),
+            YoYChangePercentage = healthReport.YoYChangePercentage.ToString("F1"),
             ProjectedTotalSpendForCycle = healthReport.ProjectedMonthEndSpend.ToString("F2"),
             UpcomingExpectedPaymentsTotal = healthReport.UpcomingExpectedPayments.ToString("F2"),
             UpcomingExpectedSalaryAmount = healthReport.LastDetectedSalaryAmount.ToString("F2"),
@@ -246,6 +248,12 @@ public class FinancialReportService : IFinancialReportService
                         <tr><th>Metric</th><th style='text-align: right;'>Value</th></tr>
                         <tr><td>Spend This Period</td><td style='text-align: right;' class='amount'>{healthReport.SpendThisMonth.ToString("C", culture)}</td></tr>
                         <tr><td>Spend Last Period</td><td style='text-align: right;' class='amount'>{healthReport.SpendLastMonth.ToString("C", culture)}</td></tr>
+                        <tr style='display: {(healthReport.SpendSameMonthLastYear > 0 ? "table-row" : "none")};'>
+                            <td>Vs Same Period Last Year</td>
+                            <td style='text-align: right;' class='amount {(healthReport.YoYChangePercentage > 5 ? "highlight-bad" : (healthReport.YoYChangePercentage < -5 ? "highlight-good" : ""))}'>
+                                {healthReport.YoYChangePercentage:F1}%
+                            </td>
+                        </tr>
                         <tr><td>Projected Cycle Spend</td><td style='text-align: right;' class='amount highlight-warn'>{healthReport.ProjectedMonthEndSpend.ToString("C", culture)}</td></tr>
                         <tr><td>Projected Payday Balance</td><td style='text-align: right;' class='amount highlight-good'>{healthReport.ProjectedBalanceAtNextSalary.ToString("C", culture)}</td></tr>
                     </table>

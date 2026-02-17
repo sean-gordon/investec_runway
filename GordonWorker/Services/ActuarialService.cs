@@ -15,6 +15,8 @@ public record FinancialHealthReport(
     string TrendDirection,
     decimal SpendThisMonth,
     decimal SpendLastMonth,
+    decimal SpendSameMonthLastYear,
+    decimal YoYChangePercentage,
     decimal ProjectedMonthEndSpend,
     decimal ProjectedBalanceAtNextSalary,
     decimal UpcomingExpectedPayments,
@@ -139,6 +141,13 @@ public class ActuarialService : IActuarialService
         var spendLastPeriodFull = lastPeriodFullExpenses.Sum(t => t.Amount);
         var spendLastPeriodPtd = lastPeriodPtdExpenses.Sum(t => t.Amount);
         
+        // Year-over-Year (YoY) Seasonality Analysis
+        var lastYearStart = periodStart.AddYears(-1);
+        var lastYearToday = today.AddYears(-1);
+        var lastYearExpensesPtd = expenses.Where(t => ToDate(t.TransactionDate) >= lastYearStart && ToDate(t.TransactionDate) <= lastYearToday).ToList();
+        var spendLastYearPtd = lastYearExpensesPtd.Sum(t => t.Amount);
+        decimal yoyChangePercent = spendLastYearPtd > 0 ? ((spendThisPeriod - spendLastYearPtd) / spendLastYearPtd) * 100 : 0;
+
         // Pulse Comparison: If PTD spend is suspiciously low (< 10% of full), use Full month as baseline to avoid "700% increase" errors
         var pulseBaseline = (spendLastPeriodPtd < (spendLastPeriodFull * settings.PulseBaselineThreshold)) ? spendLastPeriodFull : spendLastPeriodPtd;
 
@@ -237,6 +246,8 @@ public class ActuarialService : IActuarialService
             TrendDirection: trendDirection,
             SpendThisMonth: spendThisPeriod,
             SpendLastMonth: pulseBaseline,
+            SpendSameMonthLastYear: spendLastYearPtd,
+            YoYChangePercentage: yoyChangePercent,
             ProjectedMonthEndSpend: projectedMonthEndSpend,
             ProjectedBalanceAtNextSalary: projectedBalance,
             UpcomingExpectedPayments: upcomingOverhead,

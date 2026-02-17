@@ -80,6 +80,7 @@ public class DatabaseInitializer
             var transactionsSql = @"
                 CREATE TABLE IF NOT EXISTS transactions (
                     id UUID NOT NULL,
+                    user_id INT NOT NULL,
                     account_id TEXT,
                     transaction_date TIMESTAMPTZ NOT NULL,
                     description TEXT,
@@ -92,14 +93,19 @@ public class DatabaseInitializer
             await connection.ExecuteAsync(transactionsSql);
 
             // Add user_id if missing (migration)
+            // Use a more robust check for the column
             var colCheckSql = "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'transactions' AND column_name = 'user_id'";
             var hasUserId = await connection.ExecuteScalarAsync<int>(colCheckSql) > 0;
             if (!hasUserId)
             {
                 _logger.LogInformation("Adding 'user_id' column to 'transactions' table...");
-                await connection.ExecuteAsync("ALTER TABLE transactions ADD COLUMN user_id INT;");
-                await connection.ExecuteAsync("UPDATE transactions SET user_id = @AdminId WHERE user_id IS NULL", new { AdminId = adminId });
-                await connection.ExecuteAsync("ALTER TABLE transactions ALTER COLUMN user_id SET NOT NULL;");
+                try {
+                    await connection.ExecuteAsync("ALTER TABLE transactions ADD COLUMN user_id INT;");
+                    await connection.ExecuteAsync("UPDATE transactions SET user_id = @AdminId WHERE user_id IS NULL", new { AdminId = adminId });
+                    await connection.ExecuteAsync("ALTER TABLE transactions ALTER COLUMN user_id SET NOT NULL;");
+                } catch (Exception ex) {
+                    _logger.LogError(ex, "Failed to add 'user_id' column. It might already exist but check failed.");
+                }
             }
 
             // Migration for notes
@@ -109,14 +115,26 @@ public class DatabaseInitializer
             // TimescaleDB hypertables require unique indexes to include the partitioning column (transaction_date)
             try 
             {
+                _logger.LogInformation("Ensuring correct unique index for transactions...");
                 // Drop legacy indexes/constraints that might conflict with the new multi-tenant structure
                 await connection.ExecuteAsync("DROP INDEX IF EXISTS ux_transactions_id_date;");
                 await connection.ExecuteAsync("DROP INDEX IF EXISTS ux_transactions_id;");
-                await connection.ExecuteAsync("ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_pkey;");
+                
+                // IMPORTANT: Drop the actual PRIMARY KEY constraint if it exists, as it often only covers (id) or (id, date) 
+                // but lacks user_id, or prevents index creation.
+                var dropPkeySql = @"
+                    DO $$ 
+                    BEGIN 
+                        IF EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'transactions_pkey' AND table_name = 'transactions') THEN
+                            ALTER TABLE transactions DROP CONSTRAINT transactions_pkey;
+                        END IF;
+                    END $$;";
+                await connection.ExecuteAsync(dropPkeySql);
                 
                 // Create the definitive unique index required for Sync (ON CONFLICT target)
                 // In TimescaleDB, the partitioning column (transaction_date) MUST be part of any unique index.
                 await connection.ExecuteAsync("CREATE UNIQUE INDEX IF NOT EXISTS ux_transactions_id_date_user ON transactions (id, transaction_date, user_id);"); 
+                _logger.LogInformation("Unique index 'ux_transactions_id_date_user' ensured.");
             } 
             catch (Exception ex) 
             { 

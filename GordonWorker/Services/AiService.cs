@@ -40,7 +40,20 @@ public class AiService : IAiService
     {
         if (transactions == null || !transactions.Any()) return new List<Transaction>();
 
-        var txData = transactions.Select(t => new { t.Id, t.Description, t.Amount }).ToList();
+        // Batch processing to avoid prompt size limits and 429 errors
+        const int batchSize = 50;
+        for (int i = 0; i < transactions.Count; i += batchSize)
+        {
+            var batch = transactions.Skip(i).Take(batchSize).ToList();
+            await CategorizeBatchAsync(userId, batch);
+        }
+
+        return transactions;
+    }
+
+    private async Task CategorizeBatchAsync(int userId, List<Transaction> batch)
+    {
+        var txData = batch.Select(t => new { t.Id, t.Description, t.Amount }).ToList();
         var txJson = JsonSerializer.Serialize(txData);
 
         var systemPrompt = @"You are a financial data classifier.
@@ -80,12 +93,15 @@ Return ONLY the JSON array. Do NOT include any other text.";
             
             foreach (var item in doc.RootElement.EnumerateArray())
             {
-                var id = Guid.Parse(item.GetProperty("id").GetString()!);
-                var cat = item.GetProperty("category").GetString() ?? "General";
-                results[id] = cat;
+                var idStr = item.GetProperty("id").GetString();
+                if (Guid.TryParse(idStr, out var id))
+                {
+                    var cat = item.GetProperty("category").GetString() ?? "General";
+                    results[id] = cat;
+                }
             }
 
-            foreach (var tx in transactions)
+            foreach (var tx in batch)
             {
                 if (results.TryGetValue(tx.Id, out var category))
                 {
@@ -98,8 +114,6 @@ Return ONLY the JSON array. Do NOT include any other text.";
         {
             _logger.LogWarning(ex, "Failed to batch categorize transactions for user {UserId}", userId);
         }
-
-        return transactions;
     }
 
     public async Task<(bool IsChartRequest, string? ChartType, string? Sql, string? Title)> AnalyzeChartRequestAsync(int userId, string userMessage)

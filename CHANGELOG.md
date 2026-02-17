@@ -23,17 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.4.1] - 2026-02-17
+
+### Fixed
+- **Sync Engine:** Resolved a critical database schema mismatch where the `user_id` column was missing from the `transactions` table in some environments.
+- **Database Initialization:** Improved the robustness of the migration logic. Legacy primary keys and indexes are now explicitly dropped before creating the definitive multi-tenant unique index (`id`, `transaction_date`, `user_id`) required for TimescaleDB.
+- **AI Reliability:** Implemented transaction batching (chunks of 50) during categorization to prevent "Too Many Requests" (429) errors from AI providers during large sync operations.
+
 ## [2.4.0] - 2026-02-17
-
-### Added
-- **Interactive Slash Commands:**
-  - `/clear`: Allows users to permanently purge their AI conversation history from the database. Includes a multi-step confirmation warning.
-  - `/model`: Enables dynamic switching of AI providers (Primary/Backup) and specific model selection (Ollama/Gemini) directly from the chat interface.
-- **Telegram Interactivity:** Implemented `InlineKeyboardMarkup` support for seamless button-based command execution.
-- **WhatsApp Interactivity:** Implemented a text-based menu system for command parity on non-button platforms.
-- **Webhook Enhancements:** Updated Telegram webhook to handle `CallbackQuery` for interactive responses.
-
-## [2.3.1] - 2026-02-17
 
 ### Fixed
 - **Monitoring:** Optimized health checks with shorter 10s timeouts to ensure the dashboard KPIs remain responsive even when AI providers are slow or timing out.

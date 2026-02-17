@@ -305,7 +305,8 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
             try
             {
                 var url = $"https://generativelanguage.googleapis.com/v1beta/models?key={config.GeminiKey}";
-                var response = await _httpClient.GetAsync(url);
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                var response = await _httpClient.GetAsync(url, cts.Token);
                 if (!response.IsSuccessStatusCode) return new List<string> { "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash-exp" };
 
                 var responseString = await response.Content.ReadAsStringAsync();
@@ -361,7 +362,9 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
             
             var baseUri = baseUrl.EndsWith("/") ? baseUrl : baseUrl + "/";
             var fullUrl = new Uri(new Uri(baseUri), "api/tags");
-            var response = await _httpClient.GetAsync(fullUrl);
+            
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var response = await _httpClient.GetAsync(fullUrl, cts.Token);
             if (!response.IsSuccessStatusCode) return new List<string>();
             var responseString = await response.Content.ReadAsStringAsync();
             var tagsResponse = JsonSerializer.Deserialize<OllamaTagsResponse>(responseString);

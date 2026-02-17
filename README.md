@@ -1,6 +1,6 @@
 # Gordon Finance Engine 🦓
 
-**Version 2.0.0** | Your Personal, AI-Powered Chief Financial Officer
+**Version 2.1.0** | Your Personal, AI-Powered Chief Financial Officer
 
 Gordon is a self-hosted financial assistant designed to give you professional-grade insights into your money. He doesn't just track your spending; he understands it. By connecting directly to your bank and using advanced AI, Gordon helps you see where your money is going and, more importantly, where it's taking you.
 
@@ -17,8 +17,9 @@ He connects to your Investec account, remembers your history in a secure databas
 *   **Your Data, Your Rules:** Gordon is self-hosted. Your banking details and spending habits stay on your own hardware, not in someone else's cloud. Everything sensitive is locked away with enterprise-grade encryption.
 *   **Weekly Briefings:** Every week, Gordon sends you a friendly email summary of your wins, your upcoming bills, and a health check on your savings.
 
-### Fresh in Version 2.0 🆕
+### Fresh in Version 2.x 🆕
 *   **🤖 Double-Layer AI:** Gordon now has a "backup brain." If his primary AI fails, he'll try again and then flip to a secondary provider automatically.
+*   **✨ Dynamic AI Discovery:** Gordon now automatically finds the best AI models for your needs by checking their capabilities in real-time.
 *   **📱 Reliable Telegram Chat:** We've rebuilt the Telegram connection from the ground up. Messages are now queued up, meaning Gordon will never "forget" to reply to you, even if things get busy.
 *   **❤️ Live Health Checks:** You can now see at a glance if Gordon's connection to your bank or his AI "brain" is healthy.
 *   **🛡️ Built-in Protection:** We've added layers of security and "rate limiting" to keep your engine running smoothly and safely.

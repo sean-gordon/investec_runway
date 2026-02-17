@@ -23,6 +23,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.0] - 2026-02-17
+
+### Added
+- **Dynamic Gemini Model Discovery:** Truly dynamic model discovery by querying the Google AI API for supported capabilities (`generateContent`) rather than relying on hardcoded lists or simple name filters.
+- **Robust Model Parsing:** Enhanced logic to handle various model naming conventions and filter out incompatible models (like vision-only or experimental ones).
+
+### Changed
+- **AiService Syntax Refinement:** Cleaned up C# syntax and improved error handling for more reliable model discovery.
+
+### Fixed
+- **UI Model List Refresh:** Fixed an issue where the Gemini model list wouldn't always refresh correctly in the user settings UI after updating an API key.
+- **Model Filtering:** Better exclusion of deprecated or non-chat models from the discovered list.
+
+---
+
 ## [2.0.0] - 2026-02-16
 
 ### Added

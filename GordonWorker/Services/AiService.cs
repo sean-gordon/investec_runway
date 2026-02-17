@@ -13,7 +13,7 @@ public interface IAiService
     Task<(Guid? TransactionId, string? Note)> AnalyzeExpenseExplanationAsync(int userId, string userMessage, List<Transaction> recentTransactions);
     Task<(bool IsAffordabilityCheck, decimal? Amount, string? Description)> AnalyzeAffordabilityAsync(int userId, string userMessage);
     Task<(bool IsChartRequest, string? ChartType, string? Sql, string? Title)> AnalyzeChartRequestAsync(int userId, string userMessage);
-    Task<(bool Success, string Error)> TestConnectionAsync(int userId);
+    Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false);
     Task<List<string>> GetAvailableModelsAsync(int userId);
 }
 
@@ -253,9 +253,9 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
         catch (Exception ex) { _logger.LogError(ex, "Failed to fetch models from Ollama."); return new List<string>(); }
     }
 
-    public async Task<(bool Success, string Error)> TestConnectionAsync(int userId)
+    public async Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false)
     {
-        var config = await GetProviderConfigAsync(userId);
+        var config = await GetProviderConfigAsync(userId, useFallback);
         try
         {
             if (config.Provider == "Gemini")
@@ -274,7 +274,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
             var request = new { model = config.OllamaModel, prompt = "Say 'OK'", stream = false };
             var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
 
-            _logger.LogInformation("Testing Ollama connection: {Url}, Model: {Model}", fullUrl, config.OllamaModel);
+            _logger.LogInformation("Testing {Type} AI connection: {Url}, Model: {Model}", useFallback ? "Fallback" : "Primary", fullUrl, config.OllamaModel);
 
             var response = await _httpClient.PostAsync(fullUrl, content);
 

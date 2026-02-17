@@ -342,25 +342,74 @@
                         </div>
 
                         <!-- AI -->
-                        <div v-if="activeTab === 's-ai'" class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
-                            <div class="grid grid-cols-2 gap-4">
-                                <div><label class="text-xs font-bold text-slate-700">Provider</label><select v-model="settings.aiProvider" @change="loadModels" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm"><option value="Ollama">Ollama</option><option value="Gemini">Gemini</option></select></div>
-                                <div><label class="text-xs font-bold text-slate-700">Persona Name</label><input v-model="settings.systemPersona" type="text" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm"></div>
-                            </div>
-                            <div>
-                                <label class="text-xs font-bold text-slate-700">{{ settings.aiProvider === 'Ollama' ? 'Ollama URL' : 'Gemini Key' }}</label>
-                                <div class="flex gap-2 mt-1">
-                                    <input v-if="settings.aiProvider === 'Ollama'" v-model="settings.ollamaBaseUrl" type="text" class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
-                                    <input v-else v-model="settings.geminiApiKey" type="password" class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
-                                    <button @click="testAi" class="px-4 py-2 bg-slate-800 text-white rounded-lg text-xs font-bold">Test</button>
+                        <div v-if="activeTab === 's-ai'" class="space-y-6">
+                            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
+                                <h3 class="font-bold text-slate-800 text-sm border-b pb-2 mb-4">Primary Brain</h3>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div><label class="text-xs font-bold text-slate-700">Provider</label><select v-model="settings.aiProvider" @change="loadModels" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm"><option value="Ollama">Ollama</option><option value="Gemini">Gemini</option></select></div>
+                                    <div><label class="text-xs font-bold text-slate-700">Persona Name</label><input v-model="settings.systemPersona" type="text" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm"></div>
+                                </div>
+                                <div>
+                                    <label class="text-xs font-bold text-slate-700">{{ settings.aiProvider === 'Ollama' ? 'Ollama URL' : 'Gemini Key' }}</label>
+                                    <div class="flex gap-2 mt-1">
+                                        <input v-if="settings.aiProvider === 'Ollama'" v-model="settings.ollamaBaseUrl" type="text" class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                        <input v-else v-model="settings.geminiApiKey" type="password" class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                        <button @click="testAi" class="px-4 py-2 bg-slate-800 text-white rounded-lg text-xs font-bold">Test</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-xs font-bold text-slate-700">Model</label>
+                                    <select v-model="settings.ollamaModelName" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                        <option v-if="availableModels.length === 0" :value="settings.ollamaModelName">{{ settings.ollamaModelName }}</option>
+                                        <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
+                                    </select>
                                 </div>
                             </div>
-                            <div>
-                                <label class="text-xs font-bold text-slate-700">Model</label>
-                                <select v-model="settings.ollamaModelName" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                                    <option v-if="availableModels.length === 0" :value="settings.ollamaModelName">{{ settings.ollamaModelName }}</option>
-                                    <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
-                                </select>
+
+                            <!-- RELIABILITY & FALLBACK -->
+                            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
+                                <div class="flex justify-between items-center border-b pb-2 mb-4">
+                                    <h3 class="font-bold text-slate-800 text-sm">Reliability & Fallback</h3>
+                                    <div class="flex items-center gap-2">
+                                        <label class="text-[10px] font-bold text-slate-400 uppercase">Enable Fallback</label>
+                                        <input type="checkbox" v-model="settings.enableAiFallback" class="w-4 h-4 text-brand-600 rounded">
+                                    </div>
+                                </div>
+                                
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="text-xs font-bold text-slate-700">Retry Attempts</label>
+                                        <input v-model.number="settings.aiRetryAttempts" type="number" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs font-bold text-slate-700">Timeout (Seconds)</label>
+                                        <input v-model.number="settings.aiTimeoutSeconds" type="number" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                    </div>
+                                </div>
+
+                                <div v-if="settings.enableAiFallback" class="space-y-4 pt-4 border-t border-slate-100">
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label class="text-xs font-bold text-slate-700">Fallback Provider</label>
+                                            <select v-model="settings.fallbackAiProvider" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                                <option value="Ollama">Ollama</option>
+                                                <option value="Gemini">Gemini</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="text-xs font-bold text-slate-700">Fallback Model</label>
+                                            <input v-model="settings.fallbackOllamaModelName" type="text" placeholder="e.g. llama3 or gemini-1.5-flash" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs font-bold text-slate-700">{{ settings.fallbackAiProvider === 'Ollama' ? 'Fallback Ollama URL' : 'Fallback Gemini Key' }}</label>
+                                        <div class="flex gap-2 mt-1">
+                                            <input v-if="settings.fallbackAiProvider === 'Ollama'" v-model="settings.fallbackOllamaBaseUrl" type="text" class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                            <input v-else v-model="settings.fallbackGeminiApiKey" type="password" class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                            <button @click="testFallbackAi" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold border border-slate-200">Test Fallback</button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -467,7 +516,9 @@
                         analysisWindowDays: 90, actuarialAlpha: 0.15, unexpectedPaymentThreshold: 3000, incomeAlertThreshold: 5000,
                         historyDaysBack: 180, syncBufferDays: 0.05,
                         minCycleDays: 20, maxCycleDays: 45, defaultCycleDays: 30, 
-                        pulseBaselineThreshold: 0.1, hybridBaselineThreshold: 0.1, varConfidenceInterval: 1.645
+                        pulseBaselineThreshold: 0.1, hybridBaselineThreshold: 0.1, varConfidenceInterval: 1.645,
+                        enableAiFallback: true, fallbackAiProvider: 'Gemini', fallbackOllamaBaseUrl: 'http://host.docker.internal:11434',
+                        fallbackOllamaModelName: 'llama3', fallbackGeminiApiKey: '', aiTimeoutSeconds: 90, aiRetryAttempts: 2
                     },
                     availableModels: [],
                     days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
@@ -582,6 +633,11 @@
                     await this.saveSettings();
                     const res = await this.api('/api/settings/test-ai', 'POST');
                     if (res.ok) { this.showToast("AI Connected"); this.loadModels(); } else this.showToast("Failed");
+                },
+                async testFallbackAi() {
+                    await this.saveSettings();
+                    const res = await this.api('/api/settings/test-fallback-ai', 'POST');
+                    if (res.ok) { this.showToast("Fallback AI Connected"); } else this.showToast("Fallback Failed");
                 },
                 async testTelegram() {
                     await this.saveSettings();

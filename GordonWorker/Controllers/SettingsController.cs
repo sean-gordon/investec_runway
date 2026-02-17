@@ -95,8 +95,22 @@ public class SettingsController : ControllerBase
     {
         try
         {
-            var result = await _aiService.TestConnectionAsync(UserId);
+            var result = await _aiService.TestConnectionAsync(UserId, useFallback: false);
             return result.Success ? Ok(new { Message = "Connected to AI Brain successfully." }) : StatusCode(500, new { Error = result.Error });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Error = ex.Message });
+        }
+    }
+
+    [HttpPost("test-fallback-ai")]
+    public async Task<IActionResult> TestFallbackAi()
+    {
+        try
+        {
+            var result = await _aiService.TestConnectionAsync(UserId, useFallback: true);
+            return result.Success ? Ok(new { Message = "Connected to Fallback AI Brain successfully." }) : StatusCode(500, new { Error = result.Error });
         }
         catch (Exception ex)
         {

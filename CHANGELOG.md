@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.1] - 2026-02-17
+
+### Fixed
+- **Sync:** Fixed build error caused by missing `IAiService` dependency injection in `TransactionSyncService`.
+
 ## [2.2.0] - 2026-02-17
 
 ### Added

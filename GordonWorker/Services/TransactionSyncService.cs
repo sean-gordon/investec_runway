@@ -20,6 +20,7 @@ public class TransactionSyncService : ITransactionSyncService
     private readonly IFinancialReportService _reportService;
     private readonly ISubscriptionService _subscriptionService;
     private readonly ITelegramService _telegramService;
+    private readonly IAiService _aiService;
 
     public TransactionSyncService(
         IInvestecClient client, 
@@ -29,7 +30,8 @@ public class TransactionSyncService : ITransactionSyncService
         IActuarialService actuarialService,
         IFinancialReportService reportService,
         ISubscriptionService subscriptionService,
-        ITelegramService telegramService)
+        ITelegramService telegramService,
+        IAiService aiService)
     {
         _client = client;
         _configuration = configuration;
@@ -39,6 +41,7 @@ public class TransactionSyncService : ITransactionSyncService
         _reportService = reportService;
         _subscriptionService = subscriptionService;
         _telegramService = telegramService;
+        _aiService = aiService;
     }
 
     public async Task SyncTransactionsAsync(int userId, bool silent = false, CancellationToken token = default)

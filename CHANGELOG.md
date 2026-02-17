@@ -23,6 +23,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.4.3] - 2026-02-17
+
+### Fixed
+- **Telegram Debugging:** Added detailed logging to the Telegram webhook to better track `CallbackQuery` processing and user authorization.
+- **Resilience:** Implemented 10-second timeouts for all AI model discovery requests (Ollama and Gemini) to prevent interactive commands from hanging on slow network connections.
+
+## [2.4.2] - 2026-02-17
+
+### Fixed
+- **Monitoring:** Optimized health checks with shorter 10s timeouts to ensure the dashboard KPIs remain responsive even when AI providers are slow or timing out.
+- **Worker:** Ensured system-wide health checks for DB and AI continue to run even if the admin user has not configured Investec credentials.
+
+## [2.2.2] - 2026-02-17
+
+### Added
+- **Monitoring:** Expanded dashboard with a 4-column KPI grid showing live status for Investec API, TimescaleDB, Primary AI, and Backup AI.
+- **Health Checks:** Implemented automated background connectivity checks for AI providers and database every 15 minutes.
+
+## [2.2.1] - 2026-02-17
+
+### Fixed
+- **Sync:** Fixed build error caused by missing `IAiService` dependency injection in `TransactionSyncService`.
+
+## [2.2.0] - 2026-02-17
+
+### Added
+- **AI Categorisation:** Implemented "Advanced Machine Learning Categorisation". Transactions are now semantically classified into categories like Groceries, Eating Out, Bills, etc., using the primary or fallback LLM.
+- **Batch Processing:** Added a dashboard button to categorize existing historical transactions using AI.
+- **Improved Analytics:** Actuarial logic now uses semantic categories for more accurate fixed-cost identification and discretionary spend analysis.
+
+## [2.1.1] - 2026-02-17
+
+### Fixed
+- **AI:** Fixed Gemini API URL duplication causing `404 Not Found` errors (removed double `models/` prefix).
+- **Database:** Ensured `TransactionSyncService` uses the correct `ON CONFLICT` target `(id, transaction_date, user_id)` to match the multi-tenant unique index.
+
+## [2.1.0] - 2026-02-17
+
+### Added
+- **Dynamic Gemini Model Discovery:** Truly dynamic model discovery by querying the Google AI API for supported capabilities (`generateContent`) rather than relying on hardcoded lists or simple name filters.
+- **Robust Model Parsing:** Enhanced logic to handle various model naming conventions and filter out incompatible models (like vision-only or experimental ones).
+
+### Changed
+- **AiService Syntax Refinement:** Cleaned up C# syntax and improved error handling for more reliable model discovery.
+
+### Fixed
+- **UI Model List Refresh:** Fixed an issue where the Gemini model list wouldn't always refresh correctly in the user settings UI after updating an API key.
+- **Model Filtering:** Better exclusion of deprecated or non-chat models from the discovered list.
+
+---
+
 ## [2.0.0] - 2026-02-16
 
 ### Added

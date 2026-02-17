@@ -20,6 +20,7 @@ public class TransactionSyncService : ITransactionSyncService
     private readonly IFinancialReportService _reportService;
     private readonly ISubscriptionService _subscriptionService;
     private readonly ITelegramService _telegramService;
+    private readonly IAiService _aiService;
 
     public TransactionSyncService(
         IInvestecClient client, 
@@ -29,7 +30,8 @@ public class TransactionSyncService : ITransactionSyncService
         IActuarialService actuarialService,
         IFinancialReportService reportService,
         ISubscriptionService subscriptionService,
-        ITelegramService telegramService)
+        ITelegramService telegramService,
+        IAiService aiService)
     {
         _client = client;
         _configuration = configuration;
@@ -39,6 +41,7 @@ public class TransactionSyncService : ITransactionSyncService
         _reportService = reportService;
         _subscriptionService = subscriptionService;
         _telegramService = telegramService;
+        _aiService = aiService;
     }
 
     public async Task SyncTransactionsAsync(int userId, bool silent = false, CancellationToken token = default)
@@ -73,7 +76,20 @@ public class TransactionSyncService : ITransactionSyncService
             var txs = await _client.GetTransactionsAsync(account.AccountId, fromDate);
             _logger.LogInformation("User {UserId}: Fetched {Count} transactions for account {AccountId} from {FromDate}", userId, txs.Count, account.AccountId, fromDate);
 
-            foreach (var tx in txs)
+            // Filter out transactions already in DB to avoid unnecessary AI calls
+            var existingIds = (await connection.QueryAsync<Guid>(
+                "SELECT id FROM transactions WHERE user_id = @userId AND account_id = @accountId AND transaction_date >= @fromDate",
+                new { userId, accountId = account.AccountId, fromDate })).ToHashSet();
+
+            var newTxs = txs.Where(t => !existingIds.Contains(t.Id)).ToList();
+            
+            if (newTxs.Any())
+            {
+                _logger.LogInformation("User {UserId}: Categorizing {Count} new transactions with AI...", userId, newTxs.Count);
+                await _aiService.CategorizeTransactionsAsync(userId, newTxs);
+            }
+
+            foreach (var tx in newTxs)
             {
                 var insertSql = @"
                     INSERT INTO transactions (id, user_id, account_id, transaction_date, description, amount, balance, category, is_ai_processed, notes)
@@ -97,7 +113,7 @@ public class TransactionSyncService : ITransactionSyncService
                 if (rowsAffected > 0)
                 {
                     totalNew++;
-                    _logger.LogDebug("User {UserId}: New transaction inserted: {Id} - {Description}", userId, tx.Id, tx.Description);
+                    _logger.LogDebug("User {UserId}: New transaction inserted: {Id} - {Description} ({Category})", userId, tx.Id, tx.Description, tx.Category);
                     
                     if (!silent)
                     {

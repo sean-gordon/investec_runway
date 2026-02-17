@@ -13,10 +13,16 @@ public interface IAiService
     Task<(Guid? TransactionId, string? Note)> AnalyzeExpenseExplanationAsync(int userId, string userMessage, List<Transaction> recentTransactions);
     Task<(bool IsAffordabilityCheck, decimal? Amount, string? Description)> AnalyzeAffordabilityAsync(int userId, string userMessage);
     Task<(bool IsChartRequest, string? ChartType, string? Sql, string? Title)> AnalyzeChartRequestAsync(int userId, string userMessage);
-    Task<(bool Success, string Error)> TestConnectionAsync(int userId);
-    Task<List<string>> GetAvailableModelsAsync(int userId);
+    Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false);
+    Task<List<string>> GetAvailableModelsAsync(int userId, bool useFallback = false, AppSettings? overriddenSettings = null);
+    Task<List<Transaction>> CategorizeTransactionsAsync(int userId, List<Transaction> transactions);
 }
 
+/// <summary>
+/// This is Gordon's "Brain." It handles talking to the AI—whether you're using 
+/// local LLMs (Ollama) or cloud ones (Gemini). It also makes sure Gordon always 
+/// responds by switching over to a backup AI automatically if the primary one is busy.
+/// </summary>
 public class AiService : IAiService
 {
     private readonly HttpClient _httpClient;
@@ -28,6 +34,92 @@ public class AiService : IAiService
         _httpClient = httpClient;
         _logger = logger;
         _settingsService = settingsService;
+    }
+
+    public async Task<List<Transaction>> CategorizeTransactionsAsync(int userId, List<Transaction> transactions)
+    {
+        if (transactions == null || !transactions.Any()) return new List<Transaction>();
+
+        // Batch processing to avoid prompt size limits and 429 errors
+        const int batchSize = 50;
+        for (int i = 0; i < transactions.Count; i += batchSize)
+        {
+            var batch = transactions.Skip(i).Take(batchSize).ToList();
+            await CategorizeBatchAsync(userId, batch);
+        }
+
+        return transactions;
+    }
+
+    private async Task CategorizeBatchAsync(int userId, List<Transaction> batch)
+    {
+        var txData = batch.Select(t => new { t.Id, t.Description, t.Amount }).ToList();
+        var txJson = JsonSerializer.Serialize(txData);
+
+        var systemPrompt = @"You are a financial data classifier.
+YOUR GOAL: Categorize bank transactions into semantic categories.
+
+CATEGORIES TO USE:
+- Groceries (Supermarkets, food stores)
+- Eating Out (Restaurants, fast food, coffee shops)
+- Transport (Fuel, Uber, parking, public transport)
+- Shopping (Retail stores, Amazon, general merchandise)
+- Bills & Utilities (Electricity, water, internet, mobile, insurance)
+- Subscriptions (Netflix, Spotify, gym, recurring software)
+- Health & Wellness (Pharmacy, doctors, fitness)
+- Entertainment (Movies, games, hobbies)
+- Transfer (Money moved between accounts)
+- Income (Salary, dividends, refunds - NOTE: income is NEGATIVE amount)
+- General (Anything that doesn't fit the above)
+
+INPUT: A JSON list of transactions with ID and Description.
+OUTPUT: A JSON list of objects with 'id' and 'category'.
+
+EXAMPLES:
+Input: [{ ""id"": ""..."", ""description"": ""UBER EATS"", ""amount"": 150.00 }]
+Output: [{ ""id"": ""..."", ""category"": ""Eating Out"" }]
+
+Return ONLY the JSON array. Do NOT include any other text.";
+
+        try
+        {
+            var jsonResponse = await GenerateCompletionWithFallbackAsync(userId, systemPrompt, $"TRANSACTIONS:\n{txJson}");
+            
+            var match = System.Text.RegularExpressions.Regex.Match(jsonResponse, @"```json\s*(.*?)\s*```", System.Text.RegularExpressions.RegexOptions.Singleline);
+            var cleanJson = match.Success ? match.Groups[1].Value : jsonResponse.Trim();
+
+            if (cleanJson.StartsWith("I'm") || cleanJson.Contains("error"))
+            {
+                _logger.LogWarning("AI returned a non-JSON response for categorization: {Response}", cleanJson);
+                return;
+            }
+
+            using var doc = JsonDocument.Parse(cleanJson);
+            var results = new Dictionary<Guid, string>();
+            
+            foreach (var item in doc.RootElement.EnumerateArray())
+            {
+                var idStr = item.GetProperty("id").GetString();
+                if (Guid.TryParse(idStr, out var id))
+                {
+                    var cat = item.GetProperty("category").GetString() ?? "General";
+                    results[id] = cat;
+                }
+            }
+
+            foreach (var tx in batch)
+            {
+                if (results.TryGetValue(tx.Id, out var category))
+                {
+                    tx.Category = category;
+                    tx.IsAiProcessed = true;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to batch categorize transactions for user {UserId}", userId);
+        }
     }
 
     public async Task<(bool IsChartRequest, string? ChartType, string? Sql, string? Title)> AnalyzeChartRequestAsync(int userId, string userMessage)
@@ -177,9 +269,9 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
         return (null, null);
     }
 
-    private async Task<AiProviderConfig> GetProviderConfigAsync(int userId, bool useFallback = false)
+    private async Task<AiProviderConfig> GetProviderConfigAsync(int userId, bool useFallback = false, AppSettings? overriddenSettings = null)
     {
-        var settings = await _settingsService.GetSettingsAsync(userId);
+        var settings = overriddenSettings ?? await _settingsService.GetSettingsAsync(userId);
 
         if (useFallback && settings.EnableAiFallback)
         {
@@ -204,18 +296,18 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
         };
     }
 
-    public async Task<List<string>> GetAvailableModelsAsync(int userId)
-    {
-        var config = await GetProviderConfigAsync(userId);
-
-        if (config.Provider == "Gemini")
+        public async Task<List<string>> GetAvailableModelsAsync(int userId, bool useFallback = false, AppSettings? overriddenSettings = null)        
         {
+            var config = await GetProviderConfigAsync(userId, useFallback, overriddenSettings);
+    
+            if (config.Provider == "Gemini")        {
             if (string.IsNullOrWhiteSpace(config.GeminiKey)) return new List<string>();
             try
             {
                 var url = $"https://generativelanguage.googleapis.com/v1beta/models?key={config.GeminiKey}";
-                var response = await _httpClient.GetAsync(url);
-                if (!response.IsSuccessStatusCode) return new List<string> { "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp" };
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                var response = await _httpClient.GetAsync(url, cts.Token);
+                if (!response.IsSuccessStatusCode) return new List<string> { "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash-exp" };
 
                 var responseString = await response.Content.ReadAsStringAsync();
                 using var doc = JsonDocument.Parse(responseString);
@@ -226,71 +318,126 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                     foreach (var m in models.EnumerateArray())
                     {
                         var name = m.GetProperty("name").GetString() ?? "";
-                        if (name.StartsWith("models/")) name = name.Substring(7);
-                        if (name.Contains("gemini") && !name.Contains("vision") && !name.Contains("embedding"))
+                        var methods = m.TryGetProperty("supportedGenerationMethods", out var methodsEl) 
+                            ? methodsEl.EnumerateArray().Select(x => x.GetString()).ToList() 
+                            : new List<string?>();
+
+                        // Dynamic check: If it can generate content and isn't an embedding/vision-only tool, we want it.
+                        if (methods.Contains("generateContent"))
                         {
-                            modelNames.Add(name);
+                            if (name.Contains("/")) name = name.Split('/').Last();
+                            
+                            // Filter out internal/specialized models we know won't work for chat
+                            var lowerName = name.ToLower();
+                            if (!lowerName.Contains("embedding") && !lowerName.Contains("aqa") && !lowerName.Contains("classifier"))
+                            {
+                                modelNames.Add(name);
+                            }
                         }
                     }
                 }
-                return modelNames.OrderByDescending(n => n).ToList();
+                
+                if (!modelNames.Any())
+                {
+                    _logger.LogWarning("No suitable Gemini models found in API response. Returning defaults.");
+                    return new List<string> { "gemini-2.0-flash", "gemini-2.5-pro", "gemini-2.5-flash" };
+                }
+                
+                return modelNames.Distinct().OrderByDescending(n => n).ToList();
             }
-            catch { return new List<string> { "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp" }; }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to fetch Gemini models from Google API.");
+                return new List<string> { "gemini-2.0-flash", "gemini-2.5-pro", "gemini-2.5-flash" };
+            }
         }
 
         if (string.IsNullOrWhiteSpace(config.OllamaUrl)) return new List<string>();
 
         try
         {
-            var baseUri = config.OllamaUrl.EndsWith("/") ? config.OllamaUrl : config.OllamaUrl + "/";
+            var baseUrl = config.OllamaUrl;
+            if (baseUrl.Contains("/api/generate")) baseUrl = baseUrl.Replace("/api/generate", "");
+            else if (baseUrl.EndsWith("/api")) baseUrl = baseUrl[..^4];
+            
+            var baseUri = baseUrl.EndsWith("/") ? baseUrl : baseUrl + "/";
             var fullUrl = new Uri(new Uri(baseUri), "api/tags");
-            var response = await _httpClient.GetAsync(fullUrl);
+            
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var response = await _httpClient.GetAsync(fullUrl, cts.Token);
             if (!response.IsSuccessStatusCode) return new List<string>();
             var responseString = await response.Content.ReadAsStringAsync();
             var tagsResponse = JsonSerializer.Deserialize<OllamaTagsResponse>(responseString);
             return tagsResponse?.Models?.Select(m => m.Name).Where(n => !string.IsNullOrEmpty(n)).Cast<string>().ToList() ?? new List<string>();
         }
-        catch (Exception ex) { _logger.LogError(ex, "Failed to fetch models from Ollama."); return new List<string>(); }
+        catch (Exception ex) { _logger.LogError(ex, "Failed to fetch models from {Provider}.", useFallback ? "Fallback AI" : "Primary AI"); return new List<string>(); }
     }
 
-    public async Task<(bool Success, string Error)> TestConnectionAsync(int userId)
+    public async Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false)
     {
-        var config = await GetProviderConfigAsync(userId);
-        try
+        var config = await GetProviderConfigAsync(userId, useFallback);
+        // Status tests use a more forgiving timeout (15s) and a single retry to handle "waking up" local models.
+        var testTimeout = TimeSpan.FromSeconds(15); 
+        var maxAttempts = 2;
+
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            if (config.Provider == "Gemini")
+            try
             {
-                if (string.IsNullOrWhiteSpace(config.GeminiKey)) return (false, "Gemini API Key is missing.");
-                var result = await GenerateGeminiCompletionAsync(userId, "System", "Say 'OK'", config.GeminiKey);
-                if (string.IsNullOrWhiteSpace(result) || result.Contains("Error:")) return (false, result ?? "Empty response.");
+                if (config.Provider == "Gemini")
+                {
+                    if (string.IsNullOrWhiteSpace(config.GeminiKey)) return (false, "Gemini API Key is missing.");
+                    var result = await GenerateGeminiCompletionAsync(userId, "System", "Say 'OK'", config.GeminiKey, config.OllamaModel, timeoutSeconds: 15);
+                    if (string.IsNullOrWhiteSpace(result) || result.Contains("Error:")) return (false, result ?? "Empty response.");
+                    return (true, string.Empty);
+                }
+
+                if (string.IsNullOrWhiteSpace(config.OllamaUrl)) return (false, "Ollama URL is not configured.");
+                if (string.IsNullOrWhiteSpace(config.OllamaModel)) return (false, "Please select a model first.");
+
+                var baseUri = config.OllamaUrl.EndsWith("/") ? config.OllamaUrl : config.OllamaUrl + "/";
+                var fullUrl = new Uri(new Uri(baseUri), "api/generate");
+                var request = new { model = config.OllamaModel, prompt = "Say 'OK'", stream = false };
+                var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
+
+                _logger.LogInformation("Testing {Type} AI connection (Attempt {Attempt}): {Url}, Model: {Model}", 
+                    useFallback ? "Fallback" : "Primary", attempt, fullUrl, config.OllamaModel);
+
+                using var cts = new CancellationTokenSource(testTimeout);
+                var response = await _httpClient.PostAsync(fullUrl, content, cts.Token);
+
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    return (false, $"Model '{config.OllamaModel}' not found on Ollama server.");
+                }
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    if (attempt < maxAttempts) continue;
+                    return (false, $"Ollama error ({response.StatusCode})");
+                }
+
                 return (true, string.Empty);
             }
-
-            if (string.IsNullOrWhiteSpace(config.OllamaUrl)) return (false, "Ollama URL is not configured.");
-            if (string.IsNullOrWhiteSpace(config.OllamaModel)) return (false, "Please select a model first.");
-
-            var baseUri = config.OllamaUrl.EndsWith("/") ? config.OllamaUrl : config.OllamaUrl + "/";
-            var fullUrl = new Uri(new Uri(baseUri), "api/generate");
-            var request = new { model = config.OllamaModel, prompt = "Say 'OK'", stream = false };
-            var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
-
-            _logger.LogInformation("Testing Ollama connection: {Url}, Model: {Model}", fullUrl, config.OllamaModel);
-
-            var response = await _httpClient.PostAsync(fullUrl, content);
-
-            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            catch (OperationCanceledException)
             {
-                return (false, $"Model '{config.OllamaModel}' not found on Ollama server. Have you run 'ollama pull {config.OllamaModel}'?");
+                if (attempt < maxAttempts) continue;
+                return (false, "Connection timed out after 15s.");
             }
+            catch (HttpRequestException ex) when (ex.Message.Contains("refused") || ex.Message.Contains("known"))
+            {
+                if (attempt < maxAttempts) continue;
+                return (false, $"Could not reach AI service at {config.OllamaUrl}.");
+            }
+            catch (Exception ex) 
+            { 
+                if (attempt < maxAttempts) continue;
+                _logger.LogError(ex, "AI Connection test failed."); 
+                return (false, ex.Message); 
+            }
+        }
 
-            if (!response.IsSuccessStatusCode) return (false, $"Ollama error ({response.StatusCode})");
-            return (true, string.Empty);
-        }
-        catch (HttpRequestException ex) when (ex.Message.Contains("refused") || ex.Message.Contains("known"))
-        {
-            return (false, $"Could not reach AI service at {config.OllamaUrl}. Check the URL and ensure the service is running.");
-        }
-        catch (Exception ex) { _logger.LogError(ex, "AI Connection test failed."); return (false, ex.Message); }
+        return (false, "Unknown failure during AI connection test.");
     }
 
     public async Task<string> GenerateSqlAsync(int userId, string userPrompt)
@@ -307,7 +454,17 @@ Table 'transactions' schema:
 - category (text)
 
 Return ONLY the raw SQL query. Do NOT use Markdown formatting (no ```sql). Do NOT include explanations.";
-        return await GenerateCompletionWithFallbackAsync(userId, systemPrompt, userPrompt);
+        
+        var response = await GenerateCompletionWithFallbackAsync(userId, systemPrompt, userPrompt);
+        
+        // Safety check: If the AI failed and returned the graceful error message, 
+        // we MUST NOT return it as SQL, otherwise it will crash the DB caller.
+        if (response.StartsWith("I'm so sorry") || response.Contains("analytical engine"))
+        {
+            throw new InvalidOperationException("AI failed to generate a valid SQL query.");
+        }
+
+        return response;
     }
 
     public async Task<string> FormatResponseAsync(int userId, string userPrompt, string dataContext, bool isWhatsApp = false)
@@ -338,11 +495,13 @@ The user has provided a JSON summary of their current financial health.
 - **Projected Balance:** This is the most critical metric. Focus on it.
 - **Expected Salary:** This is the projected capital injection on payday.
 - **Runway:** This is their safety net.
+- **Seasonality (YoY):** You have access to 'SpendSameMonthLastYear' and 'YoYChangePercentage'. Use these to identify annual cycles (e.g. 'Your spending is up 10% vs last February, which is expected due to school fees').
 
 **GUIDELINES:**
 1. **Currency:** ALWAYS use the R symbol (e.g., R1,500.00).
 2. **Context:** If the user asks a specific question, answer it directly using the data. If they just say 'hello', provide a brief executive summary.
 3. **Accuracy:** Do not invent transactions. Stick to the provided summary stats.
+4. **Seasonality:** If the user asks about trends, look at the YoY metrics to see if current spending is normal for this time of year.
 {formattingRule}
 
 Context Information:
@@ -365,8 +524,9 @@ Context Information:
     **ANALYSIS PROTOCOL:**
     1. **Liquidity Assessment:** Evaluate the 'ProjectedBalanceAtPayday'. Is the principal on track to solvency, or is a capital injection (or spending freeze) required?
     2. **Liability Management:** Review 'UpcomingFixedCosts'. Confirm that sufficient liquidity exists to cover these obligations.
-    3. **Variance Analysis:** Scrutinize 'TopCategoriesWithIncreases'. If variable spending is trending upward, identify the root cause (the specific category) and recommend a course correction.
-    4. **Risk Profile:** Comment on the 'RunwayDays' and 'ProbabilityToReachPayday'. Frame this in terms of financial security.
+    3. **Seasonality Analysis:** Examine 'YoYChangePercentage'. Compare current spending to 'SpendSameMonthLastYear' to determine if spikes are part of an annual cycle or anomalous behaviour.
+    4. **Variance Analysis:** Scrutinize 'TopCategoriesWithIncreases'. If variable spending is trending upward, identify the root cause (the specific category) and recommend a course correction.
+    5. **Risk Profile:** Comment on the 'RunwayDays' and 'ProbabilityToReachPayday'. Frame this in terms of financial security.
 
     **OUTPUT FORMAT:**
     - Use purely semantic HTML tags (p, ul, li, b).
@@ -384,69 +544,73 @@ Context Information:
     }
 
     /// <summary>
-    /// Generate completion with automatic fallback on failure. This is the core reliability improvement.
+    /// This is where the magic happens. We try to get a response from your primary AI.
+    /// If that fails, we'll try again (giving it a bit more time each time).
+    /// If it still doesn't respond, we'll switch over to your backup "fallback" AI.
     /// </summary>
     private async Task<string> GenerateCompletionWithFallbackAsync(int userId, string system, string prompt, CancellationToken ct = default)
     {
         var settings = await _settingsService.GetSettingsAsync(userId);
         var maxAttempts = settings.AiRetryAttempts;
 
-        // Try primary provider
+        // Step 1: Give your primary AI a go...
         for (int attempt = 1; attempt <= maxAttempts; attempt++)
         {
             try
             {
-                _logger.LogInformation("AI request attempt {Attempt}/{Max} using primary provider for user {UserId}", attempt, maxAttempts, userId);
+                _logger.LogInformation("Trying to reach your primary AI (attempt {Attempt}/{Max}) for user {UserId}", attempt, maxAttempts, userId);
                 var result = await GenerateCompletionAsync(userId, system, prompt, useFallback: false, ct);
 
                 if (!string.IsNullOrWhiteSpace(result))
                 {
-                    _logger.LogInformation("AI request succeeded on attempt {Attempt} (primary)", attempt);
+                    _logger.LogInformation("Success! Primary AI responded on attempt {Attempt}", attempt);
                     return result;
                 }
 
-                _logger.LogWarning("AI request returned empty result on attempt {Attempt}", attempt);
+                _logger.LogWarning("The primary AI gave us an empty response on attempt {Attempt}", attempt);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "AI request failed on attempt {Attempt}/{Max} (primary)", attempt, maxAttempts);
+                _logger.LogWarning(ex, "Primary AI request failed on attempt {Attempt}/{Max}", attempt, maxAttempts);
                 if (attempt == maxAttempts) break;
-                await Task.Delay(TimeSpan.FromSeconds(2 * attempt), ct); // Exponential backoff
+                
+                // Wait a bit longer each time before we try again (exponential backoff)
+                await Task.Delay(TimeSpan.FromSeconds(2 * attempt), ct); 
             }
         }
 
-        // Try fallback provider if enabled
+        // Step 2: If the primary AI is having a bad day, let's try the backup...
         if (settings.EnableAiFallback)
         {
-            _logger.LogWarning("Primary AI provider failed after {Max} attempts. Switching to fallback provider.", maxAttempts);
+            _logger.LogWarning("Primary AI is currently unavailable. Switching to your backup provider now.");
 
             for (int attempt = 1; attempt <= maxAttempts; attempt++)
             {
                 try
                 {
-                    _logger.LogInformation("AI request attempt {Attempt}/{Max} using FALLBACK provider for user {UserId}", attempt, maxAttempts, userId);
+                    _logger.LogInformation("Trying to reach your BACKUP AI (attempt {Attempt}/{Max}) for user {UserId}", attempt, maxAttempts, userId);
                     var result = await GenerateCompletionAsync(userId, system, prompt, useFallback: true, ct);
 
                     if (!string.IsNullOrWhiteSpace(result))
                     {
-                        _logger.LogInformation("AI request succeeded on attempt {Attempt} (fallback)", attempt);
+                        _logger.LogInformation("Success! Backup AI saved the day on attempt {Attempt}", attempt);
                         return result;
                     }
 
-                    _logger.LogWarning("Fallback AI request returned empty result on attempt {Attempt}", attempt);
+                    _logger.LogWarning("The backup AI also gave us an empty response on attempt {Attempt}", attempt);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Fallback AI request failed on attempt {Attempt}/{Max}", attempt, maxAttempts);
+                    _logger.LogWarning(ex, "Backup AI request failed on attempt {Attempt}/{Max}", attempt, maxAttempts);
                     if (attempt < maxAttempts)
                         await Task.Delay(TimeSpan.FromSeconds(2 * attempt), ct);
                 }
             }
         }
 
-        // If everything fails, return a graceful error message
-        _logger.LogError("All AI providers failed for user {UserId}. Returning fallback message.", userId);
-        return "I apologise, but I'm experiencing temporary difficulties connecting to my analytical engine. Your financial data is safe, and the system will continue to sync. Please try again in a few moments, or check the AI configuration in your settings.";
+        // If both brains are down, we'll let you know gracefully.
+        _logger.LogError("All AI providers failed for user {UserId}. Returning a polite error message.", userId);
+        return "I'm so sorry, but I'm having a bit of trouble connecting to my 'analytical engine' right now. Your financial data is perfectly safe and I'm still syncing your transactions in the background. Please try again in a few minutes, or double-check your AI settings on the dashboard.";
     }
 
     private async Task<string> GenerateCompletionAsync(int userId, string system, string prompt, bool useFallback, CancellationToken ct = default)
@@ -455,7 +619,7 @@ Context Information:
 
         if (config.Provider == "Gemini")
         {
-            return await GenerateGeminiCompletionAsync(userId, system, prompt, config.GeminiKey, ct, config.TimeoutSeconds);
+            return await GenerateGeminiCompletionAsync(userId, system, prompt, config.GeminiKey, config.OllamaModel, ct, config.TimeoutSeconds);
         }
 
         if (string.IsNullOrWhiteSpace(config.OllamaModel))
@@ -489,14 +653,18 @@ Context Information:
         return result?.Response?.Trim() ?? throw new InvalidOperationException("Ollama returned empty response.");
     }
 
-    private async Task<string> GenerateGeminiCompletionAsync(int userId, string system, string prompt, string apiKey, CancellationToken ct = default, int timeoutSeconds = 60)
+    private async Task<string> GenerateGeminiCompletionAsync(int userId, string system, string prompt, string apiKey, string modelName, CancellationToken ct = default, int timeoutSeconds = 60)
     {
-        var settings = await _settingsService.GetSettingsAsync(userId);
-        var model = !string.IsNullOrWhiteSpace(settings.OllamaModelName) && settings.OllamaModelName.Contains("gemini")
-            ? settings.OllamaModelName
+        var model = !string.IsNullOrWhiteSpace(modelName) && modelName.Contains("gemini")
+            ? modelName
             : "gemini-1.5-flash";
 
+        // The base URL path expected by Google is v1beta/models/{model}:generateContent
+        // We ensure we don't have double 'models/' in the path.
+        if (model.StartsWith("models/")) model = model.Replace("models/", "");
+        
         var url = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={apiKey}";
+        
         var request = new
         {
             contents = new[] { new { role = "user", parts = new[] { new { text = system + "\n\n" + prompt } } } },

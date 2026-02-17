@@ -23,13 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [2.2.6] - 2026-02-17
+## [2.2.7] - 2026-02-17
 
 ### Fixed
-- **Frontend Sync:** Resolved an issue where manual AI connection tests did not immediately update the dashboard KPI cards.
-- **UX Improvements:** Refined status labels ("Ready" vs "Standby") for AI providers to better communicate the failover state.
+- **Gemini Compatibility:** Switched the Gemini completion endpoint to `v1beta` to ensure compatibility with newer and preview models (like Gemini 2.0/3.0) that are not yet available on the stable `v1` endpoint.
 
-## [2.2.5] - 2026-02-17
+## [2.2.6] - 2026-02-17
 
 ### Fixed
 - **Monitoring:** Optimized health checks with shorter 10s timeouts to ensure the dashboard KPIs remain responsive even when AI providers are slow or timing out.

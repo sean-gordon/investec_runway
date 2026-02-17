@@ -629,11 +629,11 @@ Context Information:
             ? modelName
             : "gemini-1.5-flash";
 
-        // The base URL path expected by Google is v1/models/{model}:generateContent
+        // The base URL path expected by Google is v1beta/models/{model}:generateContent
         // We ensure we don't have double 'models/' in the path.
         if (model.StartsWith("models/")) model = model.Replace("models/", "");
         
-        var url = $"https://generativelanguage.googleapis.com/v1/models/{model}:generateContent?key={apiKey}";
+        var url = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={apiKey}";
         
         var request = new
         {

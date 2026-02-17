@@ -349,12 +349,15 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
     public async Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false)
     {
         var config = await GetProviderConfigAsync(userId, useFallback);
+        // Use a shorter timeout for status tests than for real generation
+        var testTimeout = TimeSpan.FromSeconds(10); 
+
         try
         {
             if (config.Provider == "Gemini")
             {
                 if (string.IsNullOrWhiteSpace(config.GeminiKey)) return (false, "Gemini API Key is missing.");
-                var result = await GenerateGeminiCompletionAsync(userId, "System", "Say 'OK'", config.GeminiKey);
+                var result = await GenerateGeminiCompletionAsync(userId, "System", "Say 'OK'", config.GeminiKey, timeoutSeconds: 10);
                 if (string.IsNullOrWhiteSpace(result) || result.Contains("Error:")) return (false, result ?? "Empty response.");
                 return (true, string.Empty);
             }
@@ -369,19 +372,24 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
 
             _logger.LogInformation("Testing {Type} AI connection: {Url}, Model: {Model}", useFallback ? "Fallback" : "Primary", fullUrl, config.OllamaModel);
 
-            var response = await _httpClient.PostAsync(fullUrl, content);
+            using var cts = new CancellationTokenSource(testTimeout);
+            var response = await _httpClient.PostAsync(fullUrl, content, cts.Token);
 
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
-                return (false, $"Model '{config.OllamaModel}' not found on Ollama server. Have you run 'ollama pull {config.OllamaModel}'?");
+                return (false, $"Model '{config.OllamaModel}' not found on Ollama server.");
             }
 
             if (!response.IsSuccessStatusCode) return (false, $"Ollama error ({response.StatusCode})");
             return (true, string.Empty);
         }
+        catch (OperationCanceledException)
+        {
+            return (false, "Connection timed out after 10s.");
+        }
         catch (HttpRequestException ex) when (ex.Message.Contains("refused") || ex.Message.Contains("known"))
         {
-            return (false, $"Could not reach AI service at {config.OllamaUrl}. Check the URL and ensure the service is running.");
+            return (false, $"Could not reach AI service at {config.OllamaUrl}.");
         }
         catch (Exception ex) { _logger.LogError(ex, "AI Connection test failed."); return (false, ex.Message); }
     }

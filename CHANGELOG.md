@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.3] - 2026-02-17
+
+### Fixed
+- **Monitoring:** Optimized health checks with shorter 10s timeouts to ensure the dashboard KPIs remain responsive even when AI providers are slow or timing out.
+- **Worker:** Ensured system-wide health checks for DB and AI continue to run even if the admin user has not configured Investec credentials.
+
 ## [2.2.2] - 2026-02-17
 
 ### Added

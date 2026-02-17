@@ -77,6 +77,10 @@ public class ConnectivityWorker : BackgroundService
                 _statusService.LastInvestecCheck = DateTime.UtcNow;
                 if (!isOnline) _logger.LogWarning("Investec API is OFFLINE. Error: {Error}", error);
             }
+            else
+            {
+                _statusService.IsInvestecOnline = false;
+            }
 
             // 3. Check AI Providers
             var (primaryOk, _) = await aiService.TestConnectionAsync(adminUserId.Value, useFallback: false);

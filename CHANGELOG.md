@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.1] - 2026-02-17
+
+### Fixed
+- **AI:** Fixed Gemini API URL duplication causing `404 Not Found` errors (removed double `models/` prefix).
+- **Database:** Ensured `TransactionSyncService` uses the correct `ON CONFLICT` target `(id, transaction_date, user_id)` to match the multi-tenant unique index.
+
 ## [2.1.0] - 2026-02-17
 
 ### Added

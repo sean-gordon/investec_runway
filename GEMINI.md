@@ -2,7 +2,7 @@
 
 **Gordon Finance Engine** is a self-hosted, containerised financial analytics platform designed to provide "Actuarial-grade" insights into personal finances. It connects to Investec Programmable Banking, stores transaction history in a robust time-series database, and uses a Large Language Model (LLM) with automatic fallback to offer a natural language interface for queries and reporting.
 
-**Current Version:** 2.1.0
+**Current Version:** 2.1.1
 **Status:** Production-Ready, Enterprise-Grade
 
 ---

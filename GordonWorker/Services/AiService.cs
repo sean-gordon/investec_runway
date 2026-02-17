@@ -219,7 +219,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
             {
                 var url = $"https://generativelanguage.googleapis.com/v1beta/models?key={config.GeminiKey}";
                 var response = await _httpClient.GetAsync(url);
-                if (!response.IsSuccessStatusCode) return new List<string> { "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp" };
+                if (!response.IsSuccessStatusCode) return new List<string> { "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash-exp" };
 
                 var responseString = await response.Content.ReadAsStringAsync();
                 using var doc = JsonDocument.Parse(responseString);
@@ -252,7 +252,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                 if (!modelNames.Any())
                 {
                     _logger.LogWarning("No suitable Gemini models found in API response. Returning defaults.");
-                    return new List<string> { "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash" };
+                    return new List<string> { "gemini-2.0-flash", "gemini-2.5-pro", "gemini-2.5-flash" };
                 }
                 
                 return modelNames.Distinct().OrderByDescending(n => n).ToList();
@@ -260,7 +260,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to fetch Gemini models from Google API.");
-                return new List<string> { "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash" };
+                return new List<string> { "gemini-2.0-flash", "gemini-2.5-pro", "gemini-2.5-flash" };
             }
         }
 
@@ -534,11 +534,13 @@ Context Information:
         var settings = await _settingsService.GetSettingsAsync(userId);
         var model = !string.IsNullOrWhiteSpace(settings.OllamaModelName) && settings.OllamaModelName.Contains("gemini")
             ? settings.OllamaModelName
-            : "gemini-1.5-flash";
+            : "gemini-2.5-flash";
 
-        // If the model name already contains 'models/', don't prepend it.
-        var modelPath = model.Contains("/") ? model : $"models/{model}";
-        var url = $"https://generativelanguage.googleapis.com/v1/models/{modelPath}:generateContent?key={apiKey}";
+        // The base URL path expected by Google is v1/models/{model}:generateContent
+        // We ensure we don't have double 'models/' in the path.
+        if (model.StartsWith("models/")) model = model.Replace("models/", "");
+        
+        var url = $"https://generativelanguage.googleapis.com/v1/models/{model}:generateContent?key={apiKey}";
         
         var request = new
         {

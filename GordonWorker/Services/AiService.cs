@@ -13,9 +13,10 @@ public interface IAiService
     Task<(Guid? TransactionId, string? Note)> AnalyzeExpenseExplanationAsync(int userId, string userMessage, List<Transaction> recentTransactions);
     Task<(bool IsAffordabilityCheck, decimal? Amount, string? Description)> AnalyzeAffordabilityAsync(int userId, string userMessage);
     Task<(bool IsChartRequest, string? ChartType, string? Sql, string? Title)> AnalyzeChartRequestAsync(int userId, string userMessage);
-        Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false);        
-        Task<List<string>> GetAvailableModelsAsync(int userId, bool useFallback = false, AppSettings? overriddenSettings = null);
-    }
+    Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false);
+    Task<List<string>> GetAvailableModelsAsync(int userId, bool useFallback = false, AppSettings? overriddenSettings = null);
+}
+
 /// <summary>
 /// This is Gordon's "Brain." It handles talking to the AI—whether you're using 
 /// local LLMs (Ollama) or cloud ones (Gemini). It also makes sure Gordon always 

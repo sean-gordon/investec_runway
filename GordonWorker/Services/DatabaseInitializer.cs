@@ -109,11 +109,13 @@ public class DatabaseInitializer
             // TimescaleDB hypertables require unique indexes to include the partitioning column (transaction_date)
             try 
             {
-                // Drop legacy indexes/constraints
+                // Drop legacy indexes/constraints that might conflict with the new multi-tenant structure
                 await connection.ExecuteAsync("DROP INDEX IF EXISTS ux_transactions_id_date;");
+                await connection.ExecuteAsync("DROP INDEX IF EXISTS ux_transactions_id;");
                 await connection.ExecuteAsync("ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_pkey;");
                 
                 // Create the definitive unique index required for Sync (ON CONFLICT target)
+                // In TimescaleDB, the partitioning column (transaction_date) MUST be part of any unique index.
                 await connection.ExecuteAsync("CREATE UNIQUE INDEX IF NOT EXISTS ux_transactions_id_date_user ON transactions (id, transaction_date, user_id);"); 
             } 
             catch (Exception ex) 
@@ -129,7 +131,8 @@ public class DatabaseInitializer
             } 
             catch (Exception ex)
             {
-                if (!ex.Message.Contains("already")) _logger.LogWarning("Hypertable conversion: {Message}", ex.Message);
+                // If it's already a hypertable, this will fail but we can ignore it
+                if (!ex.Message.Contains("already")) _logger.LogWarning("Hypertable conversion note: {Message}", ex.Message);
             }
 
             // Cleanup old config table

@@ -333,7 +333,17 @@ Table 'transactions' schema:
 - category (text)
 
 Return ONLY the raw SQL query. Do NOT use Markdown formatting (no ```sql). Do NOT include explanations.";
-        return await GenerateCompletionWithFallbackAsync(userId, systemPrompt, userPrompt);
+        
+        var response = await GenerateCompletionWithFallbackAsync(userId, systemPrompt, userPrompt);
+        
+        // Safety check: If the AI failed and returned the graceful error message, 
+        // we MUST NOT return it as SQL, otherwise it will crash the DB caller.
+        if (response.StartsWith("I'm so sorry") || response.Contains("analytical engine"))
+        {
+            throw new InvalidOperationException("AI failed to generate a valid SQL query.");
+        }
+
+        return response;
     }
 
     public async Task<string> FormatResponseAsync(int userId, string userPrompt, string dataContext, bool isWhatsApp = false)
@@ -526,7 +536,10 @@ Context Information:
             ? settings.OllamaModelName
             : "gemini-1.5-flash";
 
-        var url = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={apiKey}";
+        // If the model name already contains 'models/', don't prepend it.
+        var modelPath = model.Contains("/") ? model : $"models/{model}";
+        var url = $"https://generativelanguage.googleapis.com/v1/models/{modelPath}:generateContent?key={apiKey}";
+        
         var request = new
         {
             contents = new[] { new { role = "user", parts = new[] { new { text = system + "\n\n" + prompt } } } },

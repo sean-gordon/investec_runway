@@ -23,17 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [2.3.0] - 2026-02-17
+## [2.3.1] - 2026-02-17
 
 ### Added
-- **Multi-cycle Seasonality Analysis:** Implemented Year-over-Year (YoY) comparison logic. The engine now compares current spending cycles with the exact same period from the previous year to identify long-term patterns and seasonal spikes.
-- **Seasonality KPI:** Added a new dashboard card showing YoY percentage change in spending.
-- **Extended History:** Increased historical data processing window to 400 days to support accurate annual comparisons.
+- **AI Seasonality Intelligence:** Updated AI system prompts to include YoY (Year-over-Year) context. The AI can now answer comparative questions about annual spending cycles in chat and identify seasonal trends in the weekly executive briefing.
 
-### Fixed
-- **API Endpoints:** Added a `stats` endpoint to the Settings Controller to expose actuarial metrics directly to the frontend.
-
-## [2.2.7] - 2026-02-17
+## [2.3.0] - 2026-02-17
 
 ### Fixed
 - **Monitoring:** Optimized health checks with shorter 10s timeouts to ensure the dashboard KPIs remain responsive even when AI providers are slow or timing out.

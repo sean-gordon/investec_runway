@@ -88,6 +88,12 @@ Return ONLY the JSON array. Do NOT include any other text.";
             var match = System.Text.RegularExpressions.Regex.Match(jsonResponse, @"```json\s*(.*?)\s*```", System.Text.RegularExpressions.RegexOptions.Singleline);
             var cleanJson = match.Success ? match.Groups[1].Value : jsonResponse.Trim();
 
+            if (cleanJson.StartsWith("I'm") || cleanJson.Contains("error"))
+            {
+                _logger.LogWarning("AI returned a non-JSON response for categorization: {Response}", cleanJson);
+                return;
+            }
+
             using var doc = JsonDocument.Parse(cleanJson);
             var results = new Dictionary<Guid, string>();
             
@@ -349,7 +355,11 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
 
         try
         {
-            var baseUri = config.OllamaUrl.EndsWith("/") ? config.OllamaUrl : config.OllamaUrl + "/";
+            var baseUrl = config.OllamaUrl;
+            if (baseUrl.Contains("/api/generate")) baseUrl = baseUrl.Replace("/api/generate", "");
+            else if (baseUrl.EndsWith("/api")) baseUrl = baseUrl[..^4];
+            
+            var baseUri = baseUrl.EndsWith("/") ? baseUrl : baseUrl + "/";
             var fullUrl = new Uri(new Uri(baseUri), "api/tags");
             var response = await _httpClient.GetAsync(fullUrl);
             if (!response.IsSuccessStatusCode) return new List<string>();

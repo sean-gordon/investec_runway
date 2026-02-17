@@ -23,14 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [2.4.1] - 2026-02-17
+## [2.4.2] - 2026-02-17
 
 ### Fixed
-- **Sync Engine:** Resolved a critical database schema mismatch where the `user_id` column was missing from the `transactions` table in some environments.
-- **Database Initialization:** Improved the robustness of the migration logic. Legacy primary keys and indexes are now explicitly dropped before creating the definitive multi-tenant unique index (`id`, `transaction_date`, `user_id`) required for TimescaleDB.
-- **AI Reliability:** Implemented transaction batching (chunks of 50) during categorization to prevent "Too Many Requests" (429) errors from AI providers during large sync operations.
+- **Model Selection:** Resolved an issue in Telegram and WhatsApp where selecting a provider (e.g., switching from Gemini to Ollama) would still attempt to fetch models for the *previous* provider.
+- **Ollama Connectivity:** Improved the robustness of the Ollama base URL logic to correctly handle URLs ending in `/api/generate` or `/api` when fetching the model list.
+- **AI Categorization:** Added defensive checks to the transaction categorization batching logic to handle non-JSON error responses from AI providers without crashing the sync process.
 
-## [2.4.0] - 2026-02-17
+## [2.4.1] - 2026-02-17
 
 ### Fixed
 - **Monitoring:** Optimized health checks with shorter 10s timeouts to ensure the dashboard KPIs remain responsive even when AI providers are slow or timing out.

@@ -120,15 +120,20 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
                 {
                     var parts = cmd.Split('_');
                     bool isPrimary = parts[2] == "p";
-                    var provider = parts[3];
+                    var providerName = parts[3]; // "ollama" or "gemini"
                     var currentModel = isPrimary ? settings.OllamaModelName : (settings.FallbackAiProvider == "Ollama" ? settings.FallbackOllamaModelName : "Gemini API");
                     
-                    var models = await aiService.GetAvailableModelsAsync(request.UserId, !isPrimary);
-                    var buttons = models.Take(8).Select(m => (m, $"/model_set_{ (isPrimary ? "p" : "b") }_{provider}_{m}")).ToList();
+                    // Create temporary settings to fetch models for the SELECTED provider
+                    var tempSettings = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(settings))!;
+                    if (isPrimary) tempSettings.AiProvider = providerName == "ollama" ? "Ollama" : "Gemini";
+                    else tempSettings.FallbackAiProvider = providerName == "ollama" ? "Ollama" : "Gemini";
+
+                    var models = await aiService.GetAvailableModelsAsync(request.UserId, !isPrimary, tempSettings);
+                    var buttons = models.Take(8).Select(m => (m, $"/model_set_{ (isPrimary ? "p" : "b") }_{providerName}_{m}")).ToList();
                     buttons.Add(("Cancel", "/cancel"));
 
                     await telegramService.SendMessageWithButtonsAsync(request.UserId, 
-                        $"⚙️ <b>Select Model ({(isPrimary ? "Primary" : "Backup")})</b>\n\nProvider: {provider.ToUpper()}\nCurrent: {currentModel}",
+                        $"⚙️ <b>Select Model ({(isPrimary ? "Primary" : "Backup")})</b>\n\nProvider: {providerName.ToUpper()}\nCurrent: {currentModel}",
                         buttons, 
                         request.ChatId);
                     return;

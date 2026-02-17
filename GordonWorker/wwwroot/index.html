@@ -125,7 +125,57 @@
                                 <button @click="forceRepull" class="text-xs bg-white border border-slate-200 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-50">🔄 Sync</button>
                             </div>
                         </div>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <!-- Investec -->
+                            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+                                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Investec API</p>
+                                <div class="mt-1 flex items-center justify-between">
+                                    <span class="text-lg font-bold" :class="systemStatus.investecOnline ? 'text-green-600' : 'text-red-600'">
+                                        {{ systemStatus.investecOnline ? 'Online' : 'Offline' }}
+                                    </span>
+                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-lg" :class="systemStatus.investecOnline ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'">🏦</div>
+                                </div>
+                                <p class="text-[10px] text-slate-400 mt-1">Last seen: {{ formatTime(systemStatus.lastInvestecCheck) }}</p>
+                            </div>
+
+                            <!-- Database -->
+                            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+                                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Database</p>
+                                <div class="mt-1 flex items-center justify-between">
+                                    <span class="text-lg font-bold" :class="systemStatus.databaseOnline ? 'text-green-600' : 'text-red-600'">
+                                        {{ systemStatus.databaseOnline ? 'Active' : 'Down' }}
+                                    </span>
+                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-lg" :class="systemStatus.databaseOnline ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'">💾</div>
+                                </div>
+                                <p class="text-[10px] text-slate-400 mt-1">TimescaleDB Hypertable</p>
+                            </div>
+
+                            <!-- AI Primary -->
+                            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+                                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Primary AI ({{ settings.aiProvider }})</p>
+                                <div class="mt-1 flex items-center justify-between">
+                                    <span class="text-lg font-bold" :class="systemStatus.aiPrimaryOnline ? 'text-green-600' : 'text-red-600'">
+                                        {{ systemStatus.aiPrimaryOnline ? 'Ready' : 'Offline' }}
+                                    </span>
+                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-lg" :class="systemStatus.aiPrimaryOnline ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'">🧠</div>
+                                </div>
+                                <p class="text-[10px] text-slate-400 mt-1">{{ settings.ollamaModelName }}</p>
+                            </div>
+
+                            <!-- AI Fallback -->
+                            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+                                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Backup AI ({{ settings.fallbackAiProvider }})</p>
+                                <div class="mt-1 flex items-center justify-between">
+                                    <span class="text-lg font-bold" :class="systemStatus.aiFallbackOnline ? 'text-green-600' : 'text-amber-600'">
+                                        {{ settings.enableAiFallback ? (systemStatus.aiFallbackOnline ? 'Standby' : 'Offline') : 'Disabled' }}
+                                    </span>
+                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-lg" :class="systemStatus.aiFallbackOnline ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'">🛡️</div>
+                                </div>
+                                <p class="text-[10px] text-slate-400 mt-1">{{ settings.fallbackOllamaModelName }}</p>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
                                 <p class="text-xs font-medium text-slate-400 uppercase">Telegram Hits</p>
                                 <div class="mt-1">
@@ -134,26 +184,9 @@
                                     <span v-else-if="systemStatus.lastTelegramHit" class="block text-[10px] text-green-500 font-bold mt-1">✔ Active</span>
                                 </div>
                             </div>
-                            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
-                                <p class="text-xs font-medium text-slate-400 uppercase">Investec</p>
-                                <div class="mt-1 flex items-center gap-2">
-                                    <span class="text-lg font-bold" :class="systemStatus.investecOnline ? 'text-green-600' : 'text-red-600'">{{ systemStatus.investecOnline ? 'Online' : 'Offline' }}</span>
-                                </div>
-                            </div>
                             <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
                                 <div>
-                                    <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">AI Model</p>
-                                    <div class="mt-1">
-                                        <span class="text-xl font-bold text-slate-900 block truncate max-w-[120px]">{{ settings.aiProvider }}</span>
-                                        <span class="text-[10px] text-slate-400 block truncate max-w-[120px]">{{ settings.ollamaModelName || 'Default' }}</span>
-                                    </div>
-                                </div>
-                                <div class="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-lg">🧠</div>
-                            </div>
-                            <!-- Last Sync -->
-                            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
-                                <div>
-                                    <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Last Sync</p>
+                                    <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Last Health Sync</p>
                                     <div class="mt-1">
                                         <span class="text-lg font-bold text-slate-900">{{ formatTime(systemStatus.lastCheck) }}</span>
                                     </div>
@@ -532,7 +565,17 @@
                     availableModels: [],
                     availableFallbackModels: [],
                     days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
-                    systemStatus: { investecOnline: false, lastTelegramHit: null, lastTelegramError: '', lastCheck: null },
+                    systemStatus: { 
+                        investecOnline: false, 
+                        databaseOnline: true,
+                        aiPrimaryOnline: false,
+                        aiFallbackOnline: false,
+                        lastTelegramHit: null, 
+                        lastTelegramError: '', 
+                        lastCheck: null,
+                        lastAiCheck: null,
+                        lastInvestecCheck: null
+                    },
                     toast: { show: false, msg: '' },
                     recentTransactions: []
                 }

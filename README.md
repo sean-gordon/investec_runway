@@ -1,6 +1,6 @@
 # Gordon Finance Engine 🦓
 
-**Version 2.2.1** | Your Personal, AI-Powered Chief Financial Officer
+**Version 2.2.2** | Your Personal, AI-Powered Chief Financial Officer
 
 Gordon is a self-hosted financial assistant designed to give you professional-grade insights into your money. He doesn't just track your spending; he understands it. By connecting directly to your bank and using advanced AI, Gordon helps you see where your money is going and, more importantly, where it's taking you.
 

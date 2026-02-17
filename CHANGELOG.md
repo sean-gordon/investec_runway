@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.2] - 2026-02-17
+
+### Added
+- **Monitoring:** Expanded dashboard with a 4-column KPI grid showing live status for Investec API, TimescaleDB, Primary AI, and Backup AI.
+- **Health Checks:** Implemented automated background connectivity checks for AI providers and database every 15 minutes.
+
 ## [2.2.1] - 2026-02-17
 
 ### Fixed

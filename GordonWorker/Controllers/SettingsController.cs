@@ -181,7 +181,12 @@ public class SettingsController : ControllerBase
         return Ok(new 
         { 
             InvestecOnline = isInvestecOnline,
+            DatabaseOnline = _statusService.IsDatabaseOnline,
+            AiPrimaryOnline = _statusService.IsAiPrimaryOnline,
+            AiFallbackOnline = _statusService.IsAiFallbackOnline,
             LastCheck = DateTime.UtcNow,
+            LastAiCheck = _statusService.LastAiCheck,
+            LastInvestecCheck = _statusService.LastInvestecCheck,
             LastTelegramHit = _statusService.LastTelegramHit,
             LastTelegramError = _statusService.LastTelegramError
         });

@@ -15,6 +15,7 @@ public interface IAiService
     Task<(bool IsChartRequest, string? ChartType, string? Sql, string? Title)> AnalyzeChartRequestAsync(int userId, string userMessage);
     Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false);
     Task<List<string>> GetAvailableModelsAsync(int userId, bool useFallback = false, AppSettings? overriddenSettings = null);
+    Task<List<Transaction>> CategorizeTransactionsAsync(int userId, List<Transaction> transactions);
 }
 
 /// <summary>
@@ -33,6 +34,72 @@ public class AiService : IAiService
         _httpClient = httpClient;
         _logger = logger;
         _settingsService = settingsService;
+    }
+
+    public async Task<List<Transaction>> CategorizeTransactionsAsync(int userId, List<Transaction> transactions)
+    {
+        if (transactions == null || !transactions.Any()) return new List<Transaction>();
+
+        var txData = transactions.Select(t => new { t.Id, t.Description, t.Amount }).ToList();
+        var txJson = JsonSerializer.Serialize(txData);
+
+        var systemPrompt = @"You are a financial data classifier.
+YOUR GOAL: Categorize bank transactions into semantic categories.
+
+CATEGORIES TO USE:
+- Groceries (Supermarkets, food stores)
+- Eating Out (Restaurants, fast food, coffee shops)
+- Transport (Fuel, Uber, parking, public transport)
+- Shopping (Retail stores, Amazon, general merchandise)
+- Bills & Utilities (Electricity, water, internet, mobile, insurance)
+- Subscriptions (Netflix, Spotify, gym, recurring software)
+- Health & Wellness (Pharmacy, doctors, fitness)
+- Entertainment (Movies, games, hobbies)
+- Transfer (Money moved between accounts)
+- Income (Salary, dividends, refunds - NOTE: income is NEGATIVE amount)
+- General (Anything that doesn't fit the above)
+
+INPUT: A JSON list of transactions with ID and Description.
+OUTPUT: A JSON list of objects with 'id' and 'category'.
+
+EXAMPLES:
+Input: [{ ""id"": ""..."", ""description"": ""UBER EATS"", ""amount"": 150.00 }]
+Output: [{ ""id"": ""..."", ""category"": ""Eating Out"" }]
+
+Return ONLY the JSON array. Do NOT include any other text.";
+
+        try
+        {
+            var jsonResponse = await GenerateCompletionWithFallbackAsync(userId, systemPrompt, $"TRANSACTIONS:\n{txJson}");
+            
+            var match = System.Text.RegularExpressions.Regex.Match(jsonResponse, @"```json\s*(.*?)\s*```", System.Text.RegularExpressions.RegexOptions.Singleline);
+            var cleanJson = match.Success ? match.Groups[1].Value : jsonResponse.Trim();
+
+            using var doc = JsonDocument.Parse(cleanJson);
+            var results = new Dictionary<Guid, string>();
+            
+            foreach (var item in doc.RootElement.EnumerateArray())
+            {
+                var id = Guid.Parse(item.GetProperty("id").GetString()!);
+                var cat = item.GetProperty("category").GetString() ?? "General";
+                results[id] = cat;
+            }
+
+            foreach (var tx in transactions)
+            {
+                if (results.TryGetValue(tx.Id, out var category))
+                {
+                    tx.Category = category;
+                    tx.IsAiProcessed = true;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to batch categorize transactions for user {UserId}", userId);
+        }
+
+        return transactions;
     }
 
     public async Task<(bool IsChartRequest, string? ChartType, string? Sql, string? Title)> AnalyzeChartRequestAsync(int userId, string userMessage)

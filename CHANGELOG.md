@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.0] - 2026-02-17
+
+### Added
+- **AI Categorisation:** Implemented "Advanced Machine Learning Categorisation". Transactions are now semantically classified into categories like Groceries, Eating Out, Bills, etc., using the primary or fallback LLM.
+- **Batch Processing:** Added a dashboard button to categorize existing historical transactions using AI.
+- **Improved Analytics:** Actuarial logic now uses semantic categories for more accurate fixed-cost identification and discretionary spend analysis.
+
 ## [2.1.1] - 2026-02-17
 
 ### Fixed

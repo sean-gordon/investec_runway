@@ -118,7 +118,12 @@
                     <div v-if="activeTab === 'dashboard'" class="space-y-6">
                         <div class="flex justify-between items-center">
                             <h2 class="text-2xl font-bold">Dashboard</h2>
-                            <button @click="forceRepull" class="text-xs bg-white border border-slate-200 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-50">🔄 Sync</button>
+                            <div class="flex gap-2">
+                                <button @click="categorizeExisting" :disabled="categorizing" class="text-xs bg-white border border-slate-200 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-50 disabled:opacity-50">
+                                    {{ categorizing ? '⏳ Processing...' : '🧠 Categorize' }}
+                                </button>
+                                <button @click="forceRepull" class="text-xs bg-white border border-slate-200 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-50">🔄 Sync</button>
+                            </div>
                         </div>
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
@@ -495,6 +500,7 @@
                 return {
                     loading: false,
                     sendingReport: false,
+                    categorizing: false,
                     authView: 'login',
                     auth: { token: localStorage.getItem('token'), username: localStorage.getItem('username'), role: localStorage.getItem('role') || 'User' },
                     loginForm: { username: '', password: '' },
@@ -671,6 +677,19 @@
                     if (!confirm("Resync all transactions?")) return;
                     const res = await this.api('/api/settings/force-repull', 'POST');
                     if (res.ok) this.showToast("Sync Started");
+                },
+                async categorizeExisting() {
+                    this.categorizing = true;
+                    try {
+                        const res = await this.api('/api/settings/categorize-existing', 'POST');
+                        if (res.ok) {
+                            const msg = await res.text();
+                            this.showToast(msg);
+                            this.loadData();
+                        } else this.showToast("Failed to categorize");
+                    } finally {
+                        this.categorizing = false;
+                    }
                 },
                 async sendReportNow() {
                     this.sendingReport = true;

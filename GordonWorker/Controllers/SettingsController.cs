@@ -215,6 +215,36 @@ public class SettingsController : ControllerBase
         }
     }
 
+    [HttpPost("categorize-existing")]
+    public async Task<IActionResult> CategorizeExisting()
+    {
+        try
+        {
+            using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+            await connection.OpenAsync();
+
+            var sql = "SELECT * FROM transactions WHERE user_id = @UserId AND is_ai_processed = FALSE LIMIT 50";
+            var txs = (await connection.QueryAsync<Transaction>(sql, new { UserId })).ToList();
+
+            if (!txs.Any()) return Ok("No unprocessed transactions found.");
+
+            var categorized = await _aiService.CategorizeTransactionsAsync(UserId, txs);
+
+            foreach (var tx in categorized)
+            {
+                await connection.ExecuteAsync(
+                    "UPDATE transactions SET category = @Category, is_ai_processed = TRUE WHERE id = @Id AND user_id = @UserId",
+                    new { tx.Category, tx.Id, UserId });
+            }
+
+            return Ok($"Categorized {txs.Count} transactions.");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, $"Failed to categorize: {ex.Message}");
+        }
+    }
+
     [HttpGet("recent-transactions")]
     public async Task<IActionResult> GetRecentTransactions()
     {

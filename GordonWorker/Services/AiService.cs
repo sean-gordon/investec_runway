@@ -229,16 +229,29 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                     foreach (var m in models.EnumerateArray())
                     {
                         var name = m.GetProperty("name").GetString() ?? "";
-                        if (name.StartsWith("models/")) name = name.Substring(7);
-                        if (name.Contains("gemini") && !name.Contains("vision") && !name.Contains("embedding"))
+                        // Gemini names are often "models/gemini-..."
+                        if (name.Contains("/")) name = name.Split('/').Last();
+                        
+                        if (name.ToLower().Contains("gemini") && !name.ToLower().Contains("vision") && !name.ToLower().Contains("embedding"))
                         {
                             modelNames.Add(name);
                         }
                     }
                 }
+                
+                if (!modelNames.Any())
+                {
+                    _logger.LogWarning("No suitable Gemini models found in API response. Returning defaults.");
+                    return new List<string> { "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp" };
+                }
+                
                 return modelNames.OrderByDescending(n => n).ToList();
             }
-            catch { return new List<string> { "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp" }; }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to fetch Gemini models.");
+                return new List<string> { "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp" };
+            }
         }
 
         if (string.IsNullOrWhiteSpace(config.OllamaUrl)) return new List<string>();

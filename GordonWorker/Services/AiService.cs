@@ -229,12 +229,21 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                     foreach (var m in models.EnumerateArray())
                     {
                         var name = m.GetProperty("name").GetString() ?? "";
-                        // Gemini names are often "models/gemini-..."
-                        if (name.Contains("/")) name = name.Split('/').Last();
-                        
-                        if (name.ToLower().Contains("gemini") && !name.ToLower().Contains("vision") && !name.ToLower().Contains("embedding"))
+                        var methods = m.TryGetProperty("supportedGenerationMethods", out var methodsEl) 
+                            ? methodsEl.EnumerateArray().Select(x => x.GetString()).ToList() 
+                            : new List<string?>();
+
+                        // Dynamic check: If it can generate content and isn't an embedding/vision-only tool, we want it.
+                        if (methods.Contains("generateContent"))
                         {
-                            modelNames.Add(name);
+                            if (name.Contains("/")) name = name.Split('/').Last();
+                            
+                            // Filter out internal/specialized models we know won't work for chat
+                            var lowerName = name.ToLower();
+                            if (!lowerName.Contains("embedding") && !lowerName.Contains("aqa") && !lowerName.Contains("classifier"))
+                            {
+                                modelNames.Add(name);
+                            }
                         }
                     }
                 }
@@ -242,15 +251,15 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                 if (!modelNames.Any())
                 {
                     _logger.LogWarning("No suitable Gemini models found in API response. Returning defaults.");
-                    return new List<string> { "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp" };
+                    return new List<string> { "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash" };
                 }
                 
-                return modelNames.OrderByDescending(n => n).ToList();
+                return modelNames.Distinct().OrderByDescending(n => n).ToList();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to fetch Gemini models.");
-                return new List<string> { "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp" };
+                _logger.LogError(ex, "Failed to fetch Gemini models from Google API.");
+                return new List<string> { "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash" };
             }
         }
 

@@ -45,13 +45,24 @@ public class TelegramController : ControllerBase
         {
             var update = JsonSerializer.Deserialize<Update>(rawUpdate.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
-            // Prevent Bot Loop
-            if (update?.Message?.From?.IsBot == true) return Ok();
+            if (update == null) return Ok();
 
-            if (update == null || update.Message == null || string.IsNullOrWhiteSpace(update.Message.Text)) return Ok();
+            string? chatId = null;
+            string? messageText = null;
 
-            var chatId = update.Message.Chat.Id.ToString();
-            var messageText = update.Message.Text;
+            if (update.Type == Telegram.Bot.Types.Enums.UpdateType.Message && update.Message != null)
+            {
+                if (update.Message.From?.IsBot == true) return Ok();
+                chatId = update.Message.Chat.Id.ToString();
+                messageText = update.Message.Text;
+            }
+            else if (update.Type == Telegram.Bot.Types.Enums.UpdateType.CallbackQuery && update.CallbackQuery != null)
+            {
+                chatId = update.CallbackQuery.Message?.Chat.Id.ToString();
+                messageText = update.CallbackQuery.Data; // Treat callback data as a command message
+            }
+
+            if (string.IsNullOrWhiteSpace(chatId) || string.IsNullOrWhiteSpace(messageText)) return Ok();
 
             // Find matching user
             using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
@@ -75,7 +86,7 @@ public class TelegramController : ControllerBase
             }
 
             // Enqueue for background processing
-            await _chatService.EnqueueMessageAsync(matchedUserId.Value, chatId, messageText);
+            await _chatService.EnqueueMessageAsync(matchedUserId.Value, chatId!, messageText!);
 
             return Ok();
         }

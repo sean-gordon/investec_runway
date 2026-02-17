@@ -88,6 +88,84 @@ public class WhatsAppController : ControllerBase
 
         try
         {
+            // Handle Slash Commands
+            if (Body.Trim().StartsWith("/"))
+            {
+                var cmd = Body.Trim().Split(' ')[0].ToLower();
+                if (cmd == "/clear")
+                {
+                    await _twilioService.SendWhatsAppMessageAsync(userId, From, "⚠️ *Warning: Clear History*\n\nThis will permanently delete your entire conversation history with the AI. This action cannot be undone.\n\nReply with */clear_confirm* to proceed, or any other message to cancel.");
+                    return Ok();
+                }
+                if (cmd == "/clear_confirm")
+                {
+                    using (var dbConfirm = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection")))
+                    {
+                        await dbConfirm.ExecuteAsync("DELETE FROM chat_history WHERE user_id = @UserId", new { UserId = userId });
+                    }
+                    await _twilioService.SendWhatsAppMessageAsync(userId, From, "✅ *Success:* Your conversation history has been cleared.");
+                    return Ok();
+                }
+                if (cmd == "/model")
+                {
+                    await _twilioService.SendWhatsAppMessageAsync(userId, From, "⚙️ *AI Model Configuration*\n\nWhich provider would you like to configure?\n\n1. Primary AI\n2. Backup AI\n\nReply with */model_1* or */model_2*.");
+                    return Ok();
+                }
+                if (cmd == "/model_1" || cmd == "/model_2")
+                {
+                    bool isPrimary = cmd == "/model_1";
+                    var provider = isPrimary ? userSettings.AiProvider : userSettings.FallbackAiProvider;
+                    await _twilioService.SendWhatsAppMessageAsync(userId, From, $"⚙️ *Select Provider for {(isPrimary ? "Primary" : "Backup")}*\n\nCurrent: _{provider}_\n\n1. Ollama (Local)\n2. Gemini (Cloud)\n\nReply with */prov_{(isPrimary ? "1" : "2")}_ollama* or */prov_{(isPrimary ? "1" : "2")}_gemini*.");
+                    return Ok();
+                }
+                if (cmd.StartsWith("/prov_")) // e.g. /prov_1_ollama
+                {
+                    var parts = cmd.Split('_');
+                    bool isPrimary = parts[1] == "1";
+                    var provider = parts[2];
+                    
+                    if (provider == "gemini") {
+                        var current = await _settingsService.GetSettingsAsync(userId);
+                        if (isPrimary) current.AiProvider = "Gemini"; else current.FallbackAiProvider = "Gemini";
+                        await _settingsService.UpdateSettingsAsync(userId, current);
+                        await _twilioService.SendWhatsAppMessageAsync(userId, From, $"✅ *Success:* {(isPrimary ? "Primary" : "Backup")} AI updated to *Gemini API*.");
+                    } else {
+                        var models = await _aiService.GetAvailableModelsAsync(true);
+                        var menu = $"⚙️ *Select Ollama Model ({(isPrimary ? "Primary" : "Backup")})*\n\n";
+                        for(int i=0; i<Math.Min(models.Count, 9); i++) {
+                            menu += $"{i+1}. {models[i]}\n";
+                        }
+                        menu += "\nReply with */set_" + (isPrimary ? "1" : "2") + "_[number]* (e.g. */set_1_1*)";
+                        await _twilioService.SendWhatsAppMessageAsync(userId, From, menu);
+                    }
+                    return Ok();
+                }
+                if (cmd.StartsWith("/set_")) // e.g. /set_1_1
+                {
+                    var parts = cmd.Split('_');
+                    bool isPrimary = parts[1] == "1";
+                    int modelIndex = 0;
+                    if (int.TryParse(parts[2], out int idx)) modelIndex = idx - 1;
+                    
+                    var models = await _aiService.GetAvailableModelsAsync(true);
+                    
+                    if (modelIndex >= 0 && modelIndex < models.Count) {
+                        var modelName = models[modelIndex];
+                        var current = await _settingsService.GetSettingsAsync(userId);
+                        if (isPrimary) {
+                            current.AiProvider = "Ollama";
+                            current.OllamaModelName = modelName;
+                        } else {
+                            current.FallbackAiProvider = "Ollama";
+                            current.FallbackOllamaModelName = modelName;
+                        }
+                        await _settingsService.UpdateSettingsAsync(userId, current);
+                        await _twilioService.SendWhatsAppMessageAsync(userId, From, $"✅ *Success:* {(isPrimary ? "Primary" : "Backup")} AI updated to *{modelName}* (Ollama).");
+                    }
+                    return Ok();
+                }
+            }
+
             var summary = await GetFinancialSummaryAsync(userId);
             var summaryJson = JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true });
 

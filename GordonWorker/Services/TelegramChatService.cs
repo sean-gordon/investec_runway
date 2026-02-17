@@ -76,6 +76,90 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
             var settings = await settingsService.GetSettingsAsync(request.UserId);
             var botClient = new TelegramBotClient(settings.TelegramBotToken);
 
+            // Handle Slash Commands
+            if (request.MessageText.StartsWith("/"))
+            {
+                var cmd = request.MessageText.Split(' ')[0].ToLower();
+                if (cmd == "/clear")
+                {
+                    await telegramService.SendMessageWithButtonsAsync(request.UserId, 
+                        "⚠️ <b>Warning: Clear History</b>\n\nThis will permanently delete your entire conversation history with the AI. This action cannot be undone.\n\nAre you sure?",
+                        new List<(string Text, string CallbackData)> { ("Yes, Clear It", "/clear_confirmed"), ("No, Cancel", "/cancel") }, 
+                        request.ChatId);
+                    return;
+                }
+                if (cmd == "/clear_confirmed")
+                {
+                    using var dbConfirm = new NpgsqlConnection(config.GetConnectionString("DefaultConnection"));
+                    await dbConfirm.ExecuteAsync("DELETE FROM chat_history WHERE user_id = @UserId", new { UserId = request.UserId });
+                    await telegramService.SendMessageAsync(request.UserId, "✅ <b>Success:</b> Your conversation history has been cleared.", request.ChatId);
+                    return;
+                }
+                if (cmd == "/model")
+                {
+                    await telegramService.SendMessageWithButtonsAsync(request.UserId, 
+                        "⚙️ <b>AI Model Configuration</b>\n\nWhich provider would you like to configure?",
+                        new List<(string Text, string CallbackData)> { ("Primary AI", "/model_provider_primary"), ("Backup AI", "/model_provider_backup") }, 
+                        request.ChatId);
+                    return;
+                }
+                if (cmd == "/model_provider_primary" || cmd == "/model_provider_backup")
+                {
+                    bool isPrimary = cmd.EndsWith("primary");
+                    var provider = isPrimary ? settings.AiProvider : settings.FallbackAiProvider;
+                    await telegramService.SendMessageWithButtonsAsync(request.UserId, 
+                        $"⚙️ <b>Select Provider for {(isPrimary ? "Primary" : "Backup")}</b>\n\nCurrent: <i>{provider}</i>",
+                        new List<(string Text, string CallbackData)> { 
+                            ("Ollama", $"/model_select_{ (isPrimary ? "p" : "b") }_ollama"), 
+                            ("Gemini", $"/model_select_{ (isPrimary ? "p" : "b") }_gemini") 
+                        }, 
+                        request.ChatId);
+                    return;
+                }
+                if (cmd.StartsWith("/model_select_")) // e.g. /model_select_p_ollama
+                {
+                    var parts = cmd.Split('_');
+                    bool isPrimary = parts[2] == "p";
+                    var provider = parts[3];
+                    var currentModel = isPrimary ? settings.OllamaModelName : (settings.FallbackAiProvider == "Ollama" ? settings.FallbackOllamaModelName : "Gemini API");
+                    
+                    var models = await aiService.GetAvailableModelsAsync(provider == "ollama");
+                    var buttons = models.Take(8).Select(m => (m, $"/model_set_{ (isPrimary ? "p" : "b") }_{provider}_{m}")).ToList();
+                    buttons.Add(("Cancel", "/cancel"));
+
+                    await telegramService.SendMessageWithButtonsAsync(request.UserId, 
+                        $"⚙️ <b>Select Model ({(isPrimary ? "Primary" : "Backup")})</b>\n\nProvider: {provider.ToUpper()}\nCurrent: {currentModel}",
+                        buttons, 
+                        request.ChatId);
+                    return;
+                }
+                if (cmd.StartsWith("/model_set_")) // e.g. /model_set_p_ollama_llama3
+                {
+                    var parts = cmd.Split('_');
+                    bool isPrimary = parts[2] == "p";
+                    var provider = parts[3];
+                    var modelName = parts[4];
+
+                    var current = await settingsService.GetSettingsAsync(request.UserId);
+                    if (isPrimary) {
+                        current.AiProvider = provider == "ollama" ? "Ollama" : "Gemini";
+                        if (provider == "ollama") current.OllamaModelName = modelName;
+                    } else {
+                        current.FallbackAiProvider = provider == "ollama" ? "Ollama" : "Gemini";
+                        if (provider == "ollama") current.FallbackOllamaModelName = modelName;
+                    }
+
+                    await settingsService.UpdateSettingsAsync(request.UserId, current);
+                    await telegramService.SendMessageAsync(request.UserId, $"✅ <b>Success:</b> {(isPrimary ? "Primary" : "Backup")} AI updated to <b>{modelName}</b> ({provider.ToUpper()}).", request.ChatId);
+                    return;
+                }
+                if (cmd == "/cancel")
+                {
+                    await telegramService.SendMessageAsync(request.UserId, "Action cancelled.", request.ChatId);
+                    return;
+                }
+            }
+
             // Send typing indicator
             await botClient.SendChatAction(request.ChatId, Telegram.Bot.Types.Enums.ChatAction.Typing, cancellationToken: ct);
 

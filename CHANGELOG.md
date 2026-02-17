@@ -23,12 +23,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [2.3.1] - 2026-02-17
+## [2.4.0] - 2026-02-17
 
 ### Added
-- **AI Seasonality Intelligence:** Updated AI system prompts to include YoY (Year-over-Year) context. The AI can now answer comparative questions about annual spending cycles in chat and identify seasonal trends in the weekly executive briefing.
+- **Interactive Slash Commands:**
+  - `/clear`: Allows users to permanently purge their AI conversation history from the database. Includes a multi-step confirmation warning.
+  - `/model`: Enables dynamic switching of AI providers (Primary/Backup) and specific model selection (Ollama/Gemini) directly from the chat interface.
+- **Telegram Interactivity:** Implemented `InlineKeyboardMarkup` support for seamless button-based command execution.
+- **WhatsApp Interactivity:** Implemented a text-based menu system for command parity on non-button platforms.
+- **Webhook Enhancements:** Updated Telegram webhook to handle `CallbackQuery` for interactive responses.
 
-## [2.3.0] - 2026-02-17
+## [2.3.1] - 2026-02-17
 
 ### Fixed
 - **Monitoring:** Optimized health checks with shorter 10s timeouts to ensure the dashboard KPIs remain responsive even when AI providers are slow or timing out.

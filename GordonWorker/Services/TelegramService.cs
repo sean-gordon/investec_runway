@@ -10,6 +10,7 @@ public interface ITelegramService
     Task<int> SendMessageWithIdAsync(int userId, string message, string? targetChatId = null);
     Task EditMessageAsync(int userId, int messageId, string newMessage, string? targetChatId = null);
     Task SendImageAsync(int userId, byte[] imageData, string caption, string? targetChatId = null);
+    Task SendMessageWithButtonsAsync(int userId, string message, List<(string Text, string CallbackData)> buttons, string? targetChatId = null);
     Task InstallWebhookAsync(int userId, string webhookUrl);
     Task<string> GetWebhookInfoAsync(int userId);
 }
@@ -23,6 +24,33 @@ public class TelegramService : ITelegramService
     {
         _settingsService = settingsService;
         _logger = logger;
+    }
+
+    public async Task SendMessageWithButtonsAsync(int userId, string message, List<(string Text, string CallbackData)> buttons, string? targetChatId = null)
+    {
+        var settings = await _settingsService.GetSettingsAsync(userId);
+        var chatId = targetChatId ?? settings.TelegramChatId;
+
+        if (string.IsNullOrWhiteSpace(settings.TelegramBotToken) || string.IsNullOrWhiteSpace(chatId)) return;
+
+        try
+        {
+            var botClient = new TelegramBotClient(settings.TelegramBotToken);
+            var keyboard = new Telegram.Bot.Types.ReplyMarkups.InlineKeyboardMarkup(
+                buttons.Select(b => Telegram.Bot.Types.ReplyMarkups.InlineKeyboardButton.WithCallbackData(b.Text, b.CallbackData))
+            );
+
+            await botClient.SendMessage(
+                chatId: chatId,
+                text: message,
+                parseMode: Telegram.Bot.Types.Enums.ParseMode.Html,
+                replyMarkup: keyboard
+            );
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send Telegram message with buttons.");
+        }
     }
 
     public async Task<string> GetWebhookInfoAsync(int userId)

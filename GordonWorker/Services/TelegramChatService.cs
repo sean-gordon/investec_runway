@@ -123,7 +123,7 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
                     var provider = parts[3];
                     var currentModel = isPrimary ? settings.OllamaModelName : (settings.FallbackAiProvider == "Ollama" ? settings.FallbackOllamaModelName : "Gemini API");
                     
-                    var models = await aiService.GetAvailableModelsAsync(provider == "ollama");
+                    var models = await aiService.GetAvailableModelsAsync(request.UserId, !isPrimary);
                     var buttons = models.Take(8).Select(m => (m, $"/model_set_{ (isPrimary ? "p" : "b") }_{provider}_{m}")).ToList();
                     buttons.Add(("Cancel", "/cancel"));
 

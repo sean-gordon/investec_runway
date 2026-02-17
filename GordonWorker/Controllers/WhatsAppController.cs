@@ -130,7 +130,7 @@ public class WhatsAppController : ControllerBase
                         await _settingsService.UpdateSettingsAsync(userId, current);
                         await _twilioService.SendWhatsAppMessageAsync(userId, From, $"✅ *Success:* {(isPrimary ? "Primary" : "Backup")} AI updated to *Gemini API*.");
                     } else {
-                        var models = await _aiService.GetAvailableModelsAsync(true);
+                        var models = await _aiService.GetAvailableModelsAsync(userId, !isPrimary);
                         var menu = $"⚙️ *Select Ollama Model ({(isPrimary ? "Primary" : "Backup")})*\n\n";
                         for(int i=0; i<Math.Min(models.Count, 9); i++) {
                             menu += $"{i+1}. {models[i]}\n";
@@ -147,7 +147,7 @@ public class WhatsAppController : ControllerBase
                     int modelIndex = 0;
                     if (int.TryParse(parts[2], out int idx)) modelIndex = idx - 1;
                     
-                    var models = await _aiService.GetAvailableModelsAsync(true);
+                    var models = await _aiService.GetAvailableModelsAsync(userId, !isPrimary);
                     
                     if (modelIndex >= 0 && modelIndex < models.Count) {
                         var modelName = models[modelIndex];

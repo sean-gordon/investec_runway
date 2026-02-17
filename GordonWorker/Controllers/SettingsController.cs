@@ -96,10 +96,21 @@ public class SettingsController : ControllerBase
         try
         {
             var result = await _aiService.TestConnectionAsync(UserId, useFallback: false);
-            return result.Success ? Ok(new { Message = "Connected to AI Brain successfully." }) : StatusCode(500, new { Error = result.Error });
+            if (result.Success)
+            {
+                _statusService.IsAiPrimaryOnline = true;
+                _statusService.LastAiCheck = DateTime.UtcNow;
+                return Ok(new { Message = "Connected to AI Brain successfully." });
+            }
+            else
+            {
+                _statusService.IsAiPrimaryOnline = false;
+                return StatusCode(500, new { Error = result.Error });
+            }
         }
         catch (Exception ex)
         {
+            _statusService.IsAiPrimaryOnline = false;
             return StatusCode(500, new { Error = ex.Message });
         }
     }
@@ -110,10 +121,21 @@ public class SettingsController : ControllerBase
         try
         {
             var result = await _aiService.TestConnectionAsync(UserId, useFallback: true);
-            return result.Success ? Ok(new { Message = "Connected to Fallback AI Brain successfully." }) : StatusCode(500, new { Error = result.Error });
+            if (result.Success)
+            {
+                _statusService.IsAiFallbackOnline = true;
+                _statusService.LastAiCheck = DateTime.UtcNow;
+                return Ok(new { Message = "Connected to Fallback AI Brain successfully." });
+            }
+            else
+            {
+                _statusService.IsAiFallbackOnline = false;
+                return StatusCode(500, new { Error = result.Error });
+            }
         }
         catch (Exception ex)
         {
+            _statusService.IsAiFallbackOnline = false;
             return StatusCode(500, new { Error = ex.Message });
         }
     }

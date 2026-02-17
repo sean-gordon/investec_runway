@@ -23,14 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.5] - 2026-02-17
+
+### Added
+- **Dashboard Sync:** Manual AI connectivity tests now immediately update the global dashboard KPIs, providing instant visual confirmation.
+
+### Changed
+- **Monitoring:** Increased background health check frequency from 15 minutes to 5 minutes for more timely status updates.
+
 ## [2.2.4] - 2026-02-17
-
-### Fixed
-- **AI Reliability:** Improved health check robustness with a 15s timeout and automatic retry logic to prevent false "Offline" indicators for slow-starting models (e.g., local Ollama).
-- **Gemini Fallback:** Fixed a bug where Gemini fallback logic was incorrectly using the primary model name instead of the configured fallback model.
-- **Health KPIs:** Dashboard status indicators now accurately reflect actual AI availability by matching the improved reliability logic of the core AI engine.
-
-## [2.2.3] - 2026-02-17
 
 ### Fixed
 - **Monitoring:** Optimized health checks with shorter 10s timeouts to ensure the dashboard KPIs remain responsive even when AI providers are slow or timing out.

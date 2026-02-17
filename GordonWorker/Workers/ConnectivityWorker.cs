@@ -22,7 +22,7 @@ public class ConnectivityWorker : BackgroundService
         // Initial check on startup
         await CheckConnectivityAsync();
 
-        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(15));
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(5));
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
             await CheckConnectivityAsync();

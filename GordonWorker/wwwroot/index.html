@@ -688,12 +688,18 @@
                 async testAi() {
                     await this.saveSettings();
                     const res = await this.api('/api/settings/test-ai', 'POST');
-                    if (res.ok) { this.showToast("AI Connected"); this.loadModels(false); } else this.showToast("Failed");
+                    if (res.ok) { 
+                        this.showToast("AI Connected"); 
+                        this.loadData(); 
+                    } else this.showToast("Failed");
                 },
                 async testFallbackAi() {
                     await this.saveSettings();
                     const res = await this.api('/api/settings/test-fallback-ai', 'POST');
-                    if (res.ok) { this.showToast("Fallback AI Connected"); this.loadModels(true); } else this.showToast("Fallback Failed");
+                    if (res.ok) { 
+                        this.showToast("Fallback AI Connected"); 
+                        this.loadData();
+                    } else this.showToast("Fallback Failed");
                 },
                 async testTelegram() {
                     await this.saveSettings();

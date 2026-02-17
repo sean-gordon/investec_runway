@@ -23,15 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.6] - 2026-02-17
+
+### Fixed
+- **Frontend Sync:** Resolved an issue where manual AI connection tests did not immediately update the dashboard KPI cards.
+- **UX Improvements:** Refined status labels ("Ready" vs "Standby") for AI providers to better communicate the failover state.
+
 ## [2.2.5] - 2026-02-17
-
-### Added
-- **Dashboard Sync:** Manual AI connectivity tests now immediately update the global dashboard KPIs, providing instant visual confirmation.
-
-### Changed
-- **Monitoring:** Increased background health check frequency from 15 minutes to 5 minutes for more timely status updates.
-
-## [2.2.4] - 2026-02-17
 
 ### Fixed
 - **Monitoring:** Optimized health checks with shorter 10s timeouts to ensure the dashboard KPIs remain responsive even when AI providers are slow or timing out.

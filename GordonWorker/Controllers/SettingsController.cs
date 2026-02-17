@@ -149,11 +149,20 @@ public class SettingsController : ControllerBase
         return StatusCode(500, $"Investec connection failed: {error}");
     }
 
-    [HttpGet("models")]
-    public async Task<IActionResult> GetModels([FromQuery] bool useFallback = false)
+    [HttpPost("models")]
+    public async Task<IActionResult> GetModels([FromBody] AppSettings? settings = null, [FromQuery] bool useFallback = false)
     {
-        var models = await _aiService.GetAvailableModelsAsync(UserId, useFallback);
-        return Ok(models);
+        // If settings are provided in the body, use those. Otherwise load from DB.
+        if (settings != null)
+        {
+            var models = await _aiService.GetAvailableModelsAsync(UserId, useFallback, settings);
+            return Ok(models);
+        }
+        else
+        {
+            var models = await _aiService.GetAvailableModelsAsync(UserId, useFallback);
+            return Ok(models);
+        }
     }
 
     [HttpGet("status")]

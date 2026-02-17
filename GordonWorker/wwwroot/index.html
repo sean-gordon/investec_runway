@@ -600,14 +600,13 @@
                     const res = await this.api('/api/users');
                     if (res.ok) this.users = await res.json();
                 },
-                async loadModels(useFallback = false) {
-                    const res = await this.api(`/api/settings/models?useFallback=${useFallback}`);
-                    if (res.ok) {
-                        if (useFallback) this.availableFallbackModels = await res.json();
-                        else this.availableModels = await res.json();
-                    }
-                },
-                openUserModal(u = null) {
+                                async loadModels(useFallback = false) {
+                                    const res = await this.api(`/api/settings/models?useFallback=${useFallback}`, 'POST', this.settings);
+                                    if (res.ok) {
+                                        if (useFallback) this.availableFallbackModels = await res.json();
+                                        else this.availableModels = await res.json();
+                                    }
+                                },                openUserModal(u = null) {
                     this.userForm = u ? { ...u, password: '' } : { id: 0, username: '', password: '', role: 'User' };
                     this.isUserModalOpen = true;
                 },

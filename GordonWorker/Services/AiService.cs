@@ -13,10 +13,9 @@ public interface IAiService
     Task<(Guid? TransactionId, string? Note)> AnalyzeExpenseExplanationAsync(int userId, string userMessage, List<Transaction> recentTransactions);
     Task<(bool IsAffordabilityCheck, decimal? Amount, string? Description)> AnalyzeAffordabilityAsync(int userId, string userMessage);
     Task<(bool IsChartRequest, string? ChartType, string? Sql, string? Title)> AnalyzeChartRequestAsync(int userId, string userMessage);
-    Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false);
-    Task<List<string>> GetAvailableModelsAsync(int userId, bool useFallback = false);
-}
-
+        Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false);        
+        Task<List<string>> GetAvailableModelsAsync(int userId, bool useFallback = false, AppSettings? overriddenSettings = null);
+    }
 /// <summary>
 /// This is Gordon's "Brain." It handles talking to the AI—whether you're using 
 /// local LLMs (Ollama) or cloud ones (Gemini). It also makes sure Gordon always 
@@ -182,9 +181,9 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
         return (null, null);
     }
 
-    private async Task<AiProviderConfig> GetProviderConfigAsync(int userId, bool useFallback = false)
+    private async Task<AiProviderConfig> GetProviderConfigAsync(int userId, bool useFallback = false, AppSettings? overriddenSettings = null)
     {
-        var settings = await _settingsService.GetSettingsAsync(userId);
+        var settings = overriddenSettings ?? await _settingsService.GetSettingsAsync(userId);
 
         if (useFallback && settings.EnableAiFallback)
         {
@@ -209,12 +208,11 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
         };
     }
 
-    public async Task<List<string>> GetAvailableModelsAsync(int userId, bool useFallback = false)
-    {
-        var config = await GetProviderConfigAsync(userId, useFallback);
-
-        if (config.Provider == "Gemini")
+        public async Task<List<string>> GetAvailableModelsAsync(int userId, bool useFallback = false, AppSettings? overriddenSettings = null)        
         {
+            var config = await GetProviderConfigAsync(userId, useFallback, overriddenSettings);
+    
+            if (config.Provider == "Gemini")        {
             if (string.IsNullOrWhiteSpace(config.GeminiKey)) return new List<string>();
             try
             {

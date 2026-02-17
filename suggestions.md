@@ -85,7 +85,8 @@ Create administrative dashboard for system health monitoring.
 
 ## ✅ Completed Enhancements
 
-### Infrastructure & Reliability (v2.0.0 - 2026-02-16)
+### Infrastructure & Reliability (v2.1.0 - 2026-02-17)
+- [x] **Truly Dynamic AI Discovery**: Real-time capability checking for Gemini models (`generateContent`)
 - [x] **AI Fallback System**: Primary + secondary AI providers with automatic retry and exponential backoff
 - [x] **Telegram Background Queue**: Channel-based reliable message processing with guaranteed responses
 - [x] **Health Check Endpoints**: `/health`, `/health/ready`, `/health/live` for monitoring
@@ -193,6 +194,6 @@ Create administrative dashboard for system health monitoring.
 
 ---
 
-**Last Updated:** 2026-02-16 (v2.0.0 Release)
+**Last Updated:** 2026-02-17 (v2.1.0 Release)
 
 See `CHANGELOG.md` for detailed version history.

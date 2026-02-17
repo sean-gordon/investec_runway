@@ -15,6 +15,8 @@ public record FinancialHealthReport(
     string TrendDirection,
     decimal SpendThisMonth,
     decimal SpendLastMonth,
+    decimal SpendSameMonthLastYear,
+    decimal YoYChangePercentage,
     decimal ProjectedMonthEndSpend,
     decimal ProjectedBalanceAtNextSalary,
     decimal UpcomingExpectedPayments,
@@ -139,20 +141,27 @@ public class ActuarialService : IActuarialService
         var spendLastPeriodFull = lastPeriodFullExpenses.Sum(t => t.Amount);
         var spendLastPeriodPtd = lastPeriodPtdExpenses.Sum(t => t.Amount);
         
+        // Year-over-Year (YoY) Seasonality Analysis
+        var lastYearStart = periodStart.AddYears(-1);
+        var lastYearToday = today.AddYears(-1);
+        var lastYearExpensesPtd = expenses.Where(t => ToDate(t.TransactionDate) >= lastYearStart && ToDate(t.TransactionDate) <= lastYearToday).ToList();
+        var spendLastYearPtd = lastYearExpensesPtd.Sum(t => t.Amount);
+        decimal yoyChangePercent = spendLastYearPtd > 0 ? ((spendThisPeriod - spendLastYearPtd) / spendLastYearPtd) * 100 : 0;
+
         // Pulse Comparison: If PTD spend is suspiciously low (< 10% of full), use Full month as baseline to avoid "700% increase" errors
         var pulseBaseline = (spendLastPeriodPtd < (spendLastPeriodFull * settings.PulseBaselineThreshold)) ? spendLastPeriodFull : spendLastPeriodPtd;
 
         var topCategories = thisPeriodExpenses
-            .Where(t => !IsFixedCost(NormalizeDescription(t.Description), settings))
-            .GroupBy(t => NormalizeDescription(t.Description))
+            .Where(t => !IsFixedCost(t.Category ?? NormalizeDescription(t.Description), settings))
+            .GroupBy(t => t.Category ?? NormalizeDescription(t.Description))
             .Select(g => new { Name = g.Key, Amount = g.Sum(t => t.Amount) })
             .OrderByDescending(x => x.Amount).Take(5).ToList();
 
         var categoryReport = new List<CategorySpend>();
         foreach (var cat in topCategories)
         {
-            var ptdLastSpend = lastPeriodPtdExpenses.Where(t => NormalizeDescription(t.Description) == cat.Name).Sum(t => t.Amount);
-            var fullLastSpend = lastPeriodFullExpenses.Where(t => NormalizeDescription(t.Description) == cat.Name).Sum(t => t.Amount);
+            var ptdLastSpend = lastPeriodPtdExpenses.Where(t => (t.Category ?? NormalizeDescription(t.Description)) == cat.Name).Sum(t => t.Amount);
+            var fullLastSpend = lastPeriodFullExpenses.Where(t => (t.Category ?? NormalizeDescription(t.Description)) == cat.Name).Sum(t => t.Amount);
             
             // Hybrid Baseline: If it's a significant amount and PTD is zero, use full month to avoid spike hallucinations
             decimal baseline = (ptdLastSpend < (fullLastSpend * settings.HybridBaselineThreshold)) ? fullLastSpend : ptdLastSpend;
@@ -166,12 +175,12 @@ public class ActuarialService : IActuarialService
 
         // Identify Upcoming Expected Payments
         var upcomingFixedCosts = new List<UpcomingExpense>();
-        var historicalFixedExpenses = lastPeriodFullExpenses.Where(t => IsFixedCost(NormalizeDescription(t.Description), settings))
-            .GroupBy(t => NormalizeDescription(t.Description)).ToList();
+        var historicalFixedExpenses = lastPeriodFullExpenses.Where(t => IsFixedCost(t.Category ?? NormalizeDescription(t.Description), settings))
+            .GroupBy(t => t.Category ?? NormalizeDescription(t.Description)).ToList();
 
         foreach (var group in historicalFixedExpenses)
         {
-            if (!thisPeriodExpenses.Any(t => NormalizeDescription(t.Description) == group.Key))
+            if (!thisPeriodExpenses.Any(t => (t.Category ?? NormalizeDescription(t.Description)) == group.Key))
             {
                 upcomingFixedCosts.Add(new UpcomingExpense(group.Key, group.Average(t => t.Amount)));    
             }
@@ -179,7 +188,7 @@ public class ActuarialService : IActuarialService
         decimal upcomingOverhead = upcomingFixedCosts.Sum(e => e.ExpectedAmount);
 
         // ACTUARIAL REFINEMENT: Calculate baseBurn ONLY from variable expenses to prevent double-counting fixed costs
-        var variableExpenses = expenses.Where(t => !IsFixedCost(NormalizeDescription(t.Description), settings)).ToList();
+        var variableExpenses = expenses.Where(t => !IsFixedCost(t.Category ?? NormalizeDescription(t.Description), settings)).ToList();
         
         var analysisWindowDays = settings.AnalysisWindowDays > 0 ? settings.AnalysisWindowDays : 90;
         var windowStartDate = today.AddDays(-analysisWindowDays);
@@ -237,6 +246,8 @@ public class ActuarialService : IActuarialService
             TrendDirection: trendDirection,
             SpendThisMonth: spendThisPeriod,
             SpendLastMonth: pulseBaseline,
+            SpendSameMonthLastYear: spendLastYearPtd,
+            YoYChangePercentage: yoyChangePercent,
             ProjectedMonthEndSpend: projectedMonthEndSpend,
             ProjectedBalanceAtNextSalary: projectedBalance,
             UpcomingExpectedPayments: upcomingOverhead,

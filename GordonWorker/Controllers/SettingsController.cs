@@ -95,11 +95,47 @@ public class SettingsController : ControllerBase
     {
         try
         {
-            var result = await _aiService.TestConnectionAsync(UserId);
-            return result.Success ? Ok(new { Message = "Connected to AI Brain successfully." }) : StatusCode(500, new { Error = result.Error });
+            var result = await _aiService.TestConnectionAsync(UserId, useFallback: false);
+            if (result.Success)
+            {
+                _statusService.IsAiPrimaryOnline = true;
+                _statusService.LastAiCheck = DateTime.UtcNow;
+                return Ok(new { Message = "Connected to AI Brain successfully." });
+            }
+            else
+            {
+                _statusService.IsAiPrimaryOnline = false;
+                return StatusCode(500, new { Error = result.Error });
+            }
         }
         catch (Exception ex)
         {
+            _statusService.IsAiPrimaryOnline = false;
+            return StatusCode(500, new { Error = ex.Message });
+        }
+    }
+
+    [HttpPost("test-fallback-ai")]
+    public async Task<IActionResult> TestFallbackAi()
+    {
+        try
+        {
+            var result = await _aiService.TestConnectionAsync(UserId, useFallback: true);
+            if (result.Success)
+            {
+                _statusService.IsAiFallbackOnline = true;
+                _statusService.LastAiCheck = DateTime.UtcNow;
+                return Ok(new { Message = "Connected to Fallback AI Brain successfully." });
+            }
+            else
+            {
+                _statusService.IsAiFallbackOnline = false;
+                return StatusCode(500, new { Error = result.Error });
+            }
+        }
+        catch (Exception ex)
+        {
+            _statusService.IsAiFallbackOnline = false;
             return StatusCode(500, new { Error = ex.Message });
         }
     }
@@ -135,11 +171,20 @@ public class SettingsController : ControllerBase
         return StatusCode(500, $"Investec connection failed: {error}");
     }
 
-    [HttpGet("models")]
-    public async Task<IActionResult> GetModels()
+    [HttpPost("models")]
+    public async Task<IActionResult> GetModels([FromBody] AppSettings? settings = null, [FromQuery] bool useFallback = false)
     {
-        var models = await _aiService.GetAvailableModelsAsync(UserId);
-        return Ok(models);
+        // If settings are provided in the body, use those. Otherwise load from DB.
+        if (settings != null)
+        {
+            var models = await _aiService.GetAvailableModelsAsync(UserId, useFallback, settings);
+            return Ok(models);
+        }
+        else
+        {
+            var models = await _aiService.GetAvailableModelsAsync(UserId, useFallback);
+            return Ok(models);
+        }
     }
 
     [HttpGet("status")]
@@ -158,7 +203,12 @@ public class SettingsController : ControllerBase
         return Ok(new 
         { 
             InvestecOnline = isInvestecOnline,
+            DatabaseOnline = _statusService.IsDatabaseOnline,
+            AiPrimaryOnline = _statusService.IsAiPrimaryOnline,
+            AiFallbackOnline = _statusService.IsAiFallbackOnline,
             LastCheck = DateTime.UtcNow,
+            LastAiCheck = _statusService.LastAiCheck,
+            LastInvestecCheck = _statusService.LastInvestecCheck,
             LastTelegramHit = _statusService.LastTelegramHit,
             LastTelegramError = _statusService.LastTelegramError
         });
@@ -192,6 +242,36 @@ public class SettingsController : ControllerBase
         }
     }
 
+    [HttpPost("categorize-existing")]
+    public async Task<IActionResult> CategorizeExisting()
+    {
+        try
+        {
+            using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+            await connection.OpenAsync();
+
+            var sql = "SELECT * FROM transactions WHERE user_id = @UserId AND is_ai_processed = FALSE LIMIT 50";
+            var txs = (await connection.QueryAsync<Transaction>(sql, new { UserId })).ToList();
+
+            if (!txs.Any()) return Ok("No unprocessed transactions found.");
+
+            var categorized = await _aiService.CategorizeTransactionsAsync(UserId, txs);
+
+            foreach (var tx in categorized)
+            {
+                await connection.ExecuteAsync(
+                    "UPDATE transactions SET category = @Category, is_ai_processed = TRUE WHERE id = @Id AND user_id = @UserId",
+                    new { tx.Category, tx.Id, UserId });
+            }
+
+            return Ok($"Categorized {txs.Count} transactions.");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, $"Failed to categorize: {ex.Message}");
+        }
+    }
+
     [HttpGet("recent-transactions")]
     public async Task<IActionResult> GetRecentTransactions()
     {
@@ -199,5 +279,19 @@ public class SettingsController : ControllerBase
         var sql = "SELECT * FROM transactions WHERE user_id = @UserId ORDER BY transaction_date DESC LIMIT 10";
         var txs = await connection.QueryAsync<Transaction>(sql, new { UserId });
         return Ok(txs);
+    }
+
+    [HttpGet("stats")]
+    public async Task<IActionResult> GetStats()
+    {
+        try
+        {
+            var statsJson = await _reportService.GetHealthStatsJsonAsync(UserId);
+            return Content(statsJson, "application/json");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Error = ex.Message });
+        }
     }
 }

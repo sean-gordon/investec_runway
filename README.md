@@ -1,6 +1,6 @@
 # Gordon Finance Engine 🦓
 
-**Version 2.4.7** | *Your Personal, Actuarial-Grade Financial Platform*
+**Version 2.4.8** | *Your Personal, Actuarial-Grade Financial Platform*
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Status](https://img.shields.io/badge/status-production-green.svg)

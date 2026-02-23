@@ -708,8 +708,8 @@ Context Information:
         {
             var firstCandidate = candidates[0];
             
-            if (firstCandidate.TryGetProperty("content", out var content) && 
-                content.TryGetProperty("parts", out var parts) && 
+            if (firstCandidate.TryGetProperty("content", out var candidateContent) && 
+                candidateContent.TryGetProperty("parts", out var parts) && 
                 parts.GetArrayLength() > 0)
             {
                 var text = parts[0].GetProperty("text").GetString()?.Trim();

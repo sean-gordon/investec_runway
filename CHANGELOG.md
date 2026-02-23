@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.4.8] - 2026-02-23
+
+### Fixed
+- **Hotfix:** Resolved a compilation error (CS0136) in `AiService.cs` where the `content` variable name was being reused, causing Docker builds to fail.
+
+---
+
 ## [2.4.7] - 2026-02-23
 
 ### Changed

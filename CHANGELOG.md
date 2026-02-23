@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.5.5] - 2026-02-23
+
+### Fixed
+- **Upcoming Expenses Detection:** Implemented automated recurring expense detection in the actuarial engine. The system now identifies upcoming payments by looking back at the last 3 months of history, ensuring that subscriptions and regular utilities are correctly identified even if not manually added to keywords.
+- **Improved Actuarial Accuracy:** Refined the separation of fixed vs variable expenses by using the new recurring detection logic, leading to more accurate burn rate calculations and runway projections.
+- **Comprehensive Keywords:** Expanded the default `FixedCostKeywords` list with 30+ common South African and global recurring services (Netflix, Spotify, Google, Vodacom, Discovery, etc.) to improve out-of-the-box accuracy for new users.
+
+---
+
 ## [2.5.4] - 2026-02-23
 
 ### Changed

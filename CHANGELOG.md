@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.5.3] - 2026-02-23
+
+### Fixed
+- **AI Status Performance:** Optimized `GetStatus` to prevent redundant blocking calls when AI services are offline by ensuring the cooldown timer is updated even on connection failure.
+- **Improved Reliability:** Corrected a bug where the fallback AI check used a stale cooldown value, potentially leading to unnecessary connection attempts.
+- **Multi-Tenant Stability:** Refined global status reporting to strictly isolate per-user connection tests from the system-wide health indicators.
+
+---
+
 ## [2.5.2] - 2026-02-23
 
 ### Fixed

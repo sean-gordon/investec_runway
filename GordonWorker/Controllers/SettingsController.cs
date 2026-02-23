@@ -224,14 +224,15 @@ public class SettingsController : ControllerBase
             {
                 _statusService.IsAiPrimaryOnline = ok;
                 _statusService.PrimaryAiError = primaryError;
-                if (ok) _statusService.LastAiCheck = DateTime.UtcNow;
+                _statusService.LastAiCheck = DateTime.UtcNow;
             }
         }
 
         var isFallbackOnline = _statusService.IsAiFallbackOnline;
         var fallbackError = _statusService.FallbackAiError;
+        var canRetryFallback = (DateTime.UtcNow - _statusService.LastAiCheck).TotalMinutes > 1;
 
-        if (settings.EnableAiFallback && (!isFallbackOnline || canRetryCheck))
+        if (settings.EnableAiFallback && (!isFallbackOnline || canRetryFallback))
         {
             var (ok, err) = await _aiService.TestConnectionAsync(UserId, useFallback: true);
             isFallbackOnline = ok;
@@ -242,7 +243,7 @@ public class SettingsController : ControllerBase
             {
                 _statusService.IsAiFallbackOnline = ok;
                 _statusService.FallbackAiError = fallbackError;
-                if (ok) _statusService.LastAiCheck = DateTime.UtcNow;
+                _statusService.LastAiCheck = DateTime.UtcNow;
             }
         }
 

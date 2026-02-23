@@ -17,6 +17,7 @@ public class AppSettings
     public decimal IncomeAlertThreshold { get; set; } = 5000m; // Alert when income > this
     public string OllamaBaseUrl { get; set; } = "http://host.docker.internal:11434";
     public string OllamaModelName { get; set; } = "deepseek-coder";
+    public string GeminiModelName { get; set; } = "gemini-3-flash-preview";
     public string GeminiApiKey { get; set; } = "";
     public string AiProvider { get; set; } = "Ollama"; // "Ollama" or "Gemini"
     public string SystemPersona { get; set; } = "Gordon";
@@ -26,12 +27,13 @@ public class AppSettings
     public string FallbackAiProvider { get; set; } = "Gemini"; // Fallback if primary fails
     public string FallbackOllamaBaseUrl { get; set; } = "http://host.docker.internal:11434";
     public string FallbackOllamaModelName { get; set; } = "llama3";
+    public string FallbackGeminiModelName { get; set; } = "gemini-3-flash-preview";
     public string FallbackGeminiApiKey { get; set; } = "";
     public int AiTimeoutSeconds { get; set; } = 90;
     public int AiRetryAttempts { get; set; } = 2;
     
     // Actuarial Keywords & Thresholds
-    public string FixedCostKeywords { get; set; } = "SCHOOL,MORTGAGE,LEVIES,HOME LOAN,INSURANCE,BOND,INVESTMENT,LIFE,MEDICAL,NEDBHL,DISC PREM,WILLOWBROOKE,ADAM";
+    public string FixedCostKeywords { get; set; } = "SCHOOL,MORTGAGE,LEVIES,HOME LOAN,INSURANCE,BOND,INVESTMENT,LIFE,MEDICAL,NEDBHL,DISC PREM,WILLOWBROOKE,ADAM,NETFLIX,SPOTIFY,APPLE,GOOGLE,VODACOM,MTN,CELL C,TELKOM,ELECTRICITY,CITY OF,MUNICIPALITY,DISCOVERY,MULTICHOICE,DSTV,VUMATEL,AFRIHOST,MWEB,RAIN,OUTSURANCE,SANTAM,OLD MUTUAL,SANLAM,LIBERTY,ALLAN GRAY,CORONATION,RETIREMENT,PENSION,STALMENT,BOND,FIBRE,GYM,VIRGIN ACTIVE,PLANET FITNESS,AUDIBLE,AMAZON,CHATGPT,OPENAI";
     public string SalaryKeywords { get; set; } = "TCP 131,TCP131,SALARY";
     public decimal SalaryFallbackThreshold { get; set; } = 10000m;
     public int SalaryFallbackDays { get; set; } = 45;

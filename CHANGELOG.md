@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.5.1] - 2026-02-23
+
+### Fixed
+- **Gemini Rate Limiting:** Optimized background health checks to skip Gemini 'warming' for non-primary users, significantly reducing API quota consumption.
+- **Dashboard Refresh:** Implemented a 1-minute cooldown on proactive AI checks when refreshing the dashboard, preventing the "AI Offline" loop caused by hitting rate limits during page reloads.
+- **Resilience:** Disabled automatic retries for Gemini connectivity tests, as repeated immediate failures typically indicate quota exhaustion rather than transient network issues.
+
+---
+
 ## [2.5.0] - 2026-02-23
 
 ### Fixed

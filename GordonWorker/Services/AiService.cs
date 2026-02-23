@@ -378,7 +378,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
         var config = await GetProviderConfigAsync(userId, useFallback);
         // Status tests use a more forgiving timeout (15s) and a single retry to handle "waking up" local models.
         var testTimeout = TimeSpan.FromSeconds(15); 
-        var maxAttempts = 2;
+        var maxAttempts = config.Provider == "Gemini" ? 1 : 2; // Don't retry Gemini, it just hits rate limits faster
 
         for (int attempt = 1; attempt <= maxAttempts; attempt++)
         {

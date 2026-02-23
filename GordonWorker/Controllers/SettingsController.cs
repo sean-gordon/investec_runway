@@ -202,8 +202,10 @@ public class SettingsController : ControllerBase
 
         // Proactive AI check: if global status is offline, but THIS user might have a working connection,
         // we check it now to provide immediate feedback on dashboard refresh.
-        // We only do this if it's currently offline to avoid overhead.
-        if (!_statusService.IsAiPrimaryOnline)
+        // We only do this if it's currently offline to avoid overhead, and we add a 1-minute cooldown.
+        var canRetryCheck = (DateTime.UtcNow - _statusService.LastAiCheck).TotalMinutes > 1;
+
+        if (!_statusService.IsAiPrimaryOnline && canRetryCheck)
         {
             var (primaryOk, _) = await _aiService.TestConnectionAsync(UserId, useFallback: false);
             if (primaryOk) 
@@ -213,7 +215,7 @@ public class SettingsController : ControllerBase
             }
         }
 
-        if (settings.EnableAiFallback && !_statusService.IsAiFallbackOnline)
+        if (settings.EnableAiFallback && !_statusService.IsAiFallbackOnline && canRetryCheck)
         {
             var (fallbackOk, _) = await _aiService.TestConnectionAsync(UserId, useFallback: true);
             if (fallbackOk) 

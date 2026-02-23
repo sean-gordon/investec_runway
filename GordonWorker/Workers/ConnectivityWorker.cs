@@ -104,12 +104,19 @@ public class ConnectivityWorker : BackgroundService
                     }
 
                     // 3. Check AI Providers
-                    var (primaryOk, _) = await aiService.TestConnectionAsync(userId, useFallback: false);
-                    
-                    if (userId == statusUserId)
-                        _statusService.IsAiPrimaryOnline = primaryOk;
+                    // We only test ALL users if they use Ollama (to keep models warm). 
+                    // For Gemini, we only test the status user to save quota.
+                    bool shouldTestPrimary = (settings.AiProvider == "Ollama") || (userId == statusUserId);
+                    bool shouldTestFallback = settings.EnableAiFallback && ((settings.FallbackAiProvider == "Ollama") || (userId == statusUserId));
 
-                    if (settings.EnableAiFallback)
+                    if (shouldTestPrimary)
+                    {
+                        var (primaryOk, _) = await aiService.TestConnectionAsync(userId, useFallback: false);
+                        if (userId == statusUserId)
+                            _statusService.IsAiPrimaryOnline = primaryOk;
+                    }
+
+                    if (shouldTestFallback)
                     {
                         var (fallbackOk, _) = await aiService.TestConnectionAsync(userId, useFallback: true);
                         if (userId == statusUserId)

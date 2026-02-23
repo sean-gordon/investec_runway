@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.5.6] - 2026-02-23
+
+### Fixed
+- **Telegram Reliability:** Improved error handling and input validation in `TelegramChatService`.
+- **Slash Commands:** Enhanced command parsing to correctly handle model names containing underscores and improved state validation for provider selection.
+- **Improved UX:** Fixed several typos in Telegram status messages and added debug logging for command processing.
+
+---
+
 ## [2.5.5] - 2026-02-23
 
 ### Fixed

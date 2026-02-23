@@ -148,11 +148,25 @@ public class ActuarialService : IActuarialService
         var spendLastYearPtd = lastYearExpensesPtd.Sum(t => t.Amount);
         decimal yoyChangePercent = spendLastYearPtd > 0 ? ((spendThisPeriod - spendLastYearPtd) / spendLastYearPtd) * 100 : 0;
 
+        // Improved Recurring Expense Detection (Automated)
+        var priorExpenses = expenses.Where(t => ToDate(t.TransactionDate) < periodStart).ToList();
+        var recurringNames = priorExpenses
+            .GroupBy(t => t.Category ?? NormalizeDescription(t.Description))
+            .Select(g => new { 
+                Name = g.Key, 
+                MonthCount = g.GroupBy(t => $"{t.TransactionDate.Year}-{t.TransactionDate.Month}").Count() 
+            })
+            .Where(x => x.MonthCount >= 2 || IsFixedCost(x.Name, settings))
+            .Select(x => x.Name)
+            .ToHashSet();
+
+        bool IsFixed(Transaction t) => recurringNames.Contains(t.Category ?? NormalizeDescription(t.Description));
+
         // Pulse Comparison: If PTD spend is suspiciously low (< 10% of full), use Full month as baseline to avoid "700% increase" errors
         var pulseBaseline = (spendLastPeriodPtd < (spendLastPeriodFull * settings.PulseBaselineThreshold)) ? spendLastPeriodFull : spendLastPeriodPtd;
 
         var topCategories = thisPeriodExpenses
-            .Where(t => !IsFixedCost(t.Category ?? NormalizeDescription(t.Description), settings))
+            .Where(t => !IsFixed(t))
             .GroupBy(t => t.Category ?? NormalizeDescription(t.Description))
             .Select(g => new { Name = g.Key, Amount = g.Sum(t => t.Amount) })
             .OrderByDescending(x => x.Amount).Take(5).ToList();
@@ -170,17 +184,17 @@ public class ActuarialService : IActuarialService
             decimal percent = baseline > 0 ? (diff / baseline) * 100 : 100;
 
             bool isStable = Math.Abs(percent) < settings.StabilityPercentageThreshold || Math.Abs(diff) < settings.StabilityAmountThreshold;
-            categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent, isStable, IsFixedCost(cat.Name, settings)));                                                                                                           
+            categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent, isStable, IsFixed(new Transaction { Category = cat.Name })));                                                                                                           
         }
 
         // Identify Upcoming Expected Payments
         var upcomingFixedCosts = new List<UpcomingExpense>();
-        var historicalFixedExpenses = lastPeriodFullExpenses.Where(t => IsFixedCost(t.Category ?? NormalizeDescription(t.Description), settings))
+        var historicalFixedExpenses = lastPeriodFullExpenses.Where(t => IsFixed(t))
             .GroupBy(t => t.Category ?? NormalizeDescription(t.Description)).ToList();
 
         foreach (var group in historicalFixedExpenses)
         {
-            if (!thisPeriodExpenses.Any(t => (t.Category ?? NormalizeDescription(t.Description)) == group.Key))
+            if (!thisPeriodExpenses.Any(t => IsFixed(t) && (t.Category ?? NormalizeDescription(t.Description)) == group.Key))
             {
                 upcomingFixedCosts.Add(new UpcomingExpense(group.Key, group.Average(t => t.Amount)));    
             }
@@ -188,7 +202,7 @@ public class ActuarialService : IActuarialService
         decimal upcomingOverhead = upcomingFixedCosts.Sum(e => e.ExpectedAmount);
 
         // ACTUARIAL REFINEMENT: Calculate baseBurn ONLY from variable expenses to prevent double-counting fixed costs
-        var variableExpenses = expenses.Where(t => !IsFixedCost(t.Category ?? NormalizeDescription(t.Description), settings)).ToList();
+        var variableExpenses = expenses.Where(t => !IsFixed(t)).ToList();
         
         var analysisWindowDays = settings.AnalysisWindowDays > 0 ? settings.AnalysisWindowDays : 90;
         var windowStartDate = today.AddDays(-analysisWindowDays);
@@ -219,8 +233,8 @@ public class ActuarialService : IActuarialService
         else { probSurvival = (currentBalance - upcomingOverhead) > (baseBurn * (decimal)daysUntilNextSalary) ? 100 : 0; }
 
         // PROJECTED SPEND: Separate linear variable projection + actual/expected fixed costs
-        var variableSpendThisPeriod = thisPeriodExpenses.Where(t => !IsFixedCost(NormalizeDescription(t.Description), settings)).Sum(t => t.Amount);
-        var fixedSpendThisPeriod = thisPeriodExpenses.Where(t => IsFixedCost(NormalizeDescription(t.Description), settings)).Sum(t => t.Amount);
+        var variableSpendThisPeriod = thisPeriodExpenses.Where(t => !IsFixed(t)).Sum(t => t.Amount);
+        var fixedSpendThisPeriod = thisPeriodExpenses.Where(t => IsFixed(t)).Sum(t => t.Amount);
         
         decimal projectedVariableSpend = (variableSpendThisPeriod / (decimal)daysIntoPeriod) * (decimal)avgCycleDays;
         decimal projectedMonthEndSpend = projectedVariableSpend + fixedSpendThisPeriod + upcomingOverhead;

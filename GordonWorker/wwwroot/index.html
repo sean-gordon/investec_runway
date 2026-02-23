@@ -498,6 +498,23 @@
                     </div>
                 </main>
             </div>
+
+            <!-- MOBILE BOTTOM NAVBAR -->
+            <div class="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-4 py-2 z-50 flex items-center justify-between shadow-lg">
+                <button v-for="item in menuItems.slice(0, 4)" :key="item.id" @click="activeTab = item.id"
+                    v-show="!item.adminOnly || auth.role === 'Admin'"
+                    class="flex flex-col items-center gap-1 p-2 flex-1 rounded-xl transition-all"
+                    :class="activeTab === item.id ? 'text-brand-600 bg-brand-50' : 'text-slate-400'">
+                    <span class="text-xl">{{ item.icon }}</span>
+                    <span class="text-[9px] font-bold uppercase tracking-tight">{{ item.name }}</span>
+                </button>
+                <button @click="activeTab = 's-ai'"
+                    class="flex flex-col items-center gap-1 p-2 flex-1 rounded-xl transition-all"
+                    :class="activeTab.startsWith('s-') ? 'text-brand-600 bg-brand-50' : 'text-slate-400'">
+                    <span class="text-xl">⚙️</span>
+                    <span class="text-[9px] font-bold uppercase tracking-tight">Setup</span>
+                </button>
+            </div>
         </template>
 
         <!-- TOAST NOTIFICATION -->

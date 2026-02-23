@@ -1,145 +1,138 @@
 # Gordon Finance Engine 🦓
 
-**Version 2.2.3** | Your Personal, AI-Powered Chief Financial Officer
+**Version 2.4.4** | *Your Personal, Actuarial-Grade Financial Platform*
 
-Gordon is a self-hosted financial assistant designed to give you professional-grade insights into your money. He doesn't just track your spending; he understands it. By connecting directly to your bank and using advanced AI, Gordon helps you see where your money is going and, more importantly, where it's taking you.
-
-He connects to your Investec account, remembers your history in a secure database, and is always ready to chat about your finances via a web dashboard or Telegram.
-
----
-
-## 🌟 What Gordon Does for You
-
-### The Essentials
-*   **Automatic Sync:** Gordon keeps a watchful eye on your Investec account, pulling in new transactions so you don't have to. He's smart enough to never double-count a single cent.
-*   **Smart Spending Insights:** He calculates your "Burn Rate"—how fast you're spending—and tells you exactly how many days of "runway" you have left before your next payday.
-*   **A Brain That Never Sleeps:** Chat with your data using local AI (Ollama) or Google Gemini. If one service is having a bad day, Gordon automatically switches to a backup so you're never left in the dark.
-*   **Your Data, Your Rules:** Gordon is self-hosted. Your banking details and spending habits stay on your own hardware, not in someone else's cloud. Everything sensitive is locked away with enterprise-grade encryption.
-*   **Weekly Briefings:** Every week, Gordon sends you a friendly email summary of your wins, your upcoming bills, and a health check on your savings.
-
-### Fresh in Version 2.x 🆕
-*   **🤖 Double-Layer AI:** Gordon now has a "backup brain." If his primary AI fails, he'll try again and then flip to a secondary provider automatically.
-*   **✨ Dynamic AI Discovery:** Gordon now automatically finds the best AI models for your needs by checking their capabilities in real-time.
-*   **📱 Reliable Telegram Chat:** We've rebuilt the Telegram connection from the ground up. Messages are now queued up, meaning Gordon will never "forget" to reply to you, even if things get busy.
-*   **❤️ Live Health Checks:** You can now see at a glance if Gordon's connection to your bank or his AI "brain" is healthy.
-*   **🛡️ Built-in Protection:** We've added layers of security and "rate limiting" to keep your engine running smoothly and safely.
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Status](https://img.shields.io/badge/status-production-green.svg)
+![.NET](https://img.shields.io/badge/.NET-8.0-purple.svg)
+![Database](https://img.shields.io/badge/TimescaleDB-PostgreSQL-blue.svg)
 
 ---
 
-## 🏗️ How It's Built
+Gordon is a self-hosted, containerised financial analytics platform designed to provide "actuarial-grade" insights into your personal finances. Unlike simple trackers, Gordon helps you understand your "burn rate," project your "runway," and simulate future solvency using advanced Monte Carlo simulations.
 
-Gordon is powered by modern, reliable tech that's easy to run:
+He connects directly to **Investec Programmable Banking**, stores history in a robust time-series database, and uses a Multi-Provider AI system (Ollama/Gemini) to offer a natural language interface for your money.
 
-*   **The Engine:** A robust .NET 8 (C#) service that handles all the heavy lifting in the background.
-*   **The Memory:** TimescaleDB (PostgreSQL), specifically designed to handle long histories of transactions efficiently.
-*   **The Face:** A clean, fast dashboard built with Vue.js 3 and Tailwind CSS.
-*   **The Brains:** Flexible AI support (Ollama/Gemini) with built-in "failover" reliability.
-*   **The Setup:** Everything is packaged into Docker, making it a breeze to get started on Windows, Linux, or a Mac.
+---
+
+## 🌟 Key Features
+
+### 🧠 Actuarial Intelligence
+*   **Runway Projections:** Calculates exactly how many days of solvency you have based on current spending and burn rate.
+*   **Burn Rate Analysis:** Distinguishes between fixed costs and discretionary spending to give you a true "cost of living."
+*   **Simulation Engine:** Runs "what-if" scenarios to see how big purchases impact your long-term financial health.
+*   **AI Auto-Categorisation:** Uses advanced machine learning to semantically classify transactions (e.g., "Groceries", "Bills") automatically.
+
+### 🤖 Robust AI Integration
+*   **Multi-Provider Support:** Seamlessly switches between local AI (Ollama) and cloud AI (Google Gemini) for maximum reliability.
+*   **Automatic Fallback:** If the primary AI is down, Gordon automatically retries and switches providers.
+*   **Natural Language Querying:** Ask "How much did I spend on coffee last month?" and get an instant, data-backed answer.
+
+### 🛡️ Enterprise-Grade Security
+*   **Self-Hosted:** Your data lives on *your* hardware. No third-party clouds.
+*   **Encryption at Rest:** Sensitive configuration (API keys, passwords) is encrypted using AES-256 via .NET Data Protection.
+*   **Private by Design:** Banking credentials never leave your secure container environment.
+
+### ⚡ Technical Excellence
+*   **TimescaleDB:** Uses a specialized time-series database for lightning-fast querying of years of transaction history.
+*   **Deterministic Sync:** Smart ingestion engine that never duplicates transactions, even if the bank API acts up.
+*   **Resilient Messaging:** Background queue-based Telegram bot ensures you never miss a notification or reply.
+*   **Live KPI Dashboard:** Real-time visibility into the health of your Bank API, Database, and AI providers.
+
+---
+
+## 🏗️ Architecture
+
+Gordon is built as a set of micro-services orchestrated by Docker Compose:
+
+1.  **Gordon Worker (.NET 8):** The core brain. Handles API ingestion, AI orchestration, report generation, and the HTTP API.
+2.  **TimescaleDB (PostgreSQL):** Stores financial transactions in hypertables and encrypted user settings.
+3.  **Frontend (Vue.js 3):** A "no-build" global Vue dashboard served directly by the backend for simplicity.
 
 ---
 
 ## 🚀 Getting Started
 
-### What You'll Need
-
-1.  **Docker:** Installed and running on your computer or server.
-2.  **Investec API Access:** You'll need your Client ID and Secret from the Investec Programmable Banking portal.
-3.  **An AI Provider:** Either Ollama running locally or a Google Gemini API key. We recommend having both for maximum reliability!
+### Prerequisites
+*   **Docker & Docker Compose** installed.
+*   **Investec API Credentials** (Client ID & Secret).
+*   **(Optional) Google Gemini API Key** or a local **Ollama** instance.
 
 ### Installation
 
-1.  **Grab the Code**
+1.  **Clone the Repository**
     ```bash
     git clone https://github.com/sean-gordon/investec_runway.git
     cd investec_runway
     ```
 
-2.  **Set Up Your Environment**
-    Gordon needs a few basic settings to start. Copy the template and fill in a database password:
-
-    **Windows (PowerShell):**
-    ```powershell
-    Copy-Item .env.template .env
-    ```
-    **Linux / Mac:**
+2.  **Environment Setup**
+    Copy the template to a new `.env` file:
     ```bash
+    # Windows (PowerShell)
+    Copy-Item .env.template .env
+    
+    # Linux / Mac
     cp .env.template .env
     ```
+    *Edit `.env` and set a strong `DB_PASSWORD`.*
 
-3.  **Secure Your App (Don't skip this!)**
-    Generate a unique secret key for your login tokens:
+3.  **Security Configuration**
+    Open `GordonWorker/appsettings.json` and set a unique, 32+ character string for `Jwt:Secret`.
     ```bash
+    # Generate a key if needed:
     openssl rand -base64 64
     ```
-    Paste that key into `GordonWorker/appsettings.json` under the `Jwt:Secret` section.
 
-4.  **Start the Engine**
+4.  **Launch**
     ```bash
     docker compose up -d --build
     ```
 
-5.  **Say Hello to Gordon**
-    Open your browser to: [http://localhost:52944](http://localhost:52944)
+5.  **Access**
+    Visit [http://localhost:52944](http://localhost:52944) to open the dashboard.
 
 ---
 
-## ⚙️ Making Gordon Yours
+## ⚙️ Configuration
 
-Once you're logged in, head to the **Configuration** tab. This is where you give Gordon his credentials. **Don't worry—everything you enter here is encrypted before it ever touches the database.**
+Once running, navigate to the **Settings** tab in the dashboard.
 
-*   **Connections:** Put in your Investec details here to start the sync.
-*   **The Brain:** Set up your primary AI (like a local Ollama instance) and your fallback (like Gemini).
-*   **Math & Logic:** Fine-tune how Gordon thinks. You can tell him which keywords mean "Salary" or "Fixed Bills" so his math is spot-on.
-*   **Telegram:** Link your Telegram bot so you can check your balance while you're out and about.
+*   **Bank Connection:** Enter your Investec OAuth credentials.
+*   **AI Providers:** Configure your Primary (e.g., Ollama) and Fallback (e.g., Gemini) providers.
+*   **Telegram:** Add your Bot Token to enable chat functionality.
+*   **Actuarial Settings:** Define your "Payday" and "Fixed Cost" logic for accurate tuning.
 
----
-
-## 🛠️ When Things Go Wrong
-
-### Gordon isn't replying to my chats
-- Check if your AI service (Ollama or Gemini) is reachable.
-- If using Ollama on Windows, make sure it's allowed to talk to Docker (set `OLLAMA_HOST` to `0.0.0.0`).
-- Look at the "Health" indicators on the dashboard.
-
-### I'm seeing "Too Many Requests" (Error 429)
-- Gordon limits how fast you can talk to him to keep things stable. Wait 60 seconds and try again.
-
-### Telegram is quiet
-- Make sure your Bot Token is correct and that you've authorized your specific Chat ID in the settings.
+*Note: All settings entered here are encrypted before storage.*
 
 ---
 
-## 🔐 Keeping You Safe
+## 🛠️ Management & Troubleshooting
 
-Security isn't an afterthought for Gordon; it's his foundation:
-- **Private by Default:** Everything runs on your hardware. Your data never leaves your system unless it's to talk to the bank or an AI you've chosen.
-- **Top-Tier Encryption:** We use AES-256 encryption (the industry standard) for your API keys and secrets.
-- **Secure Login:** Your dashboard is protected by JWT tokens and strict domain controls.
+| Command | Description |
+|---------|-------------|
+| `docker compose up -d` | Start services in background |
+| `docker compose logs -f` | View live logs |
+| `docker compose down` | Stop all services |
+| `git pull && docker compose up -d --build` | Update to latest version |
 
----
-
-## 🐳 Useful Commands
-
-| Action | Command |
-|----------|-------------|
-| **Start** | `docker compose up -d` |
-| **Stop** | `docker compose down` |
-| **Update** | `git pull` then `docker compose up -d --build` |
-| **See Logs** | `docker compose logs -f gordon-worker` |
+**Common Issues:**
+*   **429 Too Many Requests:** You are being rate-limited. Wait a minute and try again.
+*   **AI Not Responding:** Check the "Health" tab in the dashboard. Verify `OLLAMA_HOST` is accessible if running locally.
 
 ---
 
-## 🤝 Join the Project
+## 🤝 Contributing
 
-Want to make Gordon even smarter? We'd love your help!
-1. Fork the repo
-2. Create your feature branch
-3. Send us a pull request
+Contributions are welcome!
+1.  Fork the Project
+2.  Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3.  Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4.  Push to the Branch (`git push origin feature/AmazingFeature`)
+5.  Open a Pull Request
 
 ---
 
-## 🙏 Credits
+## 📄 License
 
-Built with ❤️ using .NET 8, TimescaleDB, and a dash of AI magic. Special thanks to Claude Sonnet 4.5 for the security and reliability polish.
-
-**Gordon Finance Engine** - Because your money deserves an actuary. 🦓
+Distributed under the MIT License. See `LICENSE` for more information.

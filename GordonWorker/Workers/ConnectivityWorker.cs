@@ -53,47 +53,54 @@ public class ConnectivityWorker : BackgroundService
                 return; // Can't proceed without DB
             }
 
-            // Find the System Admin user to test global connectivity
-            int? adminUserId = null;
+            // Get all users who have ever configured their settings
+            var usersToCheck = new List<int>();
             using (var connection = new Npgsql.NpgsqlConnection(configuration.GetConnectionString("DefaultConnection")))
             {
-                adminUserId = await Dapper.SqlMapper.QueryFirstOrDefaultAsync<int?>(connection, "SELECT id FROM users WHERE is_system = TRUE LIMIT 1");
+                usersToCheck = (await Dapper.SqlMapper.QueryAsync<int>(connection, "SELECT user_id FROM user_settings")).ToList();
             }
 
-            if (adminUserId == null)
+            if (!usersToCheck.Any())
             {
-                _logger.LogInformation("Connectivity check skipped: No system admin user found.");
+                _logger.LogInformation("Connectivity check skipped: No users found.");
                 return;
             }
 
-            var adminSettings = await settingsService.GetSettingsAsync(adminUserId.Value);
-            
-            // 2. Check Investec
-            if (!string.IsNullOrEmpty(adminSettings.InvestecClientId))
-            {
-                client.Configure(adminSettings.InvestecClientId, adminSettings.InvestecSecret, adminSettings.InvestecApiKey);
-                var (isOnline, error) = await client.TestConnectivityAsync();
-                _statusService.IsInvestecOnline = isOnline;
-                _statusService.LastInvestecCheck = DateTime.UtcNow;
-                if (!isOnline) _logger.LogWarning("Investec API is OFFLINE. Error: {Error}", error);
-            }
-            else
-            {
-                _statusService.IsInvestecOnline = false;
-            }
+            _logger.LogInformation("Checking connectivity for {Count} users.", usersToCheck.Count);
 
-            // 3. Check AI Providers
-            var (primaryOk, _) = await aiService.TestConnectionAsync(adminUserId.Value, useFallback: false);
-            _statusService.IsAiPrimaryOnline = primaryOk;
+            foreach (var userId in usersToCheck)
+            {
+                var settings = await settingsService.GetSettingsAsync(userId);
+                
+                // 2. Check Investec
+                if (!string.IsNullOrEmpty(settings.InvestecClientId))
+                {
+                    client.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
+                    var (isOnline, error) = await client.TestConnectivityAsync();
+                    
+                    // We only update the global status service based on the "primary" or first user for now 
+                    // to avoid confusing the dashboard (which is global for the admin). 
+                    // But we perform the test for all to keep sessions warm.
+                    if (userId == usersToCheck.First())
+                    {
+                        _statusService.IsInvestecOnline = isOnline;
+                        _statusService.LastInvestecCheck = DateTime.UtcNow;
+                    }
+                    if (!isOnline) _logger.LogWarning("Investec API is OFFLINE for user {UserId}. Error: {Error}", userId, error);
+                }
 
-            if (adminSettings.EnableAiFallback)
-            {
-                var (fallbackOk, _) = await aiService.TestConnectionAsync(adminUserId.Value, useFallback: true);
-                _statusService.IsAiFallbackOnline = fallbackOk;
-            }
-            else
-            {
-                _statusService.IsAiFallbackOnline = false;
+                // 3. Check AI Providers
+                var (primaryOk, _) = await aiService.TestConnectionAsync(userId, useFallback: false);
+                
+                if (userId == usersToCheck.First())
+                    _statusService.IsAiPrimaryOnline = primaryOk;
+
+                if (settings.EnableAiFallback)
+                {
+                    var (fallbackOk, _) = await aiService.TestConnectionAsync(userId, useFallback: true);
+                    if (userId == usersToCheck.First())
+                        _statusService.IsAiFallbackOnline = fallbackOk;
+                }
             }
             
             _statusService.LastAiCheck = DateTime.UtcNow;

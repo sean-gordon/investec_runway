@@ -23,6 +23,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.4.4] - 2026-02-23
+
+### Fixed
+- **AI Reliability:** Implemented `keep_alive: -1` in Ollama requests to ensure models remain in memory and prevent "connection loss" issues.
+- **Resilience:** Increased initial Ollama request timeouts to 180 seconds to better handle model cold-starts from disk.
+- **Proactive Warming:** Updated the Connectivity Worker to check connectivity for all registered users (previously just admin) to keep individual user sessions and AI models active.
+
+### Added
+- **Mobile UI:** Implemented a persistent bottom navigation toolbar for mobile devices, providing direct access to key tabs (Dashboard, Connections, Brain, Math) when the sidebar is hidden.
+
+---
+
 ## [2.4.3] - 2026-02-17
 
 ### Fixed

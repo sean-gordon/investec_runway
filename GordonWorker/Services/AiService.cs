@@ -397,7 +397,12 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
 
                 var baseUri = config.OllamaUrl.EndsWith("/") ? config.OllamaUrl : config.OllamaUrl + "/";
                 var fullUrl = new Uri(new Uri(baseUri), "api/generate");
-                var request = new { model = config.OllamaModel, prompt = "Say 'OK'", stream = false };
+                var request = new { 
+                    model = config.OllamaModel, 
+                    prompt = "Say 'OK'", 
+                    stream = false,
+                    keep_alive = -1 // Keep model in memory indefinitely to prevent "losing connection"
+                };
                 var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
 
                 _logger.LogInformation("Testing {Type} AI connection (Attempt {Attempt}): {Url}, Model: {Model}", 
@@ -628,7 +633,12 @@ Context Information:
             throw new InvalidOperationException("AI model is not configured.");
         }
 
-        var request = new { model = config.OllamaModel, prompt = $"{system}\n\n{prompt}", stream = false };
+        var request = new { 
+            model = config.OllamaModel, 
+            prompt = $"{system}\n\n{prompt}", 
+            stream = false,
+            keep_alive = -1 // Keep model in memory indefinitely
+        };
         var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
 
         var baseUri = config.OllamaUrl.EndsWith("/") ? config.OllamaUrl : config.OllamaUrl + "/";
@@ -637,7 +647,10 @@ Context Information:
         _logger.LogInformation("Sending request to Ollama: {Url}, Model: {Model}", fullUrl, config.OllamaModel);
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(TimeSpan.FromSeconds(config.TimeoutSeconds));
+        
+        // Use a more generous timeout for Ollama (especially on first load)
+        var timeout = Math.Max(config.TimeoutSeconds, 180); 
+        cts.CancelAfter(TimeSpan.FromSeconds(timeout));
 
         var response = await _httpClient.PostAsync(fullUrl, content, cts.Token);
 

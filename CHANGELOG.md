@@ -23,6 +23,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.4.7] - 2026-02-23
+
+### Changed
+- **Gemini Defaults:** Updated default Gemini model strings to `gemini-3.0-flash` (latest) across the platform as the primary fallback and default.
+
+---
+
+## [2.4.6] - 2026-02-23
+
+### Changed
+- **Gemini Defaults:** Updated default Gemini model strings to `gemini-2.0-flash` (latest) as the primary fallback, replacing the legacy 1.5 versions.
+
+---
+
 ## [2.4.5] - 2026-02-23
 
 ### Fixed

@@ -307,7 +307,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                 var url = $"https://generativelanguage.googleapis.com/v1beta/models?key={config.GeminiKey}";
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 var response = await _httpClient.GetAsync(url, cts.Token);
-                if (!response.IsSuccessStatusCode) return new List<string> { "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash" };
+                if (!response.IsSuccessStatusCode) return new List<string> { "gemini-3.0-flash", "gemini-2.0-flash", "gemini-2.0-pro-exp" };
 
                 var responseString = await response.Content.ReadAsStringAsync();
                 using var doc = JsonDocument.Parse(responseString);
@@ -340,7 +340,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                 if (!modelNames.Any())
                 {
                     _logger.LogWarning("No suitable Gemini models found in API response. Returning defaults.");
-                    return new List<string> { "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash" };
+                    return new List<string> { "gemini-3.0-flash", "gemini-2.0-flash", "gemini-2.0-pro-exp" };
                 }
                 
                 return modelNames.Distinct().OrderByDescending(n => n).ToList();
@@ -348,7 +348,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to fetch Gemini models from Google API.");
-                return new List<string> { "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash" };
+                return new List<string> { "gemini-3.0-flash", "gemini-2.0-flash", "gemini-2.0-pro-exp" };
             }
         }
 
@@ -670,7 +670,7 @@ Context Information:
     {
         var model = !string.IsNullOrWhiteSpace(modelName) && modelName.Contains("gemini")
             ? modelName
-            : "gemini-1.5-flash";
+            : "gemini-3.0-flash";
 
         // The base URL path expected by Google is v1beta/models/{model}:generateContent
         // We ensure we don't have double 'models/' in the path.

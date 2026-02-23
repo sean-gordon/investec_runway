@@ -53,11 +53,18 @@ public class ConnectivityWorker : BackgroundService
                 return; // Can't proceed without DB
             }
 
-            // Find the System Admin user for global status reporting
-            int? adminUserId = null;
+            // Find the best user for global status reporting (prefer the first admin with settings)
+            int? statusUserId = null;
             using (var connection = new Npgsql.NpgsqlConnection(configuration.GetConnectionString("DefaultConnection")))
             {
-                adminUserId = await Dapper.SqlMapper.QueryFirstOrDefaultAsync<int?>(connection, "SELECT id FROM users WHERE is_system = TRUE LIMIT 1");
+                statusUserId = await Dapper.SqlMapper.QueryFirstOrDefaultAsync<int?>(connection, 
+                    "SELECT u.id FROM users u JOIN user_settings s ON u.id = s.user_id WHERE u.role = 'Admin' ORDER BY u.is_system DESC, u.id ASC LIMIT 1");
+                
+                // Fallback to any system user if no admin settings found
+                if (statusUserId == null)
+                {
+                    statusUserId = await Dapper.SqlMapper.QueryFirstOrDefaultAsync<int?>(connection, "SELECT id FROM users WHERE is_system = TRUE LIMIT 1");
+                }
             }
 
             // Get all users for warming
@@ -73,7 +80,7 @@ public class ConnectivityWorker : BackgroundService
                 return;
             }
 
-            _logger.LogInformation("Checking connectivity for {Count} users. Global status reported for Admin ID: {AdminId}", usersToCheck.Count, adminUserId);
+            _logger.LogInformation("Checking connectivity for {Count} users. Global status reported for User ID: {StatusUserId}", usersToCheck.Count, statusUserId);
 
             foreach (var userId in usersToCheck)
             {
@@ -87,8 +94,8 @@ public class ConnectivityWorker : BackgroundService
                         client.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
                         var (isOnline, error) = await client.TestConnectivityAsync();
                         
-                        // Global status reported for Admin
-                        if (userId == adminUserId)
+                        // Global status reported for our chosen status user
+                        if (userId == statusUserId)
                         {
                             _statusService.IsInvestecOnline = isOnline;
                             _statusService.LastInvestecCheck = DateTime.UtcNow;
@@ -99,13 +106,13 @@ public class ConnectivityWorker : BackgroundService
                     // 3. Check AI Providers
                     var (primaryOk, _) = await aiService.TestConnectionAsync(userId, useFallback: false);
                     
-                    if (userId == adminUserId)
+                    if (userId == statusUserId)
                         _statusService.IsAiPrimaryOnline = primaryOk;
 
                     if (settings.EnableAiFallback)
                     {
                         var (fallbackOk, _) = await aiService.TestConnectionAsync(userId, useFallback: true);
-                        if (userId == adminUserId)
+                        if (userId == statusUserId)
                             _statusService.IsAiFallbackOnline = fallbackOk;
                     }
                 }

@@ -200,6 +200,29 @@ public class SettingsController : ControllerBase
             isInvestecOnline = success;
         }
 
+        // Proactive AI check: if global status is offline, but THIS user might have a working connection,
+        // we check it now to provide immediate feedback on dashboard refresh.
+        // We only do this if it's currently offline to avoid overhead.
+        if (!_statusService.IsAiPrimaryOnline)
+        {
+            var (primaryOk, _) = await _aiService.TestConnectionAsync(UserId, useFallback: false);
+            if (primaryOk) 
+            {
+                _statusService.IsAiPrimaryOnline = true;
+                _statusService.LastAiCheck = DateTime.UtcNow;
+            }
+        }
+
+        if (settings.EnableAiFallback && !_statusService.IsAiFallbackOnline)
+        {
+            var (fallbackOk, _) = await _aiService.TestConnectionAsync(UserId, useFallback: true);
+            if (fallbackOk) 
+            {
+                _statusService.IsAiFallbackOnline = true;
+                _statusService.LastAiCheck = DateTime.UtcNow;
+            }
+        }
+
         return Ok(new 
         { 
             InvestecOnline = isInvestecOnline,

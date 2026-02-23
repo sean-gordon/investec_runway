@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.5.0] - 2026-02-23
+
+### Fixed
+- **Dashboard Stability:** Resolved an issue where the AI status would incorrectly show as "Offline" upon page refresh.
+- **Proactive Health Checks:** Implemented on-demand AI connectivity validation within the status endpoint, ensuring immediate "Online" feedback when refreshing the dashboard.
+- **Improved Monitoring Logic:** Refined the Connectivity Worker to report global status based on the first active administrator with configured settings, preventing empty system accounts from overriding the dashboard status.
+
+---
+
 ## [2.4.9] - 2026-02-23
 
 ### Fixed

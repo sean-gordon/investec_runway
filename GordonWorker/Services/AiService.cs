@@ -280,7 +280,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
             {
                 Provider = settings.FallbackAiProvider,
                 OllamaUrl = settings.FallbackOllamaBaseUrl,
-                OllamaModel = settings.FallbackOllamaModelName,
+                ModelName = settings.FallbackAiProvider == "Gemini" ? settings.FallbackGeminiModelName : settings.FallbackOllamaModelName,
                 GeminiKey = settings.FallbackGeminiApiKey,
                 TimeoutSeconds = settings.AiTimeoutSeconds
             };
@@ -290,7 +290,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
         {
             Provider = settings.AiProvider,
             OllamaUrl = settings.OllamaBaseUrl,
-            OllamaModel = settings.OllamaModelName,
+            ModelName = settings.AiProvider == "Gemini" ? settings.GeminiModelName : settings.OllamaModelName,
             GeminiKey = settings.GeminiApiKey,
             TimeoutSeconds = settings.AiTimeoutSeconds
         };
@@ -387,18 +387,18 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                 if (config.Provider == "Gemini")
                 {
                     if (string.IsNullOrWhiteSpace(config.GeminiKey)) return (false, "Gemini API Key is missing.");
-                    var result = await GenerateGeminiCompletionAsync(userId, "System", "Say 'OK'", config.GeminiKey, config.OllamaModel, timeoutSeconds: 15);
+                    var result = await GenerateGeminiCompletionAsync(userId, "System", "Say 'OK'", config.GeminiKey, config.ModelName, timeoutSeconds: 15);
                     if (string.IsNullOrWhiteSpace(result) || result.Contains("Error:")) return (false, result ?? "Empty response.");
                     return (true, string.Empty);
                 }
 
                 if (string.IsNullOrWhiteSpace(config.OllamaUrl)) return (false, "Ollama URL is not configured.");
-                if (string.IsNullOrWhiteSpace(config.OllamaModel)) return (false, "Please select a model first.");
+                if (string.IsNullOrWhiteSpace(config.ModelName)) return (false, "Please select a model first.");
 
                 var baseUri = config.OllamaUrl.EndsWith("/") ? config.OllamaUrl : config.OllamaUrl + "/";
                 var fullUrl = new Uri(new Uri(baseUri), "api/generate");
                 var request = new { 
-                    model = config.OllamaModel, 
+                    model = config.ModelName, 
                     prompt = "Say 'OK'", 
                     stream = false,
                     keep_alive = -1 // Keep model in memory indefinitely to prevent "losing connection"
@@ -406,14 +406,14 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                 var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
 
                 _logger.LogInformation("Testing {Type} AI connection (Attempt {Attempt}): {Url}, Model: {Model}", 
-                    useFallback ? "Fallback" : "Primary", attempt, fullUrl, config.OllamaModel);
+                    useFallback ? "Fallback" : "Primary", attempt, fullUrl, config.ModelName);
 
                 using var cts = new CancellationTokenSource(testTimeout);
                 var response = await _httpClient.PostAsync(fullUrl, content, cts.Token);
 
                 if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
                 {
-                    return (false, $"Model '{config.OllamaModel}' not found on Ollama server.");
+                    return (false, $"Model '{config.ModelName}' not found on Ollama server.");
                 }
 
                 if (!response.IsSuccessStatusCode)
@@ -624,17 +624,17 @@ Context Information:
 
         if (config.Provider == "Gemini")
         {
-            return await GenerateGeminiCompletionAsync(userId, system, prompt, config.GeminiKey, config.OllamaModel, ct, config.TimeoutSeconds);
+            return await GenerateGeminiCompletionAsync(userId, system, prompt, config.GeminiKey, config.ModelName, ct, config.TimeoutSeconds);
         }
 
-        if (string.IsNullOrWhiteSpace(config.OllamaModel))
+        if (string.IsNullOrWhiteSpace(config.ModelName))
         {
             _logger.LogWarning("AI model name is not configured for user {UserId}.", userId);
             throw new InvalidOperationException("AI model is not configured.");
         }
 
         var request = new { 
-            model = config.OllamaModel, 
+            model = config.ModelName, 
             prompt = $"{system}\n\n{prompt}", 
             stream = false,
             keep_alive = -1 // Keep model in memory indefinitely
@@ -644,7 +644,7 @@ Context Information:
         var baseUri = config.OllamaUrl.EndsWith("/") ? config.OllamaUrl : config.OllamaUrl + "/";
         var fullUrl = new Uri(new Uri(baseUri), "api/generate");
 
-        _logger.LogInformation("Sending request to Ollama: {Url}, Model: {Model}", fullUrl, config.OllamaModel);
+        _logger.LogInformation("Sending request to Ollama: {Url}, Model: {Model}", fullUrl, config.ModelName);
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         
@@ -656,8 +656,8 @@ Context Information:
 
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
-            _logger.LogWarning("Model '{Model}' not found on Ollama server {Url}", config.OllamaModel, config.OllamaUrl);
-            throw new InvalidOperationException($"Model '{config.OllamaModel}' not found.");
+            _logger.LogWarning("Model '{Model}' not found on Ollama server {Url}", config.ModelName, config.OllamaUrl);
+            throw new InvalidOperationException($"Model '{config.ModelName}' not found.");
         }
 
         response.EnsureSuccessStatusCode();
@@ -738,7 +738,7 @@ Context Information:
     {
         public string Provider { get; set; } = "Ollama";
         public string OllamaUrl { get; set; } = "";
-        public string OllamaModel { get; set; } = "";
+        public string ModelName { get; set; } = "";
         public string GeminiKey { get; set; } = "";
         public int TimeoutSeconds { get; set; } = 90;
     }

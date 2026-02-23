@@ -413,8 +413,12 @@
                                 </div>
                                 <div>
                                     <label class="text-xs font-bold text-slate-700">Model</label>
-                                    <select v-model="settings.ollamaModelName" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                    <select v-if="settings.aiProvider === 'Ollama'" v-model="settings.ollamaModelName" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
                                         <option v-if="availableModels.length === 0" :value="settings.ollamaModelName">{{ settings.ollamaModelName }}</option>
+                                        <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
+                                    </select>
+                                    <select v-else v-model="settings.geminiModelName" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                        <option v-if="availableModels.length === 0" :value="settings.geminiModelName">{{ settings.geminiModelName }}</option>
                                         <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
                                     </select>
                                 </div>
@@ -452,8 +456,12 @@
                                         </div>
                                         <div>
                                             <label class="text-xs font-bold text-slate-700">Fallback Model</label>
-                                            <select v-model="settings.fallbackOllamaModelName" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                            <select v-if="settings.fallbackAiProvider === 'Ollama'" v-model="settings.fallbackOllamaModelName" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
                                                 <option v-if="availableFallbackModels.length === 0" :value="settings.fallbackOllamaModelName">{{ settings.fallbackOllamaModelName }}</option>
+                                                <option v-for="m in availableFallbackModels" :key="m" :value="m">{{ m }}</option>
+                                            </select>
+                                            <select v-else v-model="settings.fallbackGeminiModelName" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                                <option v-if="availableFallbackModels.length === 0" :value="settings.fallbackGeminiModelName">{{ settings.fallbackGeminiModelName }}</option>
                                                 <option v-for="m in availableFallbackModels" :key="m" :value="m">{{ m }}</option>
                                             </select>
                                         </div>

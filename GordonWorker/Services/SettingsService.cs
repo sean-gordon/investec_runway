@@ -17,6 +17,7 @@ public class AppSettings
     public decimal IncomeAlertThreshold { get; set; } = 5000m; // Alert when income > this
     public string OllamaBaseUrl { get; set; } = "http://host.docker.internal:11434";
     public string OllamaModelName { get; set; } = "deepseek-coder";
+    public string GeminiModelName { get; set; } = "gemini-3-flash-preview";
     public string GeminiApiKey { get; set; } = "";
     public string AiProvider { get; set; } = "Ollama"; // "Ollama" or "Gemini"
     public string SystemPersona { get; set; } = "Gordon";
@@ -26,6 +27,7 @@ public class AppSettings
     public string FallbackAiProvider { get; set; } = "Gemini"; // Fallback if primary fails
     public string FallbackOllamaBaseUrl { get; set; } = "http://host.docker.internal:11434";
     public string FallbackOllamaModelName { get; set; } = "llama3";
+    public string FallbackGeminiModelName { get; set; } = "gemini-3-flash-preview";
     public string FallbackGeminiApiKey { get; set; } = "";
     public int AiTimeoutSeconds { get; set; } = 90;
     public int AiRetryAttempts { get; set; } = 2;

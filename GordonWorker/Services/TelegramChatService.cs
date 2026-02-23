@@ -121,7 +121,12 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
                     var parts = cmd.Split('_');
                     bool isPrimary = parts[2] == "p";
                     var providerName = parts[3]; // "ollama" or "gemini"
-                    var currentModel = isPrimary ? settings.OllamaModelName : (settings.FallbackAiProvider == "Ollama" ? settings.FallbackOllamaModelName : "Gemini API");
+                    
+                    string currentModel;
+                    if (isPrimary)
+                        currentModel = settings.AiProvider == "Gemini" ? settings.GeminiModelName : settings.OllamaModelName;
+                    else
+                        currentModel = settings.FallbackAiProvider == "Gemini" ? settings.FallbackGeminiModelName : settings.FallbackOllamaModelName;
                     
                     // Create temporary settings to fetch models for the SELECTED provider
                     var tempSettings = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(settings))!;
@@ -149,9 +154,11 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
                     if (isPrimary) {
                         current.AiProvider = provider == "ollama" ? "Ollama" : "Gemini";
                         if (provider == "ollama") current.OllamaModelName = modelName;
+                        else current.GeminiModelName = modelName;
                     } else {
                         current.FallbackAiProvider = provider == "ollama" ? "Ollama" : "Gemini";
                         if (provider == "ollama") current.FallbackOllamaModelName = modelName;
+                        else current.FallbackGeminiModelName = modelName;
                     }
 
                     await settingsService.UpdateSettingsAsync(request.UserId, current);

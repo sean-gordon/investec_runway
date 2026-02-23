@@ -23,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.4.9] - 2026-02-23
+
+### Fixed
+- **Gemini Model Persistence:** Refactored settings to use dedicated `GeminiModelName` and `FallbackGeminiModelName` fields. This resolves an issue where Gemini model selections were not persisting correctly or being cross-contaminated by Ollama settings.
+- **Telegram Management:** Updated chat commands to correctly target the new provider-specific model fields.
+
+---
+
 ## [2.4.8] - 2026-02-23
 
 ### Fixed

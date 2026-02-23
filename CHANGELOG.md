@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.5.4] - 2026-02-23
+
+### Changed
+- **Financial Report:** Removed Telegram chat history from the weekly financial report email to improve privacy and conciseness.
+
+---
+
 ## [2.5.3] - 2026-02-23
 
 ### Fixed

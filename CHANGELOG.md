@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.5.2] - 2026-02-23
+
+### Fixed
+- **AI Engine Offline Loop:** Resolved an issue where the dashboard would incorrectly show the AI engine as "Offline" on every refresh due to aggressive cooldowns and global status overrides.
+- **Improved Diagnostics:** Added specific error message tracking for AI connection failures, displaying the reason (e.g., "Connection Refused") directly on the dashboard for better troubleshooting.
+- **Smart Re-checks:** Implemented a bypass for the status cooldown when an AI provider is currently offline, allowing immediate re-verification upon manual page refresh.
+
+---
+
 ## [2.5.1] - 2026-02-23
 
 ### Fixed

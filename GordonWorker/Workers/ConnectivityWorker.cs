@@ -111,16 +111,22 @@ public class ConnectivityWorker : BackgroundService
 
                     if (shouldTestPrimary)
                     {
-                        var (primaryOk, _) = await aiService.TestConnectionAsync(userId, useFallback: false);
+                        var (primaryOk, error) = await aiService.TestConnectionAsync(userId, useFallback: false);
                         if (userId == statusUserId)
+                        {
                             _statusService.IsAiPrimaryOnline = primaryOk;
+                            _statusService.PrimaryAiError = primaryOk ? string.Empty : error;
+                        }
                     }
 
                     if (shouldTestFallback)
                     {
-                        var (fallbackOk, _) = await aiService.TestConnectionAsync(userId, useFallback: true);
+                        var (fallbackOk, error) = await aiService.TestConnectionAsync(userId, useFallback: true);
                         if (userId == statusUserId)
+                        {
                             _statusService.IsAiFallbackOnline = fallbackOk;
+                            _statusService.FallbackAiError = fallbackOk ? string.Empty : error;
+                        }
                     }
                 }
                 catch (Exception ex)

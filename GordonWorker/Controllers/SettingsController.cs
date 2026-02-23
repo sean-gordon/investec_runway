@@ -96,21 +96,23 @@ public class SettingsController : ControllerBase
         try
         {
             var result = await _aiService.TestConnectionAsync(UserId, useFallback: false);
+            _statusService.IsAiPrimaryOnline = result.Success;
+            _statusService.PrimaryAiError = result.Success ? string.Empty : result.Error;
+            
             if (result.Success)
             {
-                _statusService.IsAiPrimaryOnline = true;
                 _statusService.LastAiCheck = DateTime.UtcNow;
                 return Ok(new { Message = "Connected to AI Brain successfully." });
             }
             else
             {
-                _statusService.IsAiPrimaryOnline = false;
                 return StatusCode(500, new { Error = result.Error });
             }
         }
         catch (Exception ex)
         {
             _statusService.IsAiPrimaryOnline = false;
+            _statusService.PrimaryAiError = ex.Message;
             return StatusCode(500, new { Error = ex.Message });
         }
     }
@@ -121,21 +123,23 @@ public class SettingsController : ControllerBase
         try
         {
             var result = await _aiService.TestConnectionAsync(UserId, useFallback: true);
+            _statusService.IsAiFallbackOnline = result.Success;
+            _statusService.FallbackAiError = result.Success ? string.Empty : result.Error;
+
             if (result.Success)
             {
-                _statusService.IsAiFallbackOnline = true;
                 _statusService.LastAiCheck = DateTime.UtcNow;
                 return Ok(new { Message = "Connected to Fallback AI Brain successfully." });
             }
             else
             {
-                _statusService.IsAiFallbackOnline = false;
                 return StatusCode(500, new { Error = result.Error });
             }
         }
         catch (Exception ex)
         {
             _statusService.IsAiFallbackOnline = false;
+            _statusService.FallbackAiError = ex.Message;
             return StatusCode(500, new { Error = ex.Message });
         }
     }
@@ -202,25 +206,28 @@ public class SettingsController : ControllerBase
 
         // Proactive AI check: if global status is offline, but THIS user might have a working connection,
         // we check it now to provide immediate feedback on dashboard refresh.
-        // We only do this if it's currently offline to avoid overhead, and we add a 1-minute cooldown.
+        // We only do this if it's currently offline to avoid overhead, and we add a cooldown for SUCCESSFUL checks.
+        // If it's currently offline, we ALWAYS allow one re-check to let the user "fix" it by refreshing.
         var canRetryCheck = (DateTime.UtcNow - _statusService.LastAiCheck).TotalMinutes > 1;
 
-        if (!_statusService.IsAiPrimaryOnline && canRetryCheck)
+        if (!_statusService.IsAiPrimaryOnline || canRetryCheck)
         {
-            var (primaryOk, _) = await _aiService.TestConnectionAsync(UserId, useFallback: false);
+            var (primaryOk, error) = await _aiService.TestConnectionAsync(UserId, useFallback: false);
+            _statusService.IsAiPrimaryOnline = primaryOk;
+            _statusService.PrimaryAiError = primaryOk ? string.Empty : error;
             if (primaryOk) 
             {
-                _statusService.IsAiPrimaryOnline = true;
                 _statusService.LastAiCheck = DateTime.UtcNow;
             }
         }
 
-        if (settings.EnableAiFallback && !_statusService.IsAiFallbackOnline && canRetryCheck)
+        if (settings.EnableAiFallback && (!_statusService.IsAiFallbackOnline || canRetryCheck))
         {
-            var (fallbackOk, _) = await _aiService.TestConnectionAsync(UserId, useFallback: true);
+            var (fallbackOk, error) = await _aiService.TestConnectionAsync(UserId, useFallback: true);
+            _statusService.IsAiFallbackOnline = fallbackOk;
+            _statusService.FallbackAiError = fallbackOk ? string.Empty : error;
             if (fallbackOk) 
             {
-                _statusService.IsAiFallbackOnline = true;
                 _statusService.LastAiCheck = DateTime.UtcNow;
             }
         }
@@ -230,7 +237,9 @@ public class SettingsController : ControllerBase
             InvestecOnline = isInvestecOnline,
             DatabaseOnline = _statusService.IsDatabaseOnline,
             AiPrimaryOnline = _statusService.IsAiPrimaryOnline,
+            AiPrimaryError = _statusService.PrimaryAiError,
             AiFallbackOnline = _statusService.IsAiFallbackOnline,
+            AiFallbackError = _statusService.FallbackAiError,
             LastCheck = DateTime.UtcNow,
             LastAiCheck = _statusService.LastAiCheck,
             LastInvestecCheck = _statusService.LastInvestecCheck,

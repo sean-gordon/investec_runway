@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.4.5] - 2026-02-23
+
+### Fixed
+- **Gemini Reliability:** Corrected invalid default Gemini model names that were being used as fallbacks when model discovery failed.
+- **Gemini Resilience:** Improved parsing of Gemini API responses to gracefully handle safety filter refusals and other non-standard API returns.
+- **Connectivity Monitoring:** Refined the Connectivity Worker to specifically use the System Admin user for global dashboard status reporting, ensuring the "Online/Offline" indicators are stable even in multi-user environments.
+
+---
+
 ## [2.4.4] - 2026-02-23
 
 ### Fixed

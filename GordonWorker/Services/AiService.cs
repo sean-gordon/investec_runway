@@ -307,7 +307,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                 var url = $"https://generativelanguage.googleapis.com/v1beta/models?key={config.GeminiKey}";
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 var response = await _httpClient.GetAsync(url, cts.Token);
-                if (!response.IsSuccessStatusCode) return new List<string> { "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash-exp" };
+                if (!response.IsSuccessStatusCode) return new List<string> { "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash" };
 
                 var responseString = await response.Content.ReadAsStringAsync();
                 using var doc = JsonDocument.Parse(responseString);
@@ -340,7 +340,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                 if (!modelNames.Any())
                 {
                     _logger.LogWarning("No suitable Gemini models found in API response. Returning defaults.");
-                    return new List<string> { "gemini-2.0-flash", "gemini-2.5-pro", "gemini-2.5-flash" };
+                    return new List<string> { "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash" };
                 }
                 
                 return modelNames.Distinct().OrderByDescending(n => n).ToList();
@@ -348,7 +348,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to fetch Gemini models from Google API.");
-                return new List<string> { "gemini-2.0-flash", "gemini-2.5-pro", "gemini-2.5-flash" };
+                return new List<string> { "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash" };
             }
         }
 
@@ -703,12 +703,35 @@ Context Information:
         }
         var responseString = await response.Content.ReadAsStringAsync(cts.Token);
         using var doc = JsonDocument.Parse(responseString);
+        
         if (doc.RootElement.TryGetProperty("candidates", out var candidates) && candidates.GetArrayLength() > 0)
         {
-            var text = candidates[0].GetProperty("content").GetProperty("parts")[0].GetProperty("text").GetString()?.Trim();
-            return text ?? throw new InvalidOperationException("Gemini returned empty text.");
+            var firstCandidate = candidates[0];
+            
+            if (firstCandidate.TryGetProperty("content", out var content) && 
+                content.TryGetProperty("parts", out var parts) && 
+                parts.GetArrayLength() > 0)
+            {
+                var text = parts[0].GetProperty("text").GetString()?.Trim();
+                return text ?? throw new InvalidOperationException("Gemini returned empty text.");
+            }
+
+            if (firstCandidate.TryGetProperty("finishReason", out var reason))
+            {
+                var reasonStr = reason.GetString();
+                _logger.LogWarning("Gemini failed to generate content. Reason: {Reason}", reasonStr);
+                return $"I'm sorry, but I couldn't generate a response (Reason: {reasonStr}). This usually happens if the AI's safety filters are triggered by the financial data or the query.";
+            }
         }
-        throw new InvalidOperationException("Gemini returned no candidates.");
+
+        if (doc.RootElement.TryGetProperty("error", out var error))
+        {
+            var errorMsg = error.TryGetProperty("message", out var msg) ? msg.GetString() : "Unknown API error";
+            _logger.LogError("Gemini API Error: {Message}", errorMsg);
+            throw new InvalidOperationException($"Gemini API error: {errorMsg}");
+        }
+
+        throw new InvalidOperationException("Gemini returned no valid candidates or content.");
     }
 
     private class AiProviderConfig

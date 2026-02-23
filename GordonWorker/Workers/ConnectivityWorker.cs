@@ -53,47 +53,86 @@ public class ConnectivityWorker : BackgroundService
                 return; // Can't proceed without DB
             }
 
-            // Find the System Admin user to test global connectivity
-            int? adminUserId = null;
+            // Find the best user for global status reporting (prefer the first admin with settings)
+            int? statusUserId = null;
             using (var connection = new Npgsql.NpgsqlConnection(configuration.GetConnectionString("DefaultConnection")))
             {
-                adminUserId = await Dapper.SqlMapper.QueryFirstOrDefaultAsync<int?>(connection, "SELECT id FROM users WHERE is_system = TRUE LIMIT 1");
+                statusUserId = await Dapper.SqlMapper.QueryFirstOrDefaultAsync<int?>(connection, 
+                    "SELECT u.id FROM users u JOIN user_settings s ON u.id = s.user_id WHERE u.role = 'Admin' ORDER BY u.is_system DESC, u.id ASC LIMIT 1");
+                
+                // Fallback to any system user if no admin settings found
+                if (statusUserId == null)
+                {
+                    statusUserId = await Dapper.SqlMapper.QueryFirstOrDefaultAsync<int?>(connection, "SELECT id FROM users WHERE is_system = TRUE LIMIT 1");
+                }
             }
 
-            if (adminUserId == null)
+            // Get all users for warming
+            var usersToCheck = new List<int>();
+            using (var connection = new Npgsql.NpgsqlConnection(configuration.GetConnectionString("DefaultConnection")))
             {
-                _logger.LogInformation("Connectivity check skipped: No system admin user found.");
+                usersToCheck = (await Dapper.SqlMapper.QueryAsync<int>(connection, "SELECT user_id FROM user_settings")).ToList();
+            }
+
+            if (!usersToCheck.Any())
+            {
+                _logger.LogInformation("Connectivity check skipped: No users found.");
                 return;
             }
 
-            var adminSettings = await settingsService.GetSettingsAsync(adminUserId.Value);
-            
-            // 2. Check Investec
-            if (!string.IsNullOrEmpty(adminSettings.InvestecClientId))
-            {
-                client.Configure(adminSettings.InvestecClientId, adminSettings.InvestecSecret, adminSettings.InvestecApiKey);
-                var (isOnline, error) = await client.TestConnectivityAsync();
-                _statusService.IsInvestecOnline = isOnline;
-                _statusService.LastInvestecCheck = DateTime.UtcNow;
-                if (!isOnline) _logger.LogWarning("Investec API is OFFLINE. Error: {Error}", error);
-            }
-            else
-            {
-                _statusService.IsInvestecOnline = false;
-            }
+            _logger.LogInformation("Checking connectivity for {Count} users. Global status reported for User ID: {StatusUserId}", usersToCheck.Count, statusUserId);
 
-            // 3. Check AI Providers
-            var (primaryOk, _) = await aiService.TestConnectionAsync(adminUserId.Value, useFallback: false);
-            _statusService.IsAiPrimaryOnline = primaryOk;
+            foreach (var userId in usersToCheck)
+            {
+                try
+                {
+                    var settings = await settingsService.GetSettingsAsync(userId);
+                    
+                    // 2. Check Investec
+                    if (!string.IsNullOrEmpty(settings.InvestecClientId))
+                    {
+                        client.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
+                        var (isOnline, error) = await client.TestConnectivityAsync();
+                        
+                        // Global status reported for our chosen status user
+                        if (userId == statusUserId)
+                        {
+                            _statusService.IsInvestecOnline = isOnline;
+                            _statusService.LastInvestecCheck = DateTime.UtcNow;
+                        }
+                        if (!isOnline) _logger.LogWarning("Investec API is OFFLINE for user {UserId}. Error: {Error}", userId, error);
+                    }
 
-            if (adminSettings.EnableAiFallback)
-            {
-                var (fallbackOk, _) = await aiService.TestConnectionAsync(adminUserId.Value, useFallback: true);
-                _statusService.IsAiFallbackOnline = fallbackOk;
-            }
-            else
-            {
-                _statusService.IsAiFallbackOnline = false;
+                    // 3. Check AI Providers
+                    // We only test ALL users if they use Ollama (to keep models warm). 
+                    // For Gemini, we only test the status user to save quota.
+                    bool shouldTestPrimary = (settings.AiProvider == "Ollama") || (userId == statusUserId);
+                    bool shouldTestFallback = settings.EnableAiFallback && ((settings.FallbackAiProvider == "Ollama") || (userId == statusUserId));
+
+                    if (shouldTestPrimary)
+                    {
+                        var (primaryOk, error) = await aiService.TestConnectionAsync(userId, useFallback: false);
+                        if (userId == statusUserId)
+                        {
+                            _statusService.IsAiPrimaryOnline = primaryOk;
+                            _statusService.PrimaryAiError = primaryOk ? string.Empty : error;
+                        }
+                    }
+
+                    if (shouldTestFallback)
+                    {
+                        var (fallbackOk, error) = await aiService.TestConnectionAsync(userId, useFallback: true);
+                        if (userId == statusUserId)
+                        {
+                            _statusService.IsAiFallbackOnline = fallbackOk;
+                            _statusService.FallbackAiError = fallbackOk ? string.Empty : error;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed connectivity check for user {UserId}", userId);
+                }
             }
             
             _statusService.LastAiCheck = DateTime.UtcNow;

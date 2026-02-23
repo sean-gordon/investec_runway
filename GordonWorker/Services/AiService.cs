@@ -280,7 +280,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
             {
                 Provider = settings.FallbackAiProvider,
                 OllamaUrl = settings.FallbackOllamaBaseUrl,
-                OllamaModel = settings.FallbackOllamaModelName,
+                ModelName = settings.FallbackAiProvider == "Gemini" ? settings.FallbackGeminiModelName : settings.FallbackOllamaModelName,
                 GeminiKey = settings.FallbackGeminiApiKey,
                 TimeoutSeconds = settings.AiTimeoutSeconds
             };
@@ -290,7 +290,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
         {
             Provider = settings.AiProvider,
             OllamaUrl = settings.OllamaBaseUrl,
-            OllamaModel = settings.OllamaModelName,
+            ModelName = settings.AiProvider == "Gemini" ? settings.GeminiModelName : settings.OllamaModelName,
             GeminiKey = settings.GeminiApiKey,
             TimeoutSeconds = settings.AiTimeoutSeconds
         };
@@ -307,7 +307,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                 var url = $"https://generativelanguage.googleapis.com/v1beta/models?key={config.GeminiKey}";
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 var response = await _httpClient.GetAsync(url, cts.Token);
-                if (!response.IsSuccessStatusCode) return new List<string> { "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash-exp" };
+                if (!response.IsSuccessStatusCode) return new List<string> { "gemini-3-flash-preview", "gemini-2.0-flash", "gemini-2.0-pro-exp" };
 
                 var responseString = await response.Content.ReadAsStringAsync();
                 using var doc = JsonDocument.Parse(responseString);
@@ -340,7 +340,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                 if (!modelNames.Any())
                 {
                     _logger.LogWarning("No suitable Gemini models found in API response. Returning defaults.");
-                    return new List<string> { "gemini-2.0-flash", "gemini-2.5-pro", "gemini-2.5-flash" };
+                    return new List<string> { "gemini-3-flash-preview", "gemini-2.0-flash", "gemini-2.0-pro-exp" };
                 }
                 
                 return modelNames.Distinct().OrderByDescending(n => n).ToList();
@@ -348,7 +348,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to fetch Gemini models from Google API.");
-                return new List<string> { "gemini-2.0-flash", "gemini-2.5-pro", "gemini-2.5-flash" };
+                return new List<string> { "gemini-3-flash-preview", "gemini-2.0-flash", "gemini-2.0-pro-exp" };
             }
         }
 
@@ -378,7 +378,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
         var config = await GetProviderConfigAsync(userId, useFallback);
         // Status tests use a more forgiving timeout (15s) and a single retry to handle "waking up" local models.
         var testTimeout = TimeSpan.FromSeconds(15); 
-        var maxAttempts = 2;
+        var maxAttempts = config.Provider == "Gemini" ? 1 : 2; // Don't retry Gemini, it just hits rate limits faster
 
         for (int attempt = 1; attempt <= maxAttempts; attempt++)
         {
@@ -387,28 +387,33 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                 if (config.Provider == "Gemini")
                 {
                     if (string.IsNullOrWhiteSpace(config.GeminiKey)) return (false, "Gemini API Key is missing.");
-                    var result = await GenerateGeminiCompletionAsync(userId, "System", "Say 'OK'", config.GeminiKey, config.OllamaModel, timeoutSeconds: 15);
+                    var result = await GenerateGeminiCompletionAsync(userId, "System", "Say 'OK'", config.GeminiKey, config.ModelName, timeoutSeconds: 15);
                     if (string.IsNullOrWhiteSpace(result) || result.Contains("Error:")) return (false, result ?? "Empty response.");
                     return (true, string.Empty);
                 }
 
                 if (string.IsNullOrWhiteSpace(config.OllamaUrl)) return (false, "Ollama URL is not configured.");
-                if (string.IsNullOrWhiteSpace(config.OllamaModel)) return (false, "Please select a model first.");
+                if (string.IsNullOrWhiteSpace(config.ModelName)) return (false, "Please select a model first.");
 
                 var baseUri = config.OllamaUrl.EndsWith("/") ? config.OllamaUrl : config.OllamaUrl + "/";
                 var fullUrl = new Uri(new Uri(baseUri), "api/generate");
-                var request = new { model = config.OllamaModel, prompt = "Say 'OK'", stream = false };
+                var request = new { 
+                    model = config.ModelName, 
+                    prompt = "Say 'OK'", 
+                    stream = false,
+                    keep_alive = -1 // Keep model in memory indefinitely to prevent "losing connection"
+                };
                 var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
 
                 _logger.LogInformation("Testing {Type} AI connection (Attempt {Attempt}): {Url}, Model: {Model}", 
-                    useFallback ? "Fallback" : "Primary", attempt, fullUrl, config.OllamaModel);
+                    useFallback ? "Fallback" : "Primary", attempt, fullUrl, config.ModelName);
 
                 using var cts = new CancellationTokenSource(testTimeout);
                 var response = await _httpClient.PostAsync(fullUrl, content, cts.Token);
 
                 if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
                 {
-                    return (false, $"Model '{config.OllamaModel}' not found on Ollama server.");
+                    return (false, $"Model '{config.ModelName}' not found on Ollama server.");
                 }
 
                 if (!response.IsSuccessStatusCode)
@@ -619,32 +624,40 @@ Context Information:
 
         if (config.Provider == "Gemini")
         {
-            return await GenerateGeminiCompletionAsync(userId, system, prompt, config.GeminiKey, config.OllamaModel, ct, config.TimeoutSeconds);
+            return await GenerateGeminiCompletionAsync(userId, system, prompt, config.GeminiKey, config.ModelName, ct, config.TimeoutSeconds);
         }
 
-        if (string.IsNullOrWhiteSpace(config.OllamaModel))
+        if (string.IsNullOrWhiteSpace(config.ModelName))
         {
             _logger.LogWarning("AI model name is not configured for user {UserId}.", userId);
             throw new InvalidOperationException("AI model is not configured.");
         }
 
-        var request = new { model = config.OllamaModel, prompt = $"{system}\n\n{prompt}", stream = false };
+        var request = new { 
+            model = config.ModelName, 
+            prompt = $"{system}\n\n{prompt}", 
+            stream = false,
+            keep_alive = -1 // Keep model in memory indefinitely
+        };
         var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
 
         var baseUri = config.OllamaUrl.EndsWith("/") ? config.OllamaUrl : config.OllamaUrl + "/";
         var fullUrl = new Uri(new Uri(baseUri), "api/generate");
 
-        _logger.LogInformation("Sending request to Ollama: {Url}, Model: {Model}", fullUrl, config.OllamaModel);
+        _logger.LogInformation("Sending request to Ollama: {Url}, Model: {Model}", fullUrl, config.ModelName);
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(TimeSpan.FromSeconds(config.TimeoutSeconds));
+        
+        // Use a more generous timeout for Ollama (especially on first load)
+        var timeout = Math.Max(config.TimeoutSeconds, 180); 
+        cts.CancelAfter(TimeSpan.FromSeconds(timeout));
 
         var response = await _httpClient.PostAsync(fullUrl, content, cts.Token);
 
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
-            _logger.LogWarning("Model '{Model}' not found on Ollama server {Url}", config.OllamaModel, config.OllamaUrl);
-            throw new InvalidOperationException($"Model '{config.OllamaModel}' not found.");
+            _logger.LogWarning("Model '{Model}' not found on Ollama server {Url}", config.ModelName, config.OllamaUrl);
+            throw new InvalidOperationException($"Model '{config.ModelName}' not found.");
         }
 
         response.EnsureSuccessStatusCode();
@@ -657,7 +670,7 @@ Context Information:
     {
         var model = !string.IsNullOrWhiteSpace(modelName) && modelName.Contains("gemini")
             ? modelName
-            : "gemini-1.5-flash";
+            : "gemini-3-flash-preview";
 
         // The base URL path expected by Google is v1beta/models/{model}:generateContent
         // We ensure we don't have double 'models/' in the path.
@@ -690,19 +703,42 @@ Context Information:
         }
         var responseString = await response.Content.ReadAsStringAsync(cts.Token);
         using var doc = JsonDocument.Parse(responseString);
+        
         if (doc.RootElement.TryGetProperty("candidates", out var candidates) && candidates.GetArrayLength() > 0)
         {
-            var text = candidates[0].GetProperty("content").GetProperty("parts")[0].GetProperty("text").GetString()?.Trim();
-            return text ?? throw new InvalidOperationException("Gemini returned empty text.");
+            var firstCandidate = candidates[0];
+            
+            if (firstCandidate.TryGetProperty("content", out var candidateContent) && 
+                candidateContent.TryGetProperty("parts", out var parts) && 
+                parts.GetArrayLength() > 0)
+            {
+                var text = parts[0].GetProperty("text").GetString()?.Trim();
+                return text ?? throw new InvalidOperationException("Gemini returned empty text.");
+            }
+
+            if (firstCandidate.TryGetProperty("finishReason", out var reason))
+            {
+                var reasonStr = reason.GetString();
+                _logger.LogWarning("Gemini failed to generate content. Reason: {Reason}", reasonStr);
+                return $"I'm sorry, but I couldn't generate a response (Reason: {reasonStr}). This usually happens if the AI's safety filters are triggered by the financial data or the query.";
+            }
         }
-        throw new InvalidOperationException("Gemini returned no candidates.");
+
+        if (doc.RootElement.TryGetProperty("error", out var error))
+        {
+            var errorMsg = error.TryGetProperty("message", out var msg) ? msg.GetString() : "Unknown API error";
+            _logger.LogError("Gemini API Error: {Message}", errorMsg);
+            throw new InvalidOperationException($"Gemini API error: {errorMsg}");
+        }
+
+        throw new InvalidOperationException("Gemini returned no valid candidates or content.");
     }
 
     private class AiProviderConfig
     {
         public string Provider { get; set; } = "Ollama";
         public string OllamaUrl { get; set; } = "";
-        public string OllamaModel { get; set; } = "";
+        public string ModelName { get; set; } = "";
         public string GeminiKey { get; set; } = "";
         public int TimeoutSeconds { get; set; } = 90;
     }

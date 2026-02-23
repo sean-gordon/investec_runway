@@ -6,7 +6,9 @@ public interface ISystemStatusService
     DateTime LastInvestecCheck { get; set; }
     
     bool IsAiPrimaryOnline { get; set; }
+    string PrimaryAiError { get; set; }
     bool IsAiFallbackOnline { get; set; }
+    string FallbackAiError { get; set; }
     DateTime LastAiCheck { get; set; }
     
     bool IsDatabaseOnline { get; set; }
@@ -22,7 +24,9 @@ public class SystemStatusService : ISystemStatusService
     public DateTime LastInvestecCheck { get; set; } = DateTime.MinValue;
     
     public bool IsAiPrimaryOnline { get; set; } = false;
+    public string PrimaryAiError { get; set; } = string.Empty;
     public bool IsAiFallbackOnline { get; set; } = false;
+    public string FallbackAiError { get; set; } = string.Empty;
     public DateTime LastAiCheck { get; set; } = DateTime.MinValue;
     
     public bool IsDatabaseOnline { get; set; } = true;

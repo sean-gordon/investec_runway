@@ -210,25 +210,39 @@ public class SettingsController : ControllerBase
         // If it's currently offline, we ALWAYS allow one re-check to let the user "fix" it by refreshing.
         var canRetryCheck = (DateTime.UtcNow - _statusService.LastAiCheck).TotalMinutes > 1;
 
-        if (!_statusService.IsAiPrimaryOnline || canRetryCheck)
+        var isPrimaryOnline = _statusService.IsAiPrimaryOnline;
+        var primaryError = _statusService.PrimaryAiError;
+
+        if (!isPrimaryOnline || canRetryCheck)
         {
-            var (primaryOk, error) = await _aiService.TestConnectionAsync(UserId, useFallback: false);
-            _statusService.IsAiPrimaryOnline = primaryOk;
-            _statusService.PrimaryAiError = primaryOk ? string.Empty : error;
-            if (primaryOk) 
+            var (ok, err) = await _aiService.TestConnectionAsync(UserId, useFallback: false);
+            isPrimaryOnline = ok;
+            primaryError = ok ? string.Empty : err;
+
+            // Only update global status if the current user is an admin or the designated status user
+            if (User.IsInRole("Admin"))
             {
-                _statusService.LastAiCheck = DateTime.UtcNow;
+                _statusService.IsAiPrimaryOnline = ok;
+                _statusService.PrimaryAiError = primaryError;
+                if (ok) _statusService.LastAiCheck = DateTime.UtcNow;
             }
         }
 
-        if (settings.EnableAiFallback && (!_statusService.IsAiFallbackOnline || canRetryCheck))
+        var isFallbackOnline = _statusService.IsAiFallbackOnline;
+        var fallbackError = _statusService.FallbackAiError;
+
+        if (settings.EnableAiFallback && (!isFallbackOnline || canRetryCheck))
         {
-            var (fallbackOk, error) = await _aiService.TestConnectionAsync(UserId, useFallback: true);
-            _statusService.IsAiFallbackOnline = fallbackOk;
-            _statusService.FallbackAiError = fallbackOk ? string.Empty : error;
-            if (fallbackOk) 
+            var (ok, err) = await _aiService.TestConnectionAsync(UserId, useFallback: true);
+            isFallbackOnline = ok;
+            fallbackError = ok ? string.Empty : err;
+
+            // Only update global status if the current user is an admin or the designated status user
+            if (User.IsInRole("Admin"))
             {
-                _statusService.LastAiCheck = DateTime.UtcNow;
+                _statusService.IsAiFallbackOnline = ok;
+                _statusService.FallbackAiError = fallbackError;
+                if (ok) _statusService.LastAiCheck = DateTime.UtcNow;
             }
         }
 
@@ -236,10 +250,10 @@ public class SettingsController : ControllerBase
         { 
             InvestecOnline = isInvestecOnline,
             DatabaseOnline = _statusService.IsDatabaseOnline,
-            AiPrimaryOnline = _statusService.IsAiPrimaryOnline,
-            AiPrimaryError = _statusService.PrimaryAiError,
-            AiFallbackOnline = _statusService.IsAiFallbackOnline,
-            AiFallbackError = _statusService.FallbackAiError,
+            AiPrimaryOnline = isPrimaryOnline,
+            AiPrimaryError = primaryError,
+            AiFallbackOnline = isFallbackOnline,
+            AiFallbackError = fallbackError,
             LastCheck = DateTime.UtcNow,
             LastAiCheck = _statusService.LastAiCheck,
             LastInvestecCheck = _statusService.LastInvestecCheck,

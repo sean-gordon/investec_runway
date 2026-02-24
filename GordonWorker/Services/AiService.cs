@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Threading;
+using System.Collections.Concurrent;
 using GordonWorker.Models;
 
 namespace GordonWorker.Services;
@@ -28,6 +29,7 @@ public class AiService : IAiService
     private readonly HttpClient _httpClient;
     private readonly ILogger<AiService> _logger;
     private readonly ISettingsService _settingsService;
+    private readonly ConcurrentDictionary<string, (bool Success, string Error, DateTime Timestamp)> _testCache = new();
 
     public AiService(HttpClient httpClient, ILogger<AiService> logger, IConfiguration configuration, ISettingsService settingsService)
     {
@@ -390,12 +392,18 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
 
     public async Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false, bool useThinking = false)
     {
+        var cacheKey = $"{userId}_{useFallback}_{useThinking}";
+        if (_testCache.TryGetValue(cacheKey, out var cached) && (DateTime.UtcNow - cached.Timestamp).TotalMinutes < 15)
+        {
+            return (cached.Success, cached.Error);
+        }
+
         var config = useThinking 
             ? await GetThinkingProviderConfigAsync(userId)
             : await GetProviderConfigAsync(userId, useFallback);
-        // Status tests use a more forgiving timeout (15s) and a single retry to handle "waking up" local models.
+
         var testTimeout = TimeSpan.FromSeconds(15); 
-        var maxAttempts = config.Provider == "Gemini" ? 1 : 2; // Don't retry Gemini, it just hits rate limits faster
+        var maxAttempts = config.Provider == "Gemini" ? 1 : 2; 
 
         for (int attempt = 1; attempt <= maxAttempts; attempt++)
         {
@@ -404,9 +412,19 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                 if (config.Provider == "Gemini")
                 {
                     if (string.IsNullOrWhiteSpace(config.GeminiKey)) return (false, "Gemini API Key is missing.");
-                    var result = await GenerateGeminiCompletionAsync(userId, "System", "Say 'OK'", config.GeminiKey, config.ModelName, timeoutSeconds: 15);
-                    if (string.IsNullOrWhiteSpace(result) || result.Contains("Error:")) return (false, result ?? "Empty response.");
-                    return (true, string.Empty);
+                    
+                    try 
+                    {
+                        var result = await GenerateGeminiCompletionAsync(userId, "System", "Say 'OK'", config.GeminiKey, config.ModelName, timeoutSeconds: 15);
+                        var finalResult = (Success: !string.IsNullOrWhiteSpace(result) && !result.Contains("Error:"), Error: result ?? "Empty response.");
+                        _testCache[cacheKey] = (finalResult.Success, finalResult.Error, DateTime.UtcNow);
+                        return finalResult;
+                    }
+                    catch (HttpRequestException ex) when (ex.Message.Contains("TooManyRequests") || ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                    {
+                        _logger.LogWarning("Gemini Rate Limit hit during test.");
+                        return (false, "Rate Limited - Gemini is cooling down. Please wait a few minutes.");
+                    }
                 }
 
                 if (string.IsNullOrWhiteSpace(config.OllamaUrl)) return (false, "Ollama URL is not configured.");
@@ -418,7 +436,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                     model = config.ModelName, 
                     prompt = "Say 'OK'", 
                     stream = false,
-                    keep_alive = -1 // Keep model in memory indefinitely to prevent "losing connection"
+                    keep_alive = -1 
                 };
                 var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
 
@@ -439,6 +457,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                     return (false, $"Ollama error ({response.StatusCode})");
                 }
 
+                _testCache[cacheKey] = (true, string.Empty, DateTime.UtcNow);
                 return (true, string.Empty);
             }
             catch (OperationCanceledException)

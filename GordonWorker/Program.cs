@@ -212,8 +212,11 @@ namespace GordonWorker.Services
                 if (success)
                     return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("AI service is responsive");
 
+                if (error.Contains("Rate Limited"))
+                    return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Degraded($"AI service is rate limited: {error}");
+
                 _logger.LogWarning("AI health check failed: {Error}", error);
-                return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Degraded($"AI service check failed: {error}");
+                return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Unhealthy($"AI service check failed: {error}");
             }
             catch (Exception ex)
             {

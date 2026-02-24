@@ -188,11 +188,13 @@
                                 <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Primary AI</p>
                                 <div class="mt-1 flex items-center justify-between">
                                     <span class="text-lg font-bold"
-                                        :class="systemStatus.aiPrimaryOnline ? 'text-green-600' : 'text-red-600'">
-                                        {{ systemStatus.aiPrimaryOnline ? 'Ready' : 'Offline' }}
+                                        :class="systemStatus.aiPrimaryOnline ? 'text-green-600' : (systemStatus.aiPrimaryError?.includes('Rate Limited') ? 'text-amber-500' : 'text-red-600')">
+                                        {{ systemStatus.aiPrimaryOnline ? 'Ready' :
+                                        (systemStatus.aiPrimaryError?.includes('Rate Limited') ? 'Throttled' :
+                                        'Offline') }}
                                     </span>
                                     <div class="w-8 h-8 rounded-lg flex items-center justify-center text-lg"
-                                        :class="systemStatus.aiPrimaryOnline ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'">
+                                        :class="systemStatus.aiPrimaryOnline ? 'bg-green-50 text-green-600' : (systemStatus.aiPrimaryError?.includes('Rate Limited') ? 'bg-amber-50 text-amber-500' : 'bg-red-50 text-red-600')">
                                         🧠</div>
                                 </div>
                                 <p v-if="!systemStatus.aiPrimaryOnline && systemStatus.aiPrimaryError"
@@ -207,12 +209,13 @@
                                 <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Backup AI</p>
                                 <div class="mt-1 flex items-center justify-between">
                                     <span class="text-lg font-bold"
-                                        :class="systemStatus.aiFallbackOnline ? 'text-green-600' : 'text-amber-600'">
+                                        :class="systemStatus.aiFallbackOnline ? 'text-green-600' : (systemStatus.aiFallbackError?.includes('Rate Limited') ? 'text-amber-500' : 'text-amber-600')">
                                         {{ settings.enableAiFallback ? (systemStatus.aiFallbackOnline ? 'Standby' :
-                                        'Offline') : 'Disabled' }}
+                                        (systemStatus.aiFallbackError?.includes('Rate Limited') ? 'Throttled' :
+                                        'Offline')) : 'Disabled' }}
                                     </span>
                                     <div class="w-8 h-8 rounded-lg flex items-center justify-center text-lg"
-                                        :class="systemStatus.aiFallbackOnline ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'">
+                                        :class="systemStatus.aiFallbackOnline ? 'bg-green-50 text-green-600' : (systemStatus.aiFallbackError?.includes('Rate Limited') ? 'bg-amber-50 text-amber-500' : 'bg-amber-50 text-amber-600')">
                                         🛡️</div>
                                 </div>
                                 <p v-if="settings.enableAiFallback && !systemStatus.aiFallbackOnline && systemStatus.aiFallbackError"

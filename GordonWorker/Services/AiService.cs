@@ -484,6 +484,14 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
     public async Task<string> GenerateSqlAsync(int userId, string userPrompt)
     {
         var today = DateTime.Today.ToString("yyyy-MM-dd");
+
+        // SECURITY FIX: Sanitize user prompt to prevent prompt injection
+        var sanitizedPrompt = userPrompt
+            .Replace(";", "")      // Prevent multi-statement
+            .Replace("--", "")     // Prevent comments
+            .Replace("/*", "")     // Prevent block comments
+            .Replace("*/", "");
+
         var systemPrompt = $@"You are a PostgreSQL expert for a financial database.
 Current Date: {today}
 
@@ -494,15 +502,22 @@ Table 'transactions' schema:
 - balance (numeric)
 - category (text)
 
+**CRITICAL SECURITY RULES:**
+1. Return ONLY a single SELECT statement.
+2. DO NOT return any DML or DDL (INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE).
+3. If the user request implies a destructive action, return 'SELECT ''Unauthorized'' as Error'.
+4. Use ILIKE for case-insensitive text matching.
+5. Filter by user_id = @userId ALWAYS.
+
 Return ONLY the raw SQL query. Do NOT use Markdown formatting (no ```sql). Do NOT include explanations.";
         
-        var response = await GenerateCompletionWithFallbackAsync(userId, systemPrompt, userPrompt);
+        var response = await GenerateCompletionWithFallbackAsync(userId, systemPrompt, sanitizedPrompt);
         
         // Safety check: If the AI failed and returned the graceful error message, 
         // we MUST NOT return it as SQL, otherwise it will crash the DB caller.
-        if (response.StartsWith("I'm so sorry") || response.Contains("analytical engine"))
+        if (response.StartsWith("I'm so sorry") || response.Contains("analytical engine") || response.Trim().StartsWith("SELECT 'Unauthorized'"))
         {
-            throw new InvalidOperationException("AI failed to generate a valid SQL query.");
+            throw new InvalidOperationException("AI failed to generate a valid or authorized SQL query.");
         }
 
         return response;

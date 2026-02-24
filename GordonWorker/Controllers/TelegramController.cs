@@ -35,8 +35,8 @@ public class TelegramController : ControllerBase
         _logger = logger;
     }
 
-    [HttpPost("webhook")]
-    public async Task<IActionResult> Webhook([FromBody] JsonElement rawUpdate)
+    [HttpPost("webhook/{token}")]
+    public async Task<IActionResult> Webhook(string token, [FromBody] JsonElement rawUpdate)
     {
         _statusService.LastTelegramHit = DateTime.UtcNow;
         _statusService.LastTelegramError = "";
@@ -57,29 +57,21 @@ public class TelegramController : ControllerBase
             string? chatId = null;
             string? messageText = null;
 
-            _logger.LogInformation("Telegram Update Type: {Type}", update.Type);
-
             if (update.Message != null)
             {
                 if (update.Message.From?.IsBot == true) return Ok();
                 chatId = update.Message.Chat.Id.ToString();
                 messageText = update.Message.Text;
-                _logger.LogInformation("Telegram Message from {ChatId}: {Text}", chatId, messageText);
             }
             else if (update.CallbackQuery != null)
             {
                 chatId = update.CallbackQuery.Message?.Chat.Id.ToString();
                 messageText = update.CallbackQuery.Data;
-                _logger.LogInformation("Telegram Callback from {ChatId}: {Data}", chatId, messageText);
             }
 
-            if (string.IsNullOrWhiteSpace(chatId) || string.IsNullOrWhiteSpace(messageText)) 
-            {
-                _logger.LogWarning("Telegram update missing ChatId or MessageText. (Type: {Type})", update.Type);
-                return Ok();
-            }
+            if (string.IsNullOrWhiteSpace(chatId) || string.IsNullOrWhiteSpace(messageText)) return Ok();
 
-            // Find matching user
+            // SECURITY FIX: Find matching user and VERIFY TOKEN
             using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
             var allUsers = await connection.QueryAsync<int>("SELECT id FROM users");
             int? matchedUserId = null;
@@ -87,6 +79,12 @@ public class TelegramController : ControllerBase
             foreach (var uid in allUsers)
             {
                 var s = await _settingsService.GetSettingsAsync(uid);
+                if (string.IsNullOrEmpty(s.TelegramBotToken)) continue;
+
+                // Simple but effective token verification: SHA256 of BotToken
+                var expectedToken = GenerateSecretToken(s.TelegramBotToken);
+                if (token != expectedToken) continue;
+
                 var authorized = (s.TelegramAuthorizedChatIds ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
                 
                 if (s.TelegramChatId == chatId || authorized.Contains(chatId))
@@ -98,13 +96,11 @@ public class TelegramController : ControllerBase
 
             if (matchedUserId == null)
             {
-                _logger.LogWarning("Unauthorized Telegram message from Chat ID {ChatId}", chatId);
+                _logger.LogWarning("Unauthorized or mismatched Telegram message from Chat ID {ChatId}", chatId);
                 return Ok();
             }
 
-            _logger.LogInformation("Enqueuing Telegram command for User {UserId}: {Text}", matchedUserId, messageText);
             await _chatService.EnqueueMessageAsync(matchedUserId.Value, chatId!, messageText!);
-
             return Ok();
         }
         catch (Exception ex)
@@ -116,21 +112,27 @@ public class TelegramController : ControllerBase
         return Ok();
     }
 
+    private string GenerateSecretToken(string botToken)
+    {
+        using var sha256 = System.Security.Cryptography.SHA256.Create();
+        var hash = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(botToken));
+        return Convert.ToHexString(hash).ToLower();
+    }
+
     [Microsoft.AspNetCore.Authorization.Authorize]
     [HttpPost("setup-webhook")]
     public async Task<IActionResult> SetupWebhook([FromBody] JsonElement body)
     {
         try
         {
-            if (!body.TryGetProperty("Url", out var urlElement)) return BadRequest("Missing Url");
-            var url = urlElement.GetString();
-            if (string.IsNullOrWhiteSpace(url)) return BadRequest("Url empty");
+            var settings = await _settingsService.GetSettingsAsync(userId);
+            if (string.IsNullOrEmpty(settings.TelegramBotToken)) return BadRequest("Bot token not configured.");
 
-            if (User.Identity?.IsAuthenticated != true) return Unauthorized();
-            var userId = int.Parse(User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier)!);
+            var secretToken = GenerateSecretToken(settings.TelegramBotToken);
+            var finalUrl = url.TrimEnd('/') + "/webhook/" + secretToken;
 
-            await _telegramService.InstallWebhookAsync(userId, url);
-            return Ok(new { Message = "Webhook registered successfully." });
+            await _telegramService.InstallWebhookAsync(userId, finalUrl);
+            return Ok(new { Message = "Webhook registered successfully (with secret token)." });
         }
         catch (Exception ex)
         {

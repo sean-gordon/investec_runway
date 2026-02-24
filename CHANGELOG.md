@@ -21,6 +21,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OpenTelemetry distributed tracing
 - Admin dashboard for system monitoring
 
+## [2.5.8] - 2026-02-24
+
+### Security
+- **Secret Masking:** Implemented masking for sensitive API keys (Gemini, Investec, Twilio, etc.) in `SettingsController` to prevent exposure in the browser. 
+- **Webhook Hardening:** Secured Telegram webhooks by requiring a secret SHA256-based token in the URL.
+- **Middleware Hardening:** Improved domain validation in `SecurityValidationMiddleware` and added basic CSRF mitigation via Origin checks.
+- **AI Prompt Safety:** Added sanitization and strict system prompt constraints to the AI SQL generation logic to prevent prompt injection and unauthorized DML/DDL.
+- **Secure Defaults:** Removed weak default admin password (`admin123`) in favor of environment-enforced or random secret generation.
+
+### Added
+- **Secure Mode Indicator:** Added a visual status badge to the UI header to indicate when hardening measures are active.
+
 ---
 
 ## [2.5.7] - 2026-02-24

@@ -58,16 +58,54 @@ public class SettingsController : ControllerBase
     public async Task<IActionResult> Get()
     {
         var settings = await _settingsService.GetSettingsAsync(UserId);
-        return Ok(settings);
+        
+        // SECURITY FIX: Mask sensitive fields before sending to frontend
+        var response = MaskSettings(settings);
+        return Ok(response);
+    }
+
+    private AppSettings MaskSettings(AppSettings settings)
+    {
+        // Clone settings to avoid affecting the service-level cache
+        var clone = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(settings))!;
+        
+        const string mask = "********";
+        if (!string.IsNullOrEmpty(clone.GeminiApiKey)) clone.GeminiApiKey = mask;
+        if (!string.IsNullOrEmpty(clone.FallbackGeminiApiKey)) clone.FallbackGeminiApiKey = mask;
+        if (!string.IsNullOrEmpty(clone.ThinkingGeminiApiKey)) clone.ThinkingGeminiApiKey = mask;
+        if (!string.IsNullOrEmpty(clone.InvestecSecret)) clone.InvestecSecret = mask;
+        if (!string.IsNullOrEmpty(clone.InvestecApiKey)) clone.InvestecApiKey = mask;
+        if (!string.IsNullOrEmpty(clone.SmtpPass)) clone.SmtpPass = mask;
+        if (!string.IsNullOrEmpty(clone.TwilioAuthToken)) clone.TwilioAuthToken = mask;
+        if (!string.IsNullOrEmpty(clone.InvestecClientId)) clone.InvestecClientId = mask;
+        if (!string.IsNullOrEmpty(clone.TwilioAccountSid)) clone.TwilioAccountSid = mask;
+        if (!string.IsNullOrEmpty(clone.TelegramBotToken)) clone.TelegramBotToken = mask;
+
+        return clone;
     }
 
     [HttpPut]
-    public async Task<IActionResult> Update([FromBody] AppSettings settings)
+    public async Task<IActionResult> Update([FromBody] AppSettings requestSettings)
     {
         try
         {
-            await _settingsService.UpdateSettingsAsync(UserId, settings);
-            return Ok(settings);
+            var existingSettings = await _settingsService.GetSettingsAsync(UserId);
+            
+            // SECURITY FIX: Only update sensitive fields if they aren't masked
+            const string mask = "********";
+            if (requestSettings.GeminiApiKey == mask) requestSettings.GeminiApiKey = existingSettings.GeminiApiKey;
+            if (requestSettings.FallbackGeminiApiKey == mask) requestSettings.FallbackGeminiApiKey = existingSettings.FallbackGeminiApiKey;
+            if (requestSettings.ThinkingGeminiApiKey == mask) requestSettings.ThinkingGeminiApiKey = existingSettings.ThinkingGeminiApiKey;
+            if (requestSettings.InvestecSecret == mask) requestSettings.InvestecSecret = existingSettings.InvestecSecret;
+            if (requestSettings.InvestecApiKey == mask) requestSettings.InvestecApiKey = existingSettings.InvestecApiKey;
+            if (requestSettings.SmtpPass == mask) requestSettings.SmtpPass = existingSettings.SmtpPass;
+            if (requestSettings.TwilioAuthToken == mask) requestSettings.TwilioAuthToken = existingSettings.TwilioAuthToken;
+            if (requestSettings.InvestecClientId == mask) requestSettings.InvestecClientId = existingSettings.InvestecClientId;
+            if (requestSettings.TwilioAccountSid == mask) requestSettings.TwilioAccountSid = existingSettings.TwilioAccountSid;
+            if (requestSettings.TelegramBotToken == mask) requestSettings.TelegramBotToken = existingSettings.TelegramBotToken;
+
+            await _settingsService.UpdateSettingsAsync(UserId, requestSettings);
+            return Ok(MaskSettings(requestSettings));
         }
         catch (Exception ex)
         {

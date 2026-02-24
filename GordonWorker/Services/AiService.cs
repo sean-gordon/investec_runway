@@ -620,7 +620,12 @@ Context Information:
                 if (!string.IsNullOrWhiteSpace(result))
                 {
                     _logger.LogInformation("Success! Primary AI responded on attempt {Attempt}", attempt);
-                    return await ReviewOutputWithThinkingModelAsync(userId, system, prompt, result, settings, ct);
+                    var review = await ReviewOutputWithThinkingModelAsync(userId, system, prompt, result, settings, ct);
+                    if (review.IsApproved) return result;
+                    
+                    _logger.LogWarning("Thinking model rejected primary AI output. Sending feedback for rewrite.");
+                    finalPrompt = $"[PREVIOUS_RESPONSE_REJECTED]\n{result}\n[/PREVIOUS_RESPONSE_REJECTED]\n\n[REVIEW_FEEDBACK]\n{review.Feedback}\n[/REVIEW_FEEDBACK]\n\n[ORIGINAL_QUERY]\n{prompt}\n[/ORIGINAL_QUERY]\n\nPlease try again and fix the issues mentioned in the feedback.";
+                    continue; // Loop again!
                 }
 
                 _logger.LogWarning("The primary AI gave us an empty response on attempt {Attempt}", attempt);
@@ -650,7 +655,12 @@ Context Information:
                     if (!string.IsNullOrWhiteSpace(result))
                     {
                         _logger.LogInformation("Success! Backup AI saved the day on attempt {Attempt}", attempt);
-                        return await ReviewOutputWithThinkingModelAsync(userId, system, prompt, result, settings, ct);
+                        var review = await ReviewOutputWithThinkingModelAsync(userId, system, prompt, result, settings, ct);
+                        if (review.IsApproved) return result;
+
+                        _logger.LogWarning("Thinking model rejected backup AI output. Sending feedback for rewrite.");
+                        finalPrompt = $"[PREVIOUS_RESPONSE_REJECTED]\n{result}\n[/PREVIOUS_RESPONSE_REJECTED]\n\n[REVIEW_FEEDBACK]\n{review.Feedback}\n[/REVIEW_FEEDBACK]\n\n[ORIGINAL_QUERY]\n{prompt}\n[/ORIGINAL_QUERY]\n\nPlease try again and fix the issues mentioned in the feedback.";
+                        continue;
                     }
 
                     _logger.LogWarning("The backup AI also gave us an empty response on attempt {Attempt}", attempt);
@@ -669,9 +679,9 @@ Context Information:
         return "I'm so sorry, but I'm having a bit of trouble connecting to my 'analytical engine' right now. Your financial data is perfectly safe and I'm still syncing your transactions in the background. Please try again in a few minutes, or double-check your AI settings on the dashboard.";
     }
 
-    private async Task<string> ReviewOutputWithThinkingModelAsync(int userId, string system, string originalPrompt, string aiResult, AppSettings settings, CancellationToken ct)
+    private async Task<(bool IsApproved, string Feedback)> ReviewOutputWithThinkingModelAsync(int userId, string system, string originalPrompt, string aiResult, AppSettings settings, CancellationToken ct)
     {
-        if (!settings.EnableThinkingModel) return aiResult;
+        if (!settings.EnableThinkingModel) return (true, "");
 
         var primaryConfig = await GetProviderConfigAsync(userId, useFallback: false);
         var thinkingConfig = await GetThinkingProviderConfigAsync(userId);
@@ -679,24 +689,25 @@ Context Information:
                            thinkingConfig.ModelName != primaryConfig.ModelName || 
                            thinkingConfig.OllamaUrl != primaryConfig.OllamaUrl;
 
-        if (!isDifferent) return aiResult;
+        if (!isDifferent) return (true, "");
 
         try
         {
             _logger.LogInformation("Reviewing output with Thinking Model for user {UserId}", userId);
             
             var reviewSystemPrompt = @"You are a strict quality control reviewer. Your job is to review the output of another AI to ensure it directly answers the user's prompt truthfully and accurately, following all rules.
-IF the response is good: Output the exact response unchanged.
-IF the response completely missed the prompt, or is fundamentally flawed: Output an improved response yourself.";
+IF the response is perfect: Output EXACTLY '<APPROVED>' and nothing else.
+IF the response completely missed the prompt or is missing critical information: Provide specific feedback on what is wrong and what needs to be fixed. Do NOT rewrite the response yourself, just provide the feedback.";
             
-            var reviewPrompt = $"[ORIGINAL_SYSTEM_PROMPT]\n{system}\n[/ORIGINAL_SYSTEM_PROMPT]\n\n[USER_PROMPT]\n{originalPrompt}\n[/USER_PROMPT]\n\n[AI_PROPOSED_RESPONSE]\n{aiResult}\n[/AI_PROPOSED_RESPONSE]\n\nAnalyze the AI_PROPOSED_RESPONSE. If it is high quality and addresses the USER_PROMPT according to the ORIGINAL_SYSTEM_PROMPT, output it exactly. If it is bad, rewrite it completely.";
+            var reviewPrompt = $"[ORIGINAL_SYSTEM_PROMPT]\n{system}\n[/ORIGINAL_SYSTEM_PROMPT]\n\n[USER_PROMPT]\n{originalPrompt}\n[/USER_PROMPT]\n\n[AI_PROPOSED_RESPONSE]\n{aiResult}\n[/AI_PROPOSED_RESPONSE]\n\nAnalyze the AI_PROPOSED_RESPONSE. If it is high quality and addresses the USER_PROMPT according to the ORIGINAL_SYSTEM_PROMPT, output strictly <APPROVED>. If it is bad, write down exactly what is wrong so the AI can try again.";
 
             var reviewedResult = await GenerateCompletionAsync(userId, reviewSystemPrompt, reviewPrompt, useFallback: false, ct, useThinking: true);
 
             if (!string.IsNullOrWhiteSpace(reviewedResult))
             {
                 _logger.LogInformation("Thinking Model review complete for user {UserId}", userId);
-                return reviewedResult;
+                if (reviewedResult.Trim().Contains("<APPROVED>")) return (true, "");
+                return (false, reviewedResult);
             }
         }
         catch (Exception ex)
@@ -704,7 +715,7 @@ IF the response completely missed the prompt, or is fundamentally flawed: Output
             _logger.LogWarning(ex, "Thinking model failed to review output for user {UserId}. Returning original output.", userId);
         }
 
-        return aiResult;
+        return (true, "");
     }
 
     private async Task<string> GenerateCompletionAsync(int userId, string system, string prompt, bool useFallback, CancellationToken ct = default, bool useThinking = false)

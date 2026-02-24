@@ -248,14 +248,20 @@ public class ActuarialService : IActuarialService
 
         var lastSalaryAmount = salaryPayments.Any() ? Math.Abs(salaryPayments[0].Amount) : 0m;
 
+        // ACTUARIAL REFINEMENT: Calculate Total Daily Burn by combining variable baseBurn and amortized fixed costs
+        decimal totalMonthlyFixed = historicalFixedExpenses.Sum(g => g.Average(t => t.Amount));
+        decimal dailyFixedBurn = totalMonthlyFixed / 30m;
+        decimal trueDailyBurn = baseBurn + dailyFixedBurn;
+        if (trueDailyBurn < 1m) trueDailyBurn = 1m;
+
         return await Task.FromResult(new FinancialHealthReport(
             CurrentBalance: currentBalance,
-            WeightedDailyBurn: baseBurn,
-            MonthlyBurnRate: baseBurn * 30,
+            WeightedDailyBurn: trueDailyBurn,
+            MonthlyBurnRate: trueDailyBurn * 30,
             BurnVolatility: stdDev,
-            SafeRunwayDays: (currentBalance - upcomingOverhead) / (decimal)((double)baseBurn + stdDev),
-            ExpectedRunwayDays: (currentBalance - upcomingOverhead) / baseBurn,
-            OptimisticRunwayDays: (currentBalance - upcomingOverhead) / (decimal)Math.Max((double)baseBurn - stdDev, 1.0),
+            SafeRunwayDays: (currentBalance - upcomingOverhead) / (decimal)((double)trueDailyBurn + stdDev),
+            ExpectedRunwayDays: (currentBalance - upcomingOverhead) / trueDailyBurn,
+            OptimisticRunwayDays: (currentBalance - upcomingOverhead) / (decimal)Math.Max((double)trueDailyBurn - stdDev, 1.0),
             ValueAtRisk95: (decimal)(weightedMean + (settings.VarConfidenceInterval * stdDev)),
             TrendDirection: trendDirection,
             SpendThisMonth: spendThisPeriod,

@@ -176,7 +176,7 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
                         if (isPrimary) tempSettings.AiProvider = providerName == "ollama" ? "Ollama" : "Gemini";
                         else tempSettings.FallbackAiProvider = providerName == "ollama" ? "Ollama" : "Gemini";
 
-                        var models = await aiService.GetAvailableModelsAsync(request.UserId, !isPrimary, tempSettings);
+                        var models = await aiService.GetAvailableModelsAsync(request.UserId, !isPrimary, false, tempSettings);
                         var buttons = models.Take(8).Select(m => (m, $"/model_set_{ (isPrimary ? "p" : "b") }_{providerName}_{m}")).ToList();
                         buttons.Add(("Cancel", "/cancel"));
 

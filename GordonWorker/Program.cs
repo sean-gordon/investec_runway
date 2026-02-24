@@ -1,6 +1,7 @@
 using GordonWorker.Services;
 using GordonWorker.Workers;
 using GordonWorker.Middleware;
+using GordonWorker.Infrastructure;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -60,6 +61,9 @@ builder.Services.AddAuthentication(x =>
         ClockSkew = TimeSpan.Zero
     };
 });
+
+builder.Services.AddSingleton<ILogSinkService, LogSinkService>();
+builder.Services.AddSingleton<ILoggerProvider, InMemoryLoggerProvider>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -208,8 +212,11 @@ namespace GordonWorker.Services
                 if (success)
                     return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("AI service is responsive");
 
+                if (error.Contains("Rate Limited"))
+                    return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Degraded($"AI service is rate limited: {error}");
+
                 _logger.LogWarning("AI health check failed: {Error}", error);
-                return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Degraded($"AI service check failed: {error}");
+                return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Unhealthy($"AI service check failed: {error}");
             }
             catch (Exception ex)
             {

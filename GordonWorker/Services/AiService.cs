@@ -322,7 +322,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                 var url = $"https://generativelanguage.googleapis.com/v1beta/models?key={config.GeminiKey}";
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 var response = await _httpClient.GetAsync(url, cts.Token);
-                if (!response.IsSuccessStatusCode) return new List<string> { "gemini-3-flash-preview", "gemini-2.0-flash", "gemini-2.0-pro-exp" };
+                if (!response.IsSuccessStatusCode) return useThinking ? new List<string> { "gemini-2.0-flash-thinking-exp" } : new List<string> { "gemini-3-flash-preview" };
 
                 var responseString = await response.Content.ReadAsStringAsync();
                 using var doc = JsonDocument.Parse(responseString);
@@ -355,7 +355,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                 if (!modelNames.Any())
                 {
                     _logger.LogWarning("No suitable Gemini models found in API response. Returning defaults.");
-                    return new List<string> { "gemini-3-flash-preview", "gemini-2.0-flash", "gemini-2.0-pro-exp" };
+                    return new List<string> { "gemini-3-flash-preview" };
                 }
                 
                 return modelNames.Distinct().OrderByDescending(n => n).ToList();
@@ -363,7 +363,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to fetch Gemini models from Google API.");
-                return new List<string> { "gemini-3-flash-preview", "gemini-2.0-flash", "gemini-2.0-pro-exp" };
+                return useThinking ? new List<string> { "gemini-3-flash-preview" } : new List<string> { "gemini-3-flash-preview" };
             }
         }
 
@@ -620,7 +620,7 @@ Context Information:
                 if (!string.IsNullOrWhiteSpace(result))
                 {
                     _logger.LogInformation("Success! Primary AI responded on attempt {Attempt}", attempt);
-                    return result;
+                    return await ReviewOutputWithThinkingModelAsync(userId, system, prompt, result, settings, ct);
                 }
 
                 _logger.LogWarning("The primary AI gave us an empty response on attempt {Attempt}", attempt);
@@ -650,7 +650,7 @@ Context Information:
                     if (!string.IsNullOrWhiteSpace(result))
                     {
                         _logger.LogInformation("Success! Backup AI saved the day on attempt {Attempt}", attempt);
-                        return result;
+                        return await ReviewOutputWithThinkingModelAsync(userId, system, prompt, result, settings, ct);
                     }
 
                     _logger.LogWarning("The backup AI also gave us an empty response on attempt {Attempt}", attempt);
@@ -667,6 +667,44 @@ Context Information:
         // If both brains are down, we'll let you know gracefully.
         _logger.LogError("All AI providers failed for user {UserId}. Returning a polite error message.", userId);
         return "I'm so sorry, but I'm having a bit of trouble connecting to my 'analytical engine' right now. Your financial data is perfectly safe and I'm still syncing your transactions in the background. Please try again in a few minutes, or double-check your AI settings on the dashboard.";
+    }
+
+    private async Task<string> ReviewOutputWithThinkingModelAsync(int userId, string system, string originalPrompt, string aiResult, AppSettings settings, CancellationToken ct)
+    {
+        if (!settings.EnableThinkingModel) return aiResult;
+
+        var primaryConfig = await GetProviderConfigAsync(userId, useFallback: false);
+        var thinkingConfig = await GetThinkingProviderConfigAsync(userId);
+        bool isDifferent = thinkingConfig.Provider != primaryConfig.Provider || 
+                           thinkingConfig.ModelName != primaryConfig.ModelName || 
+                           thinkingConfig.OllamaUrl != primaryConfig.OllamaUrl;
+
+        if (!isDifferent) return aiResult;
+
+        try
+        {
+            _logger.LogInformation("Reviewing output with Thinking Model for user {UserId}", userId);
+            
+            var reviewSystemPrompt = @"You are a strict quality control reviewer. Your job is to review the output of another AI to ensure it directly answers the user's prompt truthfully and accurately, following all rules.
+IF the response is good: Output the exact response unchanged.
+IF the response completely missed the prompt, or is fundamentally flawed: Output an improved response yourself.";
+            
+            var reviewPrompt = $"[ORIGINAL_SYSTEM_PROMPT]\n{system}\n[/ORIGINAL_SYSTEM_PROMPT]\n\n[USER_PROMPT]\n{originalPrompt}\n[/USER_PROMPT]\n\n[AI_PROPOSED_RESPONSE]\n{aiResult}\n[/AI_PROPOSED_RESPONSE]\n\nAnalyze the AI_PROPOSED_RESPONSE. If it is high quality and addresses the USER_PROMPT according to the ORIGINAL_SYSTEM_PROMPT, output it exactly. If it is bad, rewrite it completely.";
+
+            var reviewedResult = await GenerateCompletionAsync(userId, reviewSystemPrompt, reviewPrompt, useFallback: false, ct, useThinking: true);
+
+            if (!string.IsNullOrWhiteSpace(reviewedResult))
+            {
+                _logger.LogInformation("Thinking Model review complete for user {UserId}", userId);
+                return reviewedResult;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Thinking model failed to review output for user {UserId}. Returning original output.", userId);
+        }
+
+        return aiResult;
     }
 
     private async Task<string> GenerateCompletionAsync(int userId, string system, string prompt, bool useFallback, CancellationToken ct = default, bool useThinking = false)

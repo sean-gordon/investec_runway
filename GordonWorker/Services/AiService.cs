@@ -13,8 +13,8 @@ public interface IAiService
     Task<(Guid? TransactionId, string? Note)> AnalyzeExpenseExplanationAsync(int userId, string userMessage, List<Transaction> recentTransactions);
     Task<(bool IsAffordabilityCheck, decimal? Amount, string? Description)> AnalyzeAffordabilityAsync(int userId, string userMessage);
     Task<(bool IsChartRequest, string? ChartType, string? Sql, string? Title)> AnalyzeChartRequestAsync(int userId, string userMessage);
-    Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false);
-    Task<List<string>> GetAvailableModelsAsync(int userId, bool useFallback = false, AppSettings? overriddenSettings = null);
+    Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false, bool useThinking = false);
+    Task<List<string>> GetAvailableModelsAsync(int userId, bool useFallback = false, bool useThinking = false, AppSettings? overriddenSettings = null);
     Task<List<Transaction>> CategorizeTransactionsAsync(int userId, List<Transaction> transactions);
 }
 
@@ -296,9 +296,24 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
         };
     }
 
-        public async Task<List<string>> GetAvailableModelsAsync(int userId, bool useFallback = false, AppSettings? overriddenSettings = null)        
+    private async Task<AiProviderConfig> GetThinkingProviderConfigAsync(int userId, AppSettings? overriddenSettings = null)
+    {
+        var settings = overriddenSettings ?? await _settingsService.GetSettingsAsync(userId);
+        return new AiProviderConfig
         {
-            var config = await GetProviderConfigAsync(userId, useFallback, overriddenSettings);
+            Provider = settings.ThinkingAiProvider,
+            OllamaUrl = settings.ThinkingOllamaBaseUrl,
+            ModelName = settings.ThinkingAiProvider == "Gemini" ? settings.ThinkingGeminiModelName : settings.ThinkingOllamaModelName,
+            GeminiKey = settings.ThinkingGeminiApiKey,
+            TimeoutSeconds = settings.AiTimeoutSeconds
+        };
+    }
+
+        public async Task<List<string>> GetAvailableModelsAsync(int userId, bool useFallback = false, bool useThinking = false, AppSettings? overriddenSettings = null)        
+        {
+            var config = useThinking 
+                ? await GetThinkingProviderConfigAsync(userId, overriddenSettings)
+                : await GetProviderConfigAsync(userId, useFallback, overriddenSettings);
     
             if (config.Provider == "Gemini")        {
             if (string.IsNullOrWhiteSpace(config.GeminiKey)) return new List<string>();
@@ -373,9 +388,11 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
         catch (Exception ex) { _logger.LogError(ex, "Failed to fetch models from {Provider}.", useFallback ? "Fallback AI" : "Primary AI"); return new List<string>(); }
     }
 
-    public async Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false)
+    public async Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false, bool useThinking = false)
     {
-        var config = await GetProviderConfigAsync(userId, useFallback);
+        var config = useThinking 
+            ? await GetThinkingProviderConfigAsync(userId)
+            : await GetProviderConfigAsync(userId, useFallback);
         // Status tests use a more forgiving timeout (15s) and a single retry to handle "waking up" local models.
         var testTimeout = TimeSpan.FromSeconds(15); 
         var maxAttempts = config.Provider == "Gemini" ? 1 : 2; // Don't retry Gemini, it just hits rate limits faster
@@ -556,6 +573,40 @@ Context Information:
     private async Task<string> GenerateCompletionWithFallbackAsync(int userId, string system, string prompt, CancellationToken ct = default)
     {
         var settings = await _settingsService.GetSettingsAsync(userId);
+        var finalPrompt = prompt;
+
+        // Step 0: Let the "Thinking Model" have a crack at it first, if enabled and different from primary
+        if (settings.EnableThinkingModel)
+        {
+            var primaryConfig = await GetProviderConfigAsync(userId, useFallback: false);
+            var thinkingConfig = await GetThinkingProviderConfigAsync(userId);
+
+            // Only use thinking if it's actually a different configuration
+            bool isDifferent = thinkingConfig.Provider != primaryConfig.Provider || 
+                               thinkingConfig.ModelName != primaryConfig.ModelName || 
+                               thinkingConfig.OllamaUrl != primaryConfig.OllamaUrl;
+
+            if (isDifferent)
+            {
+                try
+                {
+                    _logger.LogInformation("Engaging Thinking Model ({Provider}:{Model}) for user {UserId}", thinkingConfig.Provider, thinkingConfig.ModelName, userId);
+                    var thinkingSystem = "Analyze this query and provide deep reasoning and a breakdown of the steps needed to answer it accurately. Be strategic. If this is a report request, outline the key financial insights that should be highlighted.";
+                    var reasoning = await GenerateCompletionAsync(userId, thinkingSystem, prompt, useFallback: false, ct, useThinking: true);
+                    
+                    if (!string.IsNullOrWhiteSpace(reasoning))
+                    {
+                        finalPrompt = $"[REASONING_AND_STRATEGY]\n{reasoning}\n[/REASONING_AND_STRATEGY]\n\n[ORIGINAL_QUERY]\n{prompt}\n[/ORIGINAL_QUERY]";
+                        _logger.LogInformation("Thinking Model step complete for user {UserId}", userId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Thinking model failed for user {UserId}. Proceeding without additional reasoning.", userId);
+                }
+            }
+        }
+
         var maxAttempts = settings.AiRetryAttempts;
 
         // Step 1: Give your primary AI a go...
@@ -564,7 +615,7 @@ Context Information:
             try
             {
                 _logger.LogInformation("Trying to reach your primary AI (attempt {Attempt}/{Max}) for user {UserId}", attempt, maxAttempts, userId);
-                var result = await GenerateCompletionAsync(userId, system, prompt, useFallback: false, ct);
+                var result = await GenerateCompletionAsync(userId, system, finalPrompt, useFallback: false, ct);
 
                 if (!string.IsNullOrWhiteSpace(result))
                 {
@@ -594,7 +645,7 @@ Context Information:
                 try
                 {
                     _logger.LogInformation("Trying to reach your BACKUP AI (attempt {Attempt}/{Max}) for user {UserId}", attempt, maxAttempts, userId);
-                    var result = await GenerateCompletionAsync(userId, system, prompt, useFallback: true, ct);
+                    var result = await GenerateCompletionAsync(userId, system, finalPrompt, useFallback: true, ct);
 
                     if (!string.IsNullOrWhiteSpace(result))
                     {
@@ -618,9 +669,11 @@ Context Information:
         return "I'm so sorry, but I'm having a bit of trouble connecting to my 'analytical engine' right now. Your financial data is perfectly safe and I'm still syncing your transactions in the background. Please try again in a few minutes, or double-check your AI settings on the dashboard.";
     }
 
-    private async Task<string> GenerateCompletionAsync(int userId, string system, string prompt, bool useFallback, CancellationToken ct = default)
+    private async Task<string> GenerateCompletionAsync(int userId, string system, string prompt, bool useFallback, CancellationToken ct = default, bool useThinking = false)
     {
-        var config = await GetProviderConfigAsync(userId, useFallback);
+        var config = useThinking 
+            ? await GetThinkingProviderConfigAsync(userId)
+            : await GetProviderConfigAsync(userId, useFallback);
 
         if (config.Provider == "Gemini")
         {

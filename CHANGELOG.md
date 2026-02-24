@@ -23,12 +23,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [2.5.6] - 2026-02-23
+## [2.5.7] - 2026-02-24
+
+### Added
+- **Thinking Model Integration:** Implemented support for "Thinking Models" (e.g., Gemini 2.0 Thinking) to pre-process complex financial queries before generating the final response.
+- **Thinking Settings:** Added new user configuration options for `EnableThinkingModel`, `ThinkingAiProvider`, and `ThinkingModelName` in both backend and frontend.
+- **Improved UX:** Added "Brain Settings" section to the Brain tab in the web UI for easy configuration of primary and thinking models.
 
 ### Fixed
-- **Telegram Reliability:** Improved error handling and input validation in `TelegramChatService`.
-- **Slash Commands:** Enhanced command parsing to correctly handle model names containing underscores and improved state validation for provider selection.
-- **Improved UX:** Fixed several typos in Telegram status messages and added debug logging for command processing.
+- **Telegram Reliability:** Further refinements to `TelegramChatService` for better stability during long-running AI operations.
+- **WhatsApp Integration:** Updated WhatsApp handler to respect the new thinking model settings for enhanced query analysis.
+
+---
+
+## [2.5.6] - 2026-02-23
 
 ---
 

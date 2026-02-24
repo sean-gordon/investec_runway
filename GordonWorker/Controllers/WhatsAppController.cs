@@ -134,7 +134,7 @@ public class WhatsAppController : ControllerBase
                         var tempSettings = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(userSettings))!;
                         if (isPrimary) tempSettings.AiProvider = "Ollama"; else tempSettings.FallbackAiProvider = "Ollama";
 
-                        var models = await _aiService.GetAvailableModelsAsync(userId, !isPrimary, tempSettings);
+                        var models = await _aiService.GetAvailableModelsAsync(userId, !isPrimary, false, tempSettings);
                         var menu = $"⚙️ *Select Ollama Model ({(isPrimary ? "Primary" : "Backup")})*\n\n";
                         for(int i=0; i<Math.Min(models.Count, 9); i++) {
                             menu += $"{i+1}. {models[i]}\n";
@@ -155,7 +155,7 @@ public class WhatsAppController : ControllerBase
                     var tempSettings = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(userSettings))!;
                     if (isPrimary) tempSettings.AiProvider = "Ollama"; else tempSettings.FallbackAiProvider = "Ollama";
 
-                    var models = await _aiService.GetAvailableModelsAsync(userId, !isPrimary, tempSettings);
+                    var models = await _aiService.GetAvailableModelsAsync(userId, !isPrimary, false, tempSettings);
                     
                     if (modelIndex >= 0 && modelIndex < models.Count) {
                         var modelName = models[modelIndex];

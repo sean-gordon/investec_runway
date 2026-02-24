@@ -31,6 +31,14 @@ public class AppSettings
     public string FallbackGeminiApiKey { get; set; } = "";
     public int AiTimeoutSeconds { get; set; } = 90;
     public int AiRetryAttempts { get; set; } = 2;
+
+    // Thinking Model Settings
+    public bool EnableThinkingModel { get; set; } = false;
+    public string ThinkingAiProvider { get; set; } = "Ollama";
+    public string ThinkingOllamaBaseUrl { get; set; } = "http://host.docker.internal:11434";
+    public string ThinkingOllamaModelName { get; set; } = "deepseek-r1";
+    public string ThinkingGeminiModelName { get; set; } = "gemini-2.0-flash-thinking-exp";
+    public string ThinkingGeminiApiKey { get; set; } = "";
     
     // Actuarial Keywords & Thresholds
     public string FixedCostKeywords { get; set; } = "SCHOOL,MORTGAGE,LEVIES,HOME LOAN,INSURANCE,BOND,INVESTMENT,LIFE,MEDICAL,NEDBHL,DISC PREM,WILLOWBROOKE,ADAM,NETFLIX,SPOTIFY,APPLE,GOOGLE,VODACOM,MTN,CELL C,TELKOM,ELECTRICITY,CITY OF,MUNICIPALITY,DISCOVERY,MULTICHOICE,DSTV,VUMATEL,AFRIHOST,MWEB,RAIN,OUTSURANCE,SANTAM,OLD MUTUAL,SANLAM,LIBERTY,ALLAN GRAY,CORONATION,RETIREMENT,PENSION,STALMENT,BOND,FIBRE,GYM,VIRGIN ACTIVE,PLANET FITNESS,AUDIBLE,AMAZON,CHATGPT,OPENAI";
@@ -136,6 +144,7 @@ public class SettingsService : ISettingsService
                     // Decrypt sensitive fields
                     settings.GeminiApiKey = TryDecrypt(settings.GeminiApiKey);
                     settings.FallbackGeminiApiKey = TryDecrypt(settings.FallbackGeminiApiKey);
+                    settings.ThinkingGeminiApiKey = TryDecrypt(settings.ThinkingGeminiApiKey);
                     settings.InvestecSecret = TryDecrypt(settings.InvestecSecret);
                     settings.InvestecApiKey = TryDecrypt(settings.InvestecApiKey);
                     settings.SmtpPass = TryDecrypt(settings.SmtpPass);
@@ -173,6 +182,7 @@ public class SettingsService : ISettingsService
             
             encryptedSettings.GeminiApiKey = TryEncrypt(settings.GeminiApiKey);
             encryptedSettings.FallbackGeminiApiKey = TryEncrypt(settings.FallbackGeminiApiKey);
+            encryptedSettings.ThinkingGeminiApiKey = TryEncrypt(settings.ThinkingGeminiApiKey);
             encryptedSettings.InvestecSecret = TryEncrypt(settings.InvestecSecret);
             encryptedSettings.InvestecApiKey = TryEncrypt(settings.InvestecApiKey);
             encryptedSettings.SmtpPass = TryEncrypt(settings.SmtpPass);

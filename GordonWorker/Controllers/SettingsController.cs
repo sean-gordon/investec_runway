@@ -144,6 +144,27 @@ public class SettingsController : ControllerBase
         }
     }
 
+    [HttpPost("test-thinking-ai")]
+    public async Task<IActionResult> TestThinkingAi()
+    {
+        try
+        {
+            var result = await _aiService.TestConnectionAsync(UserId, useFallback: false, useThinking: true);
+            if (result.Success)
+            {
+                return Ok(new { Message = "Connected to Thinking AI successfully." });
+            }
+            else
+            {
+                return StatusCode(500, new { Error = result.Error });
+            }
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Error = ex.Message });
+        }
+    }
+
     [HttpPost("test-whatsapp")]
     public async Task<IActionResult> TestWhatsApp()
     {
@@ -176,17 +197,17 @@ public class SettingsController : ControllerBase
     }
 
     [HttpPost("models")]
-    public async Task<IActionResult> GetModels([FromBody] AppSettings? settings = null, [FromQuery] bool useFallback = false)
+    public async Task<IActionResult> GetModels([FromBody] AppSettings? settings = null, [FromQuery] bool useFallback = false, [FromQuery] bool useThinking = false)
     {
         // If settings are provided in the body, use those. Otherwise load from DB.
         if (settings != null)
         {
-            var models = await _aiService.GetAvailableModelsAsync(UserId, useFallback, settings);
+            var models = await _aiService.GetAvailableModelsAsync(UserId, useFallback, useThinking, settings);
             return Ok(models);
         }
         else
         {
-            var models = await _aiService.GetAvailableModelsAsync(UserId, useFallback);
+            var models = await _aiService.GetAvailableModelsAsync(UserId, useFallback, useThinking);
             return Ok(models);
         }
     }

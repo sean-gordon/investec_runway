@@ -125,6 +125,13 @@ public class TelegramController : ControllerBase
     {
         try
         {
+            if (!body.TryGetProperty("Url", out var urlElement)) return BadRequest("Missing Url");
+            var url = urlElement.GetString();
+            if (string.IsNullOrWhiteSpace(url)) return BadRequest("Url empty");
+
+            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!int.TryParse(userIdStr, out var userId)) return Unauthorized();
+
             var settings = await _settingsService.GetSettingsAsync(userId);
             if (string.IsNullOrEmpty(settings.TelegramBotToken)) return BadRequest("Bot token not configured.");
 

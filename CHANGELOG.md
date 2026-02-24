@@ -21,6 +21,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OpenTelemetry distributed tracing
 - Admin dashboard for system monitoring
 
+## [2.6.0] - 2026-02-24
+
+### Added
+- **Advanced ML Categorisation**: Batch processing of unclassified transactions using improved AI semantic classification.
+- **Black Swan Risk Modeling**: Implemented Student's t-distribution into the actuarial engine for fat-tailed risk analysis.
+- **Interactive Chart Visualization**: Integrated Chart.js for dynamic, hoverable visualizations in the web UI.
+- **New Controllers**: `TransactionsController.cs` (batch categorization) and `ChartDataController.cs` (JSON data for charts).
+- **Actuarial Degrees of Freedom (ν)**: New setting to control "fat-tail" sensitivity in the survival probability model.
+
+### Changed
+- Refined categorization prompt in `AiService.cs` with support for South African specific merchants and rules.
+- Updated Dashboard UI in `index.html` to replace static ScottPlot images with interactive Chart.js visualizations.
+- Updated `ActuarialService.cs` to use Student's t CDF for runway probability calculation.
+
 ## [2.5.8] - 2026-02-24
 
 ### Security

@@ -1,0 +1,15 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+C:\AI\Gemini\InvestecRunway App\GordonWorker\Controllers\TelegramController.cs(128,68): error CS0103: The name 'userId' does not exist in the current context [C:\AI\Gemini\InvestecRunway App\GordonWorker\GordonWorker.csproj]
+C:\AI\Gemini\InvestecRunway App\GordonWorker\Controllers\TelegramController.cs(132,28): error CS0103: The name 'url' does not exist in the current context [C:\AI\Gemini\InvestecRunway App\GordonWorker\GordonWorker.csproj]
+C:\AI\Gemini\InvestecRunway App\GordonWorker\Controllers\TelegramController.cs(134,56): error CS0103: The name 'userId' does not exist in the current context [C:\AI\Gemini\InvestecRunway App\GordonWorker\GordonWorker.csproj]
+
+Build FAILED.
+
+C:\AI\Gemini\InvestecRunway App\GordonWorker\Controllers\TelegramController.cs(128,68): error CS0103: The name 'userId' does not exist in the current context [C:\AI\Gemini\InvestecRunway App\GordonWorker\GordonWorker.csproj]
+C:\AI\Gemini\InvestecRunway App\GordonWorker\Controllers\TelegramController.cs(132,28): error CS0103: The name 'url' does not exist in the current context [C:\AI\Gemini\InvestecRunway App\GordonWorker\GordonWorker.csproj]
+C:\AI\Gemini\InvestecRunway App\GordonWorker\Controllers\TelegramController.cs(134,56): error CS0103: The name 'userId' does not exist in the current context [C:\AI\Gemini\InvestecRunway App\GordonWorker\GordonWorker.csproj]
+    0 Warning(s)
+    3 Error(s)
+
+Time Elapsed 00:00:03.41

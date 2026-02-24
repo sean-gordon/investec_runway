@@ -228,16 +228,6 @@ public class ActuarialService : IActuarialService
         var stdDev = Math.Sqrt(weightedVar);
         var baseBurn = (decimal)weightedMean > 0 ? (decimal)weightedMean : 1m;
         
-        // SURVIVAL PROBABILITY: accounts for net balance after discrete overhead hit
-        double probSurvival = 0;
-        if (stdDev > 0)
-        {
-            var meanToPayday = (double)baseBurn * daysUntilNextSalary;
-            var stdDevToPayday = stdDev * Math.Sqrt(daysUntilNextSalary);
-            probSurvival = CumulativeDistributionFunction(((double)currentBalance - (double)upcomingOverhead - meanToPayday) / stdDevToPayday) * 100;
-        }
-        else { probSurvival = (currentBalance - upcomingOverhead) > (baseBurn * (decimal)daysUntilNextSalary) ? 100 : 0; }
-
         // PROJECTED SPEND: Separate linear variable projection + actual/expected fixed costs
         var variableSpendThisPeriod = thisPeriodExpenses.Where(t => !IsFixed(t)).Sum(t => t.Amount);
         var fixedSpendThisPeriod = thisPeriodExpenses.Where(t => IsFixed(t)).Sum(t => t.Amount);
@@ -245,6 +235,20 @@ public class ActuarialService : IActuarialService
         decimal projectedVariableSpend = (variableSpendThisPeriod / (decimal)daysIntoPeriod) * (decimal)avgCycleDays;
         decimal projectedMonthEndSpend = projectedVariableSpend + fixedSpendThisPeriod + upcomingOverhead;
         decimal projectedBalance = currentBalance - upcomingOverhead - (baseBurn * (decimal)daysUntilNextSalary);
+        
+        // 6. SOLVENCY PROBABILITY (Risk Modeling)
+        // We use Student's t-distribution for "Black Swan" fat tails to model extreme risk events.
+        // Probability that balance stays > 0 until next payday.
+        double probSurvival = 0;
+        if (stdDev > 0)
+        {
+            double totalRiskWindow = Math.Max(daysUntilNextSalary, 1.0);
+            double df = settings.ActuarialDegreesOfFreedom;
+            // t-statistic = (Projected Surplus) / (Volatility * sqrt(Time))
+            double tStatistic = (double)(projectedBalance / (decimal)(stdDev * Math.Sqrt(totalRiskWindow)));
+            probSurvival = StudentTCDF(tStatistic, df) * 100.0;
+        }
+        else { probSurvival = projectedBalance > 0 ? 100 : 0; }
 
         var dailyAvgSimple = validVariableExpenses.Any() ? (double)validVariableExpenses.Sum(t => t.Amount) / analysisWindowDays : 0;
 
@@ -285,7 +289,7 @@ public class ActuarialService : IActuarialService
         ));
     }
 
-    private double CumulativeDistributionFunction(double x)
+    private double NormalCDF(double x)
     {
         double a1 = 0.254829592; double a2 = -0.284496736; double a3 = 1.421413741; double a4 = -1.453152027; double a5 = 1.061405429; double p = 0.3275911;
         int sign = 1; if (x < 0) sign = -1;
@@ -293,5 +297,17 @@ public class ActuarialService : IActuarialService
         double t = 1.0 / (1.0 + p * x);
         double y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.Exp(-x * x);
         return 0.5 * (1.0 + sign * y);
+    }
+
+    /// <summary>
+    /// Student's t-distribution CDF approximation (Bailey's method)
+    /// Provides fat-tailed risk modeling for Black Swan events.
+    /// </summary>
+    private double StudentTCDF(double t, double df)
+    {
+        // Bailey's approximation: transform t to a normal z-score
+        // Highly accurate for df > 1
+        double z = t * (1.0 - 1.0 / (4.0 * df)) / Math.Sqrt(1.0 + t * t / (2.0 * df));
+        return NormalCDF(z);
     }
 }

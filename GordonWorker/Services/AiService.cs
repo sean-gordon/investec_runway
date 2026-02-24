@@ -58,30 +58,34 @@ public class AiService : IAiService
         var txData = batch.Select(t => new { t.Id, t.Description, t.Amount }).ToList();
         var txJson = JsonSerializer.Serialize(txData);
 
-        var systemPrompt = @"You are a financial data classifier.
-YOUR GOAL: Categorize bank transactions into semantic categories.
+        var systemPrompt = @"You are a financial data classifier for the Gordon Finance Engine.
+YOUR GOAL: Categorize bank transactions into semantic categories with high precision.
 
-CATEGORIES TO USE:
-- Groceries (Supermarkets, food stores)
-- Eating Out (Restaurants, fast food, coffee shops)
-- Transport (Fuel, Uber, parking, public transport)
-- Shopping (Retail stores, Amazon, general merchandise)
-- Bills & Utilities (Electricity, water, internet, mobile, insurance)
-- Subscriptions (Netflix, Spotify, gym, recurring software)
-- Health & Wellness (Pharmacy, doctors, fitness)
-- Entertainment (Movies, games, hobbies)
-- Transfer (Money moved between accounts)
-- Income (Salary, dividends, refunds - NOTE: income is NEGATIVE amount)
-- General (Anything that doesn't fit the above)
+CATEGORIES & RULES:
+- Groceries: Supermarkets, butcheries, bakeries (e.g., Checkers, Woolworths, Pick n Pay, Spar).
+- Eating Out: Restaurants, fast food, coffee shops, bars (e.g., Uber Eats, McDonald's, Starbucks).
+- Transport: Fuel, ride-sharing, tolls, car rentals, public transport (e.g., Engen, Shell, Uber, Bolt, Gautrain).
+- Shopping: Retailers, clothing, electronics, home goods, Amazon, Takealot.
+- Bills & Utilities: Electricity, water, rates, taxes, insurance, medical aid (e.g., City of Johannesburg, Discovery Health, Outsurance).
+- Subscriptions: Recurring digital services (e.g., Netflix, Spotify, Apple, Google, Microsoft, LinkedIn, Gym memberships).
+- Health & Wellness: Pharmacies, doctors, dentists, therapists, fitness.
+- Entertainment: Cinema, hobbies, events, gaming, betting.
+- Travel: Flights, hotels, Airbnb, travel agencies.
+- Personal Care: Hairdressers, spas, salons.
+- Education: School fees, university, courses, books.
+- Finance: Bank fees, interest, loan repayments (NOT internal transfers).
+- Transfer: Moving money between the user's own accounts (Internal transfers, credit card payments from current account).
+- Income: Salary, dividends, refunds, gifts RECEIVED (Note: amount is NEGATIVE for income in this system).
+- General: Anything that doesn't fit the above or is ambiguous.
 
-INPUT: A JSON list of transactions with ID and Description.
+CONTEXT: The user is likely in South Africa.
+INPUT: A JSON list of transactions with 'id', 'description', and 'amount'.
 OUTPUT: A JSON list of objects with 'id' and 'category'.
 
-EXAMPLES:
-Input: [{ ""id"": ""..."", ""description"": ""UBER EATS"", ""amount"": 150.00 }]
-Output: [{ ""id"": ""..."", ""category"": ""Eating Out"" }]
-
-Return ONLY the JSON array. Do NOT include any other text.";
+IMPORTANT:
+1. Be semantically smart (e.g., 'Woolworths Food' is Groceries, 'Woolworths' alone might be Shopping but usually Groceries).
+2. 'Uber' is Transport, 'Uber Eats' is Eating Out.
+3. Return ONLY the JSON array. NO other text.";
 
         try
         {

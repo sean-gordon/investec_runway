@@ -56,6 +56,7 @@ public class AppSettings
     public int MaxCycleDays { get; set; } = 45;
     public int DefaultCycleDays { get; set; } = 30;
     public double VarConfidenceInterval { get; set; } = 1.645;
+    public double ActuarialDegreesOfFreedom { get; set; } = 3.0; // Student's t-distribution DFA
 
     public string InvestecBaseUrl { get; set; } = "https://openapi.investec.com/";
     public string InvestecClientId { get; set; } = "";

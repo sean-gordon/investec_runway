@@ -58,16 +58,54 @@ public class SettingsController : ControllerBase
     public async Task<IActionResult> Get()
     {
         var settings = await _settingsService.GetSettingsAsync(UserId);
-        return Ok(settings);
+        
+        // SECURITY FIX: Mask sensitive fields before sending to frontend
+        var response = MaskSettings(settings);
+        return Ok(response);
+    }
+
+    private AppSettings MaskSettings(AppSettings settings)
+    {
+        // Clone settings to avoid affecting the service-level cache
+        var clone = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(settings))!;
+        
+        const string mask = "********";
+        if (!string.IsNullOrEmpty(clone.GeminiApiKey)) clone.GeminiApiKey = mask;
+        if (!string.IsNullOrEmpty(clone.FallbackGeminiApiKey)) clone.FallbackGeminiApiKey = mask;
+        if (!string.IsNullOrEmpty(clone.ThinkingGeminiApiKey)) clone.ThinkingGeminiApiKey = mask;
+        if (!string.IsNullOrEmpty(clone.InvestecSecret)) clone.InvestecSecret = mask;
+        if (!string.IsNullOrEmpty(clone.InvestecApiKey)) clone.InvestecApiKey = mask;
+        if (!string.IsNullOrEmpty(clone.SmtpPass)) clone.SmtpPass = mask;
+        if (!string.IsNullOrEmpty(clone.TwilioAuthToken)) clone.TwilioAuthToken = mask;
+        if (!string.IsNullOrEmpty(clone.InvestecClientId)) clone.InvestecClientId = mask;
+        if (!string.IsNullOrEmpty(clone.TwilioAccountSid)) clone.TwilioAccountSid = mask;
+        if (!string.IsNullOrEmpty(clone.TelegramBotToken)) clone.TelegramBotToken = mask;
+
+        return clone;
     }
 
     [HttpPut]
-    public async Task<IActionResult> Update([FromBody] AppSettings settings)
+    public async Task<IActionResult> Update([FromBody] AppSettings requestSettings)
     {
         try
         {
-            await _settingsService.UpdateSettingsAsync(UserId, settings);
-            return Ok(settings);
+            var existingSettings = await _settingsService.GetSettingsAsync(UserId);
+            
+            // SECURITY FIX: Only update sensitive fields if they aren't masked
+            const string mask = "********";
+            if (requestSettings.GeminiApiKey == mask) requestSettings.GeminiApiKey = existingSettings.GeminiApiKey;
+            if (requestSettings.FallbackGeminiApiKey == mask) requestSettings.FallbackGeminiApiKey = existingSettings.FallbackGeminiApiKey;
+            if (requestSettings.ThinkingGeminiApiKey == mask) requestSettings.ThinkingGeminiApiKey = existingSettings.ThinkingGeminiApiKey;
+            if (requestSettings.InvestecSecret == mask) requestSettings.InvestecSecret = existingSettings.InvestecSecret;
+            if (requestSettings.InvestecApiKey == mask) requestSettings.InvestecApiKey = existingSettings.InvestecApiKey;
+            if (requestSettings.SmtpPass == mask) requestSettings.SmtpPass = existingSettings.SmtpPass;
+            if (requestSettings.TwilioAuthToken == mask) requestSettings.TwilioAuthToken = existingSettings.TwilioAuthToken;
+            if (requestSettings.InvestecClientId == mask) requestSettings.InvestecClientId = existingSettings.InvestecClientId;
+            if (requestSettings.TwilioAccountSid == mask) requestSettings.TwilioAccountSid = existingSettings.TwilioAccountSid;
+            if (requestSettings.TelegramBotToken == mask) requestSettings.TelegramBotToken = existingSettings.TelegramBotToken;
+
+            await _settingsService.UpdateSettingsAsync(UserId, requestSettings);
+            return Ok(MaskSettings(requestSettings));
         }
         catch (Exception ex)
         {
@@ -96,21 +134,23 @@ public class SettingsController : ControllerBase
         try
         {
             var result = await _aiService.TestConnectionAsync(UserId, useFallback: false);
+            _statusService.IsAiPrimaryOnline = result.Success;
+            _statusService.PrimaryAiError = result.Success ? string.Empty : result.Error;
+            
             if (result.Success)
             {
-                _statusService.IsAiPrimaryOnline = true;
                 _statusService.LastAiCheck = DateTime.UtcNow;
                 return Ok(new { Message = "Connected to AI Brain successfully." });
             }
             else
             {
-                _statusService.IsAiPrimaryOnline = false;
                 return StatusCode(500, new { Error = result.Error });
             }
         }
         catch (Exception ex)
         {
             _statusService.IsAiPrimaryOnline = false;
+            _statusService.PrimaryAiError = ex.Message;
             return StatusCode(500, new { Error = ex.Message });
         }
     }
@@ -121,21 +161,44 @@ public class SettingsController : ControllerBase
         try
         {
             var result = await _aiService.TestConnectionAsync(UserId, useFallback: true);
+            _statusService.IsAiFallbackOnline = result.Success;
+            _statusService.FallbackAiError = result.Success ? string.Empty : result.Error;
+
             if (result.Success)
             {
-                _statusService.IsAiFallbackOnline = true;
                 _statusService.LastAiCheck = DateTime.UtcNow;
                 return Ok(new { Message = "Connected to Fallback AI Brain successfully." });
             }
             else
             {
-                _statusService.IsAiFallbackOnline = false;
                 return StatusCode(500, new { Error = result.Error });
             }
         }
         catch (Exception ex)
         {
             _statusService.IsAiFallbackOnline = false;
+            _statusService.FallbackAiError = ex.Message;
+            return StatusCode(500, new { Error = ex.Message });
+        }
+    }
+
+    [HttpPost("test-thinking-ai")]
+    public async Task<IActionResult> TestThinkingAi()
+    {
+        try
+        {
+            var result = await _aiService.TestConnectionAsync(UserId, useFallback: false, useThinking: true);
+            if (result.Success)
+            {
+                return Ok(new { Message = "Connected to Thinking AI successfully." });
+            }
+            else
+            {
+                return StatusCode(500, new { Error = result.Error });
+            }
+        }
+        catch (Exception ex)
+        {
             return StatusCode(500, new { Error = ex.Message });
         }
     }
@@ -172,17 +235,17 @@ public class SettingsController : ControllerBase
     }
 
     [HttpPost("models")]
-    public async Task<IActionResult> GetModels([FromBody] AppSettings? settings = null, [FromQuery] bool useFallback = false)
+    public async Task<IActionResult> GetModels([FromBody] AppSettings? settings = null, [FromQuery] bool useFallback = false, [FromQuery] bool useThinking = false)
     {
         // If settings are provided in the body, use those. Otherwise load from DB.
         if (settings != null)
         {
-            var models = await _aiService.GetAvailableModelsAsync(UserId, useFallback, settings);
+            var models = await _aiService.GetAvailableModelsAsync(UserId, useFallback, useThinking, settings);
             return Ok(models);
         }
         else
         {
-            var models = await _aiService.GetAvailableModelsAsync(UserId, useFallback);
+            var models = await _aiService.GetAvailableModelsAsync(UserId, useFallback, useThinking);
             return Ok(models);
         }
     }
@@ -200,12 +263,57 @@ public class SettingsController : ControllerBase
             isInvestecOnline = success;
         }
 
+        // Proactive AI check: if global status is offline, but THIS user might have a working connection,
+        // we check it now to provide immediate feedback on dashboard refresh.
+        // We only do this if it's currently offline to avoid overhead, and we add a cooldown for SUCCESSFUL checks.
+        // If it's currently offline, we ALWAYS allow one re-check to let the user "fix" it by refreshing.
+        var canRetryCheck = (DateTime.UtcNow - _statusService.LastAiCheck).TotalMinutes > 1;
+
+        var isPrimaryOnline = _statusService.IsAiPrimaryOnline;
+        var primaryError = _statusService.PrimaryAiError;
+
+        if (!isPrimaryOnline || canRetryCheck)
+        {
+            var (ok, err) = await _aiService.TestConnectionAsync(UserId, useFallback: false);
+            isPrimaryOnline = ok;
+            primaryError = ok ? string.Empty : err;
+
+            // Only update global status if the current user is an admin or the designated status user
+            if (User.IsInRole("Admin"))
+            {
+                _statusService.IsAiPrimaryOnline = ok;
+                _statusService.PrimaryAiError = primaryError;
+                _statusService.LastAiCheck = DateTime.UtcNow;
+            }
+        }
+
+        var isFallbackOnline = _statusService.IsAiFallbackOnline;
+        var fallbackError = _statusService.FallbackAiError;
+        var canRetryFallback = (DateTime.UtcNow - _statusService.LastAiCheck).TotalMinutes > 1;
+
+        if (settings.EnableAiFallback && (!isFallbackOnline || canRetryFallback))
+        {
+            var (ok, err) = await _aiService.TestConnectionAsync(UserId, useFallback: true);
+            isFallbackOnline = ok;
+            fallbackError = ok ? string.Empty : err;
+
+            // Only update global status if the current user is an admin or the designated status user
+            if (User.IsInRole("Admin"))
+            {
+                _statusService.IsAiFallbackOnline = ok;
+                _statusService.FallbackAiError = fallbackError;
+                _statusService.LastAiCheck = DateTime.UtcNow;
+            }
+        }
+
         return Ok(new 
         { 
             InvestecOnline = isInvestecOnline,
             DatabaseOnline = _statusService.IsDatabaseOnline,
-            AiPrimaryOnline = _statusService.IsAiPrimaryOnline,
-            AiFallbackOnline = _statusService.IsAiFallbackOnline,
+            AiPrimaryOnline = isPrimaryOnline,
+            AiPrimaryError = primaryError,
+            AiFallbackOnline = isFallbackOnline,
+            AiFallbackError = fallbackError,
             LastCheck = DateTime.UtcNow,
             LastAiCheck = _statusService.LastAiCheck,
             LastInvestecCheck = _statusService.LastInvestecCheck,

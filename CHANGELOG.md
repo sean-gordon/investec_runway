@@ -21,6 +21,151 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OpenTelemetry distributed tracing
 - Admin dashboard for system monitoring
 
+## [2.6.0] - 2026-02-24
+
+### Added
+- **Advanced ML Categorisation**: Batch processing of unclassified transactions using improved AI semantic classification.
+- **Black Swan Risk Modeling**: Implemented Student's t-distribution into the actuarial engine for fat-tailed risk analysis.
+- **Interactive Chart Visualization**: Integrated Chart.js for dynamic, hoverable visualizations in the web UI.
+- **New Controllers**: `TransactionsController.cs` (batch categorization) and `ChartDataController.cs` (JSON data for charts).
+- **Actuarial Degrees of Freedom (ν)**: New setting to control "fat-tail" sensitivity in the survival probability model.
+
+### Changed
+- Refined categorization prompt in `AiService.cs` with support for South African specific merchants and rules.
+- Updated Dashboard UI in `index.html` to replace static ScottPlot images with interactive Chart.js visualizations.
+- Updated `ActuarialService.cs` to use Student's t CDF for runway probability calculation.
+
+## [2.5.8] - 2026-02-24
+
+### Security
+- **Secret Masking:** Implemented masking for sensitive API keys (Gemini, Investec, Twilio, etc.) in `SettingsController` to prevent exposure in the browser. 
+- **Webhook Hardening:** Secured Telegram webhooks by requiring a secret SHA256-based token in the URL.
+- **Middleware Hardening:** Improved domain validation in `SecurityValidationMiddleware` and added basic CSRF mitigation via Origin checks.
+- **AI Prompt Safety:** Added sanitization and strict system prompt constraints to the AI SQL generation logic to prevent prompt injection and unauthorized DML/DDL.
+- **Secure Defaults:** Removed weak default admin password (`admin123`) in favor of environment-enforced or random secret generation.
+
+### Added
+- **Secure Mode Indicator:** Added a visual status badge to the UI header to indicate when hardening measures are active.
+
+---
+
+## [2.5.7] - 2026-02-24
+
+### Added
+- **Thinking Model Integration:** Implemented support for "Thinking Models" (e.g., Gemini 2.0 Thinking) to pre-process complex financial queries before generating the final response.
+- **Thinking Settings:** Added new user configuration options for `EnableThinkingModel`, `ThinkingAiProvider`, and `ThinkingModelName` in both backend and frontend.
+- **Improved UX:** Added "Brain Settings" section to the Brain tab in the web UI for easy configuration of primary and thinking models.
+
+### Fixed
+- **Telegram Reliability:** Further refinements to `TelegramChatService` for better stability during long-running AI operations.
+- **WhatsApp Integration:** Updated WhatsApp handler to respect the new thinking model settings for enhanced query analysis.
+
+---
+
+## [2.5.6] - 2026-02-23
+
+---
+
+## [2.5.5] - 2026-02-23
+
+### Fixed
+- **Upcoming Expenses Detection:** Implemented automated recurring expense detection in the actuarial engine. The system now identifies upcoming payments by looking back at the last 3 months of history, ensuring that subscriptions and regular utilities are correctly identified even if not manually added to keywords.
+- **Improved Actuarial Accuracy:** Refined the separation of fixed vs variable expenses by using the new recurring detection logic, leading to more accurate burn rate calculations and runway projections.
+- **Comprehensive Keywords:** Expanded the default `FixedCostKeywords` list with 30+ common South African and global recurring services (Netflix, Spotify, Google, Vodacom, Discovery, etc.) to improve out-of-the-box accuracy for new users.
+
+---
+
+## [2.5.4] - 2026-02-23
+
+### Changed
+- **Financial Report:** Removed Telegram chat history from the weekly financial report email to improve privacy and conciseness.
+
+---
+
+## [2.5.3] - 2026-02-23
+
+### Fixed
+- **AI Status Performance:** Optimized `GetStatus` to prevent redundant blocking calls when AI services are offline by ensuring the cooldown timer is updated even on connection failure.
+- **Improved Reliability:** Corrected a bug where the fallback AI check used a stale cooldown value, potentially leading to unnecessary connection attempts.
+- **Multi-Tenant Stability:** Refined global status reporting to strictly isolate per-user connection tests from the system-wide health indicators.
+
+---
+
+## [2.5.2] - 2026-02-23
+
+### Fixed
+- **AI Engine Offline Loop:** Resolved an issue where the dashboard would incorrectly show the AI engine as "Offline" on every refresh due to aggressive cooldowns and global status overrides.
+- **Improved Diagnostics:** Added specific error message tracking for AI connection failures, displaying the reason (e.g., "Connection Refused") directly on the dashboard for better troubleshooting.
+- **Smart Re-checks:** Implemented a bypass for the status cooldown when an AI provider is currently offline, allowing immediate re-verification upon manual page refresh.
+
+---
+
+## [2.5.1] - 2026-02-23
+
+### Fixed
+- **Gemini Rate Limiting:** Optimized background health checks to skip Gemini 'warming' for non-primary users, significantly reducing API quota consumption.
+- **Dashboard Refresh:** Implemented a 1-minute cooldown on proactive AI checks when refreshing the dashboard, preventing the "AI Offline" loop caused by hitting rate limits during page reloads.
+- **Resilience:** Disabled automatic retries for Gemini connectivity tests, as repeated immediate failures typically indicate quota exhaustion rather than transient network issues.
+
+---
+
+## [2.5.0] - 2026-02-23
+
+### Fixed
+- **Dashboard Stability:** Resolved an issue where the AI status would incorrectly show as "Offline" upon page refresh.
+- **Proactive Health Checks:** Implemented on-demand AI connectivity validation within the status endpoint, ensuring immediate "Online" feedback when refreshing the dashboard.
+- **Improved Monitoring Logic:** Refined the Connectivity Worker to report global status based on the first active administrator with configured settings, preventing empty system accounts from overriding the dashboard status.
+
+---
+
+## [2.4.9] - 2026-02-23
+
+### Fixed
+- **Gemini Model Persistence:** Refactored settings to use dedicated `GeminiModelName` and `FallbackGeminiModelName` fields. This resolves an issue where Gemini model selections were not persisting correctly or being cross-contaminated by Ollama settings.
+- **Telegram Management:** Updated chat commands to correctly target the new provider-specific model fields.
+
+---
+
+## [2.4.8] - 2026-02-23
+
+### Fixed
+- **Hotfix:** Resolved a compilation error (CS0136) in `AiService.cs` where the `content` variable name was being reused, causing Docker builds to fail.
+
+---
+
+## [2.4.7] - 2026-02-23
+
+### Changed
+- **Gemini Defaults:** Updated default Gemini model strings to `gemini-3-flash-preview` (latest) across the platform as the primary fallback and default.
+
+---
+
+## [2.4.6] - 2026-02-23
+
+### Changed
+- **Gemini Defaults:** Updated default Gemini model strings to `gemini-2.0-flash` (latest) as the primary fallback, replacing the legacy 1.5 versions.
+
+---
+
+## [2.4.5] - 2026-02-23
+
+### Fixed
+- **Gemini Reliability:** Corrected invalid default Gemini model names that were being used as fallbacks when model discovery failed.
+- **Gemini Resilience:** Improved parsing of Gemini API responses to gracefully handle safety filter refusals and other non-standard API returns.
+- **Connectivity Monitoring:** Refined the Connectivity Worker to specifically use the System Admin user for global dashboard status reporting, ensuring the "Online/Offline" indicators are stable even in multi-user environments.
+
+---
+
+## [2.4.4] - 2026-02-23
+
+### Fixed
+- **AI Reliability:** Implemented `keep_alive: -1` in Ollama requests to ensure models remain in memory and prevent "connection loss" issues.
+- **Resilience:** Increased initial Ollama request timeouts to 180 seconds to better handle model cold-starts from disk.
+- **Proactive Warming:** Updated the Connectivity Worker to check connectivity for all registered users (previously just admin) to keep individual user sessions and AI models active.
+
+### Added
+- **Mobile UI:** Implemented a persistent bottom navigation toolbar for mobile devices, providing direct access to key tabs (Dashboard, Connections, Brain, Math) when the sidebar is hidden.
+
 ---
 
 ## [2.4.3] - 2026-02-17

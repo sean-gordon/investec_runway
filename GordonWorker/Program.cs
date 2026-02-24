@@ -1,6 +1,7 @@
 using GordonWorker.Services;
 using GordonWorker.Workers;
 using GordonWorker.Middleware;
+using GordonWorker.Infrastructure;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -61,6 +62,14 @@ builder.Services.AddAuthentication(x =>
     };
 });
 
+builder.Services.AddLogging(logging =>
+{
+    logging.AddConsole();
+    var serviceProvider = builder.Services.BuildServiceProvider();
+    var sink = serviceProvider.GetRequiredService<ILogSinkService>();
+    logging.AddProvider(new InMemoryLoggerProvider(sink));
+});
+
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -110,6 +119,7 @@ builder.Services.AddTransient<IEmailService, EmailService>();
 builder.Services.AddScoped<IFinancialReportService, FinancialReportService>();
 builder.Services.AddScoped<ITransactionSyncService, TransactionSyncService>();
 builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
+builder.Services.AddSingleton<ILogSinkService, LogSinkService>();
 builder.Services.AddTransient<DatabaseInitializer>();
 
 // Background Services

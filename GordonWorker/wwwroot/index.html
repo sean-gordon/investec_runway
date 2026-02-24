@@ -806,6 +806,68 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- LOGS TAB -->
+                    <div v-if="activeTab === 'logs'" class="h-full flex flex-col space-y-4">
+                        <div class="flex flex-col md:flex-row md:items-center justify-between shrink-0 gap-4">
+                            <div>
+                                <h2 class="text-2xl font-bold text-slate-900 leading-tight">System Logs</h2>
+                                <p class="text-xs text-slate-500 font-medium">Live backend activity (Auto-refresh: 3s)
+                                </p>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <div class="relative">
+                                    <input v-model="logSearch" type="text" placeholder="Search logs..."
+                                        class="pl-8 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 w-48 shadow-sm transition-all">
+                                    <span class="absolute left-2.5 top-2.5 text-slate-400 text-xs text-[10px]">🔍</span>
+                                </div>
+                                <select v-model="logFilter"
+                                    class="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none font-bold text-slate-700 shadow-sm focus:border-brand-500 transition-all">
+                                    <option value="ALL">All Levels</option>
+                                    <option value="INFORMATION">Info</option>
+                                    <option value="WARNING">Warnings</option>
+                                    <option value="ERROR">Errors</option>
+                                </select>
+                                <button @click="fetchLogs"
+                                    class="p-2 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all shadow-sm active:scale-95">🔄</button>
+                            </div>
+                        </div>
+
+                        <div
+                            class="flex-1 bg-slate-900 rounded-3xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col">
+                            <div
+                                class="flex-1 overflow-y-auto p-4 font-mono text-[11px] leading-relaxed divide-y divide-slate-800">
+                                <div v-for="(log, idx) in filteredLogs" :key="idx"
+                                    class="py-3 flex items-start gap-4 hover:bg-white/5 transition-colors group">
+                                    <span class="text-slate-500 shrink-0 select-none tabular-nums">{{
+                                        formatTime(log.timestamp) }}</span>
+                                    <span :class="getLogLevelClass(log.level)"
+                                        class="px-2 py-0.5 rounded text-[9px] font-bold uppercase shrink-0 min-w-[80px] text-center shadow-sm">
+                                        {{ log.level }}
+                                    </span>
+                                    <div class="flex-1 min-w-0">
+                                        <span class="text-indigo-400 font-bold block md:inline mb-1 md:mb-0 md:mr-2">[{{
+                                            log.category.split('.').pop() }}]</span>
+                                        <span class="text-slate-300 break-words whitespace-pre-wrap">{{ log.message
+                                            }}</span>
+                                    </div>
+                                </div>
+                                <div v-if="filteredLogs.length === 0"
+                                    class="flex flex-col items-center justify-center h-full text-slate-500 py-20 opacity-50">
+                                    <span class="text-5xl mb-4">🧊</span>
+                                    <p class="font-bold">No logs found matching criteria.</p>
+                                </div>
+                            </div>
+                            <div
+                                class="px-6 py-3 bg-slate-800 text-slate-400 text-[10px] flex justify-between border-t border-slate-700 items-center">
+                                <span class="font-medium tracking-wide">Showing {{ filteredLogs.length }} / {{
+                                    logs.length }} entries</span>
+                                <span
+                                    class="text-brand-400 animate-pulse font-bold flex items-center gap-1.5 uppercase tracking-widest">
+                                    <span class="w-1.5 h-1.5 bg-brand-500 rounded-full"></span> LIVE STREAMING</span>
+                            </div>
+                        </div>
+                    </div>
                 </main>
             </div>
 
@@ -899,6 +961,7 @@
                         { id: 's-ai', name: 'Brain', icon: '🧠' },
                         { id: 's-math', name: 'Math & Logic', icon: '🧪' },
                         { id: 's-delivery', name: 'Email & Schedule', icon: '✉️' },
+                        { id: 'logs', name: 'System Logs', icon: '📋' },
                         { id: 'admin-users', name: 'User Mgmt', icon: '🛡️', adminOnly: true }
                     ],
                     settings: {
@@ -931,7 +994,32 @@
                     },
                     healthStats: null,
                     toast: { show: false, msg: '' },
-                    recentTransactions: []
+                    recentTransactions: [],
+                    logs: [],
+                    logFilter: 'ALL',
+                    logSearch: '',
+                    logPolling: null
+                }
+            },
+            computed: {
+                filteredLogs() {
+                    return this.logs.filter(l => {
+                        const matchLevel = this.logFilter === 'ALL' || l.level.toUpperCase() === this.logFilter;
+                        const matchSearch = !this.logSearch ||
+                            l.message.toLowerCase().includes(this.logSearch.toLowerCase()) ||
+                            l.category.toLowerCase().includes(this.logSearch.toLowerCase());
+                        return matchLevel && matchSearch;
+                    });
+                }
+            },
+            watch: {
+                activeTab(newTab) {
+                    if (newTab === 'logs') {
+                        this.fetchLogs();
+                        this.startLogPolling();
+                    } else {
+                        this.stopLogPolling();
+                    }
                 }
             },
             mounted() {
@@ -1112,6 +1200,27 @@
                         const res = await this.api('/api/settings/send-report-now', 'POST');
                         if (res.ok) this.showToast("Report Sent"); else this.showToast("Failed");
                     } finally { this.sendingReport = false; }
+                },
+                async fetchLogs() {
+                    const res = await this.api('/api/logs');
+                    if (res.ok) this.logs = await res.json();
+                },
+                startLogPolling() {
+                    this.stopLogPolling();
+                    this.logPolling = setInterval(() => this.fetchLogs(), 3000);
+                },
+                stopLogPolling() {
+                    if (this.logPolling) {
+                        clearInterval(this.logPolling);
+                        this.logPolling = null;
+                    }
+                },
+                getLogLevelClass(level) {
+                    level = level.toUpperCase();
+                    if (level === 'ERROR' || level === 'CRITICAL') return 'text-red-600 bg-red-50';
+                    if (level === 'WARNING') return 'text-amber-600 bg-amber-50';
+                    if (level === 'INFORMATION') return 'text-blue-600 bg-blue-50';
+                    return 'text-slate-500 bg-slate-50';
                 },
                 showToast(msg) {
                     this.toast = { show: true, msg };

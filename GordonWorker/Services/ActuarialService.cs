@@ -152,11 +152,17 @@ public class ActuarialService : IActuarialService
         var priorExpenses = expenses.Where(t => ToDate(t.TransactionDate) < periodStart).ToList();
         var recurringNames = priorExpenses
             .GroupBy(t => t.Category ?? NormalizeDescription(t.Description))
-            .Select(g => new { 
-                Name = g.Key, 
-                MonthCount = g.GroupBy(t => $"{t.TransactionDate.Year}-{t.TransactionDate.Month}").Count() 
+            .Select(g => {
+                var count = g.Count();
+                var avg = g.Average(t => t.Amount);
+                var variance = count > 1 ? g.Sum(t => (t.Amount - avg) * (t.Amount - avg)) / (count - 1) : 0m;
+                var stdDev = (decimal)Math.Sqrt((double)variance);
+                var cv = avg > 0 ? stdDev / avg : 0m;
+                var monthCount = g.GroupBy(t => $"{t.TransactionDate.Year}-{t.TransactionDate.Month}").Count();
+                var avgFreq = monthCount > 0 ? (decimal)count / monthCount : 0m;
+                return new { Name = g.Key, MonthCount = monthCount, CV = cv, AvgFreq = avgFreq };
             })
-            .Where(x => x.MonthCount >= 2 || IsFixedCost(x.Name, settings))
+            .Where(x => IsFixedCost(x.Name, settings) || (x.MonthCount >= 2 && x.CV < 0.1m && x.AvgFreq <= 5m))
             .Select(x => x.Name)
             .ToHashSet();
 
@@ -196,7 +202,7 @@ public class ActuarialService : IActuarialService
         {
             if (!thisPeriodExpenses.Any(t => IsFixed(t) && (t.Category ?? NormalizeDescription(t.Description)) == group.Key))
             {
-                upcomingFixedCosts.Add(new UpcomingExpense(group.Key, group.Average(t => t.Amount)));    
+                upcomingFixedCosts.Add(new UpcomingExpense(group.Key, group.Sum(t => t.Amount)));    
             }
         }
         decimal upcomingOverhead = upcomingFixedCosts.Sum(e => e.ExpectedAmount);
@@ -249,7 +255,7 @@ public class ActuarialService : IActuarialService
         var lastSalaryAmount = salaryPayments.Any() ? Math.Abs(salaryPayments[0].Amount) : 0m;
 
         // ACTUARIAL REFINEMENT: Calculate Total Daily Burn by combining variable baseBurn and amortized fixed costs
-        decimal totalMonthlyFixed = historicalFixedExpenses.Sum(g => g.Average(t => t.Amount));
+        decimal totalMonthlyFixed = historicalFixedExpenses.Sum(g => g.Sum(t => t.Amount));
         decimal dailyFixedBurn = totalMonthlyFixed / 30m;
         decimal trueDailyBurn = baseBurn + dailyFixedBurn;
         if (trueDailyBurn < 1m) trueDailyBurn = 1m;

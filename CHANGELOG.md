@@ -21,14 +21,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OpenTelemetry distributed tracing
 - Admin dashboard for system monitoring
 
+## [2.6.0] - 2026-02-24
+
+### Added
+- **Advanced ML Categorisation**: Batch processing of unclassified transactions using improved AI semantic classification.
+- **Black Swan Risk Modeling**: Implemented Student's t-distribution into the actuarial engine for fat-tailed risk analysis.
+- **Interactive Chart Visualization**: Integrated Chart.js for dynamic, hoverable visualizations in the web UI.
+- **New Controllers**: `TransactionsController.cs` (batch categorization) and `ChartDataController.cs` (JSON data for charts).
+- **Actuarial Degrees of Freedom (ν)**: New setting to control "fat-tail" sensitivity in the survival probability model.
+
+### Changed
+- Refined categorization prompt in `AiService.cs` with support for South African specific merchants and rules.
+- Updated Dashboard UI in `index.html` to replace static ScottPlot images with interactive Chart.js visualizations.
+- Updated `ActuarialService.cs` to use Student's t CDF for runway probability calculation.
+
+## [2.5.8] - 2026-02-24
+
+### Security
+- **Secret Masking:** Implemented masking for sensitive API keys (Gemini, Investec, Twilio, etc.) in `SettingsController` to prevent exposure in the browser. 
+- **Webhook Hardening:** Secured Telegram webhooks by requiring a secret SHA256-based token in the URL.
+- **Middleware Hardening:** Improved domain validation in `SecurityValidationMiddleware` and added basic CSRF mitigation via Origin checks.
+- **AI Prompt Safety:** Added sanitization and strict system prompt constraints to the AI SQL generation logic to prevent prompt injection and unauthorized DML/DDL.
+- **Secure Defaults:** Removed weak default admin password (`admin123`) in favor of environment-enforced or random secret generation.
+
+### Added
+- **Secure Mode Indicator:** Added a visual status badge to the UI header to indicate when hardening measures are active.
+
+---
+
+## [2.5.7] - 2026-02-24
+
+### Added
+- **Thinking Model Integration:** Implemented support for "Thinking Models" (e.g., Gemini 2.0 Thinking) to pre-process complex financial queries before generating the final response.
+- **Thinking Settings:** Added new user configuration options for `EnableThinkingModel`, `ThinkingAiProvider`, and `ThinkingModelName` in both backend and frontend.
+- **Improved UX:** Added "Brain Settings" section to the Brain tab in the web UI for easy configuration of primary and thinking models.
+
+### Fixed
+- **Telegram Reliability:** Further refinements to `TelegramChatService` for better stability during long-running AI operations.
+- **WhatsApp Integration:** Updated WhatsApp handler to respect the new thinking model settings for enhanced query analysis.
+
 ---
 
 ## [2.5.6] - 2026-02-23
-
-### Fixed
-- **Telegram Reliability:** Improved error handling and input validation in `TelegramChatService`.
-- **Slash Commands:** Enhanced command parsing to correctly handle model names containing underscores and improved state validation for provider selection.
-- **Improved UX:** Fixed several typos in Telegram status messages and added debug logging for command processing.
 
 ---
 

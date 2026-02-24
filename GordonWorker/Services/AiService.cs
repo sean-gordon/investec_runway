@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Threading;
+using System.Collections.Concurrent;
 using GordonWorker.Models;
 
 namespace GordonWorker.Services;
@@ -13,8 +14,8 @@ public interface IAiService
     Task<(Guid? TransactionId, string? Note)> AnalyzeExpenseExplanationAsync(int userId, string userMessage, List<Transaction> recentTransactions);
     Task<(bool IsAffordabilityCheck, decimal? Amount, string? Description)> AnalyzeAffordabilityAsync(int userId, string userMessage);
     Task<(bool IsChartRequest, string? ChartType, string? Sql, string? Title)> AnalyzeChartRequestAsync(int userId, string userMessage);
-    Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false);
-    Task<List<string>> GetAvailableModelsAsync(int userId, bool useFallback = false, AppSettings? overriddenSettings = null);
+    Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false, bool useThinking = false);
+    Task<List<string>> GetAvailableModelsAsync(int userId, bool useFallback = false, bool useThinking = false, AppSettings? overriddenSettings = null);
     Task<List<Transaction>> CategorizeTransactionsAsync(int userId, List<Transaction> transactions);
 }
 
@@ -28,6 +29,7 @@ public class AiService : IAiService
     private readonly HttpClient _httpClient;
     private readonly ILogger<AiService> _logger;
     private readonly ISettingsService _settingsService;
+    private readonly ConcurrentDictionary<string, (bool Success, string Error, DateTime Timestamp)> _testCache = new();
 
     public AiService(HttpClient httpClient, ILogger<AiService> logger, IConfiguration configuration, ISettingsService settingsService)
     {
@@ -56,30 +58,34 @@ public class AiService : IAiService
         var txData = batch.Select(t => new { t.Id, t.Description, t.Amount }).ToList();
         var txJson = JsonSerializer.Serialize(txData);
 
-        var systemPrompt = @"You are a financial data classifier.
-YOUR GOAL: Categorize bank transactions into semantic categories.
+        var systemPrompt = @"You are a financial data classifier for the Gordon Finance Engine.
+YOUR GOAL: Categorize bank transactions into semantic categories with high precision.
 
-CATEGORIES TO USE:
-- Groceries (Supermarkets, food stores)
-- Eating Out (Restaurants, fast food, coffee shops)
-- Transport (Fuel, Uber, parking, public transport)
-- Shopping (Retail stores, Amazon, general merchandise)
-- Bills & Utilities (Electricity, water, internet, mobile, insurance)
-- Subscriptions (Netflix, Spotify, gym, recurring software)
-- Health & Wellness (Pharmacy, doctors, fitness)
-- Entertainment (Movies, games, hobbies)
-- Transfer (Money moved between accounts)
-- Income (Salary, dividends, refunds - NOTE: income is NEGATIVE amount)
-- General (Anything that doesn't fit the above)
+CATEGORIES & RULES:
+- Groceries: Supermarkets, butcheries, bakeries (e.g., Checkers, Woolworths, Pick n Pay, Spar).
+- Eating Out: Restaurants, fast food, coffee shops, bars (e.g., Uber Eats, McDonald's, Starbucks).
+- Transport: Fuel, ride-sharing, tolls, car rentals, public transport (e.g., Engen, Shell, Uber, Bolt, Gautrain).
+- Shopping: Retailers, clothing, electronics, home goods, Amazon, Takealot.
+- Bills & Utilities: Electricity, water, rates, taxes, insurance, medical aid (e.g., City of Johannesburg, Discovery Health, Outsurance).
+- Subscriptions: Recurring digital services (e.g., Netflix, Spotify, Apple, Google, Microsoft, LinkedIn, Gym memberships).
+- Health & Wellness: Pharmacies, doctors, dentists, therapists, fitness.
+- Entertainment: Cinema, hobbies, events, gaming, betting.
+- Travel: Flights, hotels, Airbnb, travel agencies.
+- Personal Care: Hairdressers, spas, salons.
+- Education: School fees, university, courses, books.
+- Finance: Bank fees, interest, loan repayments (NOT internal transfers).
+- Transfer: Moving money between the user's own accounts (Internal transfers, credit card payments from current account).
+- Income: Salary, dividends, refunds, gifts RECEIVED (Note: amount is NEGATIVE for income in this system).
+- General: Anything that doesn't fit the above or is ambiguous.
 
-INPUT: A JSON list of transactions with ID and Description.
+CONTEXT: The user is likely in South Africa.
+INPUT: A JSON list of transactions with 'id', 'description', and 'amount'.
 OUTPUT: A JSON list of objects with 'id' and 'category'.
 
-EXAMPLES:
-Input: [{ ""id"": ""..."", ""description"": ""UBER EATS"", ""amount"": 150.00 }]
-Output: [{ ""id"": ""..."", ""category"": ""Eating Out"" }]
-
-Return ONLY the JSON array. Do NOT include any other text.";
+IMPORTANT:
+1. Be semantically smart (e.g., 'Woolworths Food' is Groceries, 'Woolworths' alone might be Shopping but usually Groceries).
+2. 'Uber' is Transport, 'Uber Eats' is Eating Out.
+3. Return ONLY the JSON array. NO other text.";
 
         try
         {
@@ -296,9 +302,24 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
         };
     }
 
-        public async Task<List<string>> GetAvailableModelsAsync(int userId, bool useFallback = false, AppSettings? overriddenSettings = null)        
+    private async Task<AiProviderConfig> GetThinkingProviderConfigAsync(int userId, AppSettings? overriddenSettings = null)
+    {
+        var settings = overriddenSettings ?? await _settingsService.GetSettingsAsync(userId);
+        return new AiProviderConfig
         {
-            var config = await GetProviderConfigAsync(userId, useFallback, overriddenSettings);
+            Provider = settings.ThinkingAiProvider,
+            OllamaUrl = settings.ThinkingOllamaBaseUrl,
+            ModelName = settings.ThinkingAiProvider == "Gemini" ? settings.ThinkingGeminiModelName : settings.ThinkingOllamaModelName,
+            GeminiKey = settings.ThinkingGeminiApiKey,
+            TimeoutSeconds = settings.AiTimeoutSeconds
+        };
+    }
+
+        public async Task<List<string>> GetAvailableModelsAsync(int userId, bool useFallback = false, bool useThinking = false, AppSettings? overriddenSettings = null)        
+        {
+            var config = useThinking 
+                ? await GetThinkingProviderConfigAsync(userId, overriddenSettings)
+                : await GetProviderConfigAsync(userId, useFallback, overriddenSettings);
     
             if (config.Provider == "Gemini")        {
             if (string.IsNullOrWhiteSpace(config.GeminiKey)) return new List<string>();
@@ -307,7 +328,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                 var url = $"https://generativelanguage.googleapis.com/v1beta/models?key={config.GeminiKey}";
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 var response = await _httpClient.GetAsync(url, cts.Token);
-                if (!response.IsSuccessStatusCode) return new List<string> { "gemini-3-flash-preview", "gemini-2.0-flash", "gemini-2.0-pro-exp" };
+                if (!response.IsSuccessStatusCode) return useThinking ? new List<string> { "gemini-2.0-flash-thinking-exp" } : new List<string> { "gemini-3-flash-preview" };
 
                 var responseString = await response.Content.ReadAsStringAsync();
                 using var doc = JsonDocument.Parse(responseString);
@@ -340,7 +361,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                 if (!modelNames.Any())
                 {
                     _logger.LogWarning("No suitable Gemini models found in API response. Returning defaults.");
-                    return new List<string> { "gemini-3-flash-preview", "gemini-2.0-flash", "gemini-2.0-pro-exp" };
+                    return new List<string> { "gemini-3-flash-preview" };
                 }
                 
                 return modelNames.Distinct().OrderByDescending(n => n).ToList();
@@ -348,7 +369,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to fetch Gemini models from Google API.");
-                return new List<string> { "gemini-3-flash-preview", "gemini-2.0-flash", "gemini-2.0-pro-exp" };
+                return useThinking ? new List<string> { "gemini-3-flash-preview" } : new List<string> { "gemini-3-flash-preview" };
             }
         }
 
@@ -373,12 +394,20 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
         catch (Exception ex) { _logger.LogError(ex, "Failed to fetch models from {Provider}.", useFallback ? "Fallback AI" : "Primary AI"); return new List<string>(); }
     }
 
-    public async Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false)
+    public async Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false, bool useThinking = false)
     {
-        var config = await GetProviderConfigAsync(userId, useFallback);
-        // Status tests use a more forgiving timeout (15s) and a single retry to handle "waking up" local models.
+        var cacheKey = $"{userId}_{useFallback}_{useThinking}";
+        if (_testCache.TryGetValue(cacheKey, out var cached) && (DateTime.UtcNow - cached.Timestamp).TotalMinutes < 15)
+        {
+            return (cached.Success, cached.Error);
+        }
+
+        var config = useThinking 
+            ? await GetThinkingProviderConfigAsync(userId)
+            : await GetProviderConfigAsync(userId, useFallback);
+
         var testTimeout = TimeSpan.FromSeconds(15); 
-        var maxAttempts = config.Provider == "Gemini" ? 1 : 2; // Don't retry Gemini, it just hits rate limits faster
+        var maxAttempts = config.Provider == "Gemini" ? 1 : 2; 
 
         for (int attempt = 1; attempt <= maxAttempts; attempt++)
         {
@@ -387,9 +416,19 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                 if (config.Provider == "Gemini")
                 {
                     if (string.IsNullOrWhiteSpace(config.GeminiKey)) return (false, "Gemini API Key is missing.");
-                    var result = await GenerateGeminiCompletionAsync(userId, "System", "Say 'OK'", config.GeminiKey, config.ModelName, timeoutSeconds: 15);
-                    if (string.IsNullOrWhiteSpace(result) || result.Contains("Error:")) return (false, result ?? "Empty response.");
-                    return (true, string.Empty);
+                    
+                    try 
+                    {
+                        var result = await GenerateGeminiCompletionAsync(userId, "System", "Say 'OK'", config.GeminiKey, config.ModelName, timeoutSeconds: 15);
+                        var finalResult = (Success: !string.IsNullOrWhiteSpace(result) && !result.Contains("Error:"), Error: result ?? "Empty response.");
+                        _testCache[cacheKey] = (finalResult.Success, finalResult.Error, DateTime.UtcNow);
+                        return finalResult;
+                    }
+                    catch (HttpRequestException ex) when (ex.Message.Contains("TooManyRequests") || ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                    {
+                        _logger.LogWarning("Gemini Rate Limit hit during test.");
+                        return (false, "Rate Limited - Gemini is cooling down. Please wait a few minutes.");
+                    }
                 }
 
                 if (string.IsNullOrWhiteSpace(config.OllamaUrl)) return (false, "Ollama URL is not configured.");
@@ -401,7 +440,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                     model = config.ModelName, 
                     prompt = "Say 'OK'", 
                     stream = false,
-                    keep_alive = -1 // Keep model in memory indefinitely to prevent "losing connection"
+                    keep_alive = -1 
                 };
                 var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
 
@@ -422,6 +461,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                     return (false, $"Ollama error ({response.StatusCode})");
                 }
 
+                _testCache[cacheKey] = (true, string.Empty, DateTime.UtcNow);
                 return (true, string.Empty);
             }
             catch (OperationCanceledException)
@@ -448,6 +488,14 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
     public async Task<string> GenerateSqlAsync(int userId, string userPrompt)
     {
         var today = DateTime.Today.ToString("yyyy-MM-dd");
+
+        // SECURITY FIX: Sanitize user prompt to prevent prompt injection
+        var sanitizedPrompt = userPrompt
+            .Replace(";", "")      // Prevent multi-statement
+            .Replace("--", "")     // Prevent comments
+            .Replace("/*", "")     // Prevent block comments
+            .Replace("*/", "");
+
         var systemPrompt = $@"You are a PostgreSQL expert for a financial database.
 Current Date: {today}
 
@@ -458,15 +506,22 @@ Table 'transactions' schema:
 - balance (numeric)
 - category (text)
 
+**CRITICAL SECURITY RULES:**
+1. Return ONLY a single SELECT statement.
+2. DO NOT return any DML or DDL (INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE).
+3. If the user request implies a destructive action, return 'SELECT ''Unauthorized'' as Error'.
+4. Use ILIKE for case-insensitive text matching.
+5. Filter by user_id = @userId ALWAYS.
+
 Return ONLY the raw SQL query. Do NOT use Markdown formatting (no ```sql). Do NOT include explanations.";
         
-        var response = await GenerateCompletionWithFallbackAsync(userId, systemPrompt, userPrompt);
+        var response = await GenerateCompletionWithFallbackAsync(userId, systemPrompt, sanitizedPrompt);
         
         // Safety check: If the AI failed and returned the graceful error message, 
         // we MUST NOT return it as SQL, otherwise it will crash the DB caller.
-        if (response.StartsWith("I'm so sorry") || response.Contains("analytical engine"))
+        if (response.StartsWith("I'm so sorry") || response.Contains("analytical engine") || response.Trim().StartsWith("SELECT 'Unauthorized'"))
         {
-            throw new InvalidOperationException("AI failed to generate a valid SQL query.");
+            throw new InvalidOperationException("AI failed to generate a valid or authorized SQL query.");
         }
 
         return response;
@@ -556,6 +611,40 @@ Context Information:
     private async Task<string> GenerateCompletionWithFallbackAsync(int userId, string system, string prompt, CancellationToken ct = default)
     {
         var settings = await _settingsService.GetSettingsAsync(userId);
+        var finalPrompt = prompt;
+
+        // Step 0: Let the "Thinking Model" have a crack at it first, if enabled and different from primary
+        if (settings.EnableThinkingModel)
+        {
+            var primaryConfig = await GetProviderConfigAsync(userId, useFallback: false);
+            var thinkingConfig = await GetThinkingProviderConfigAsync(userId);
+
+            // Only use thinking if it's actually a different configuration
+            bool isDifferent = thinkingConfig.Provider != primaryConfig.Provider || 
+                               thinkingConfig.ModelName != primaryConfig.ModelName || 
+                               thinkingConfig.OllamaUrl != primaryConfig.OllamaUrl;
+
+            if (isDifferent)
+            {
+                try
+                {
+                    _logger.LogInformation("Engaging Thinking Model ({Provider}:{Model}) for user {UserId}", thinkingConfig.Provider, thinkingConfig.ModelName, userId);
+                    var thinkingSystem = "Analyze this query and provide deep reasoning and a breakdown of the steps needed to answer it accurately. Be strategic. If this is a report request, outline the key financial insights that should be highlighted.";
+                    var reasoning = await GenerateCompletionAsync(userId, thinkingSystem, prompt, useFallback: false, ct, useThinking: true);
+                    
+                    if (!string.IsNullOrWhiteSpace(reasoning))
+                    {
+                        finalPrompt = $"[REASONING_AND_STRATEGY]\n{reasoning}\n[/REASONING_AND_STRATEGY]\n\n[ORIGINAL_QUERY]\n{prompt}\n[/ORIGINAL_QUERY]";
+                        _logger.LogInformation("Thinking Model step complete for user {UserId}", userId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Thinking model failed for user {UserId}. Proceeding without additional reasoning.", userId);
+                }
+            }
+        }
+
         var maxAttempts = settings.AiRetryAttempts;
 
         // Step 1: Give your primary AI a go...
@@ -564,12 +653,17 @@ Context Information:
             try
             {
                 _logger.LogInformation("Trying to reach your primary AI (attempt {Attempt}/{Max}) for user {UserId}", attempt, maxAttempts, userId);
-                var result = await GenerateCompletionAsync(userId, system, prompt, useFallback: false, ct);
+                var result = await GenerateCompletionAsync(userId, system, finalPrompt, useFallback: false, ct);
 
                 if (!string.IsNullOrWhiteSpace(result))
                 {
                     _logger.LogInformation("Success! Primary AI responded on attempt {Attempt}", attempt);
-                    return result;
+                    var review = await ReviewOutputWithThinkingModelAsync(userId, system, prompt, result, settings, ct);
+                    if (review.IsApproved) return result;
+                    
+                    _logger.LogWarning("Thinking model rejected primary AI output. Sending feedback for rewrite.");
+                    finalPrompt = $"[PREVIOUS_RESPONSE_REJECTED]\n{result}\n[/PREVIOUS_RESPONSE_REJECTED]\n\n[REVIEW_FEEDBACK]\n{review.Feedback}\n[/REVIEW_FEEDBACK]\n\n[ORIGINAL_QUERY]\n{prompt}\n[/ORIGINAL_QUERY]\n\nPlease try again and fix the issues mentioned in the feedback.";
+                    continue; // Loop again!
                 }
 
                 _logger.LogWarning("The primary AI gave us an empty response on attempt {Attempt}", attempt);
@@ -594,12 +688,17 @@ Context Information:
                 try
                 {
                     _logger.LogInformation("Trying to reach your BACKUP AI (attempt {Attempt}/{Max}) for user {UserId}", attempt, maxAttempts, userId);
-                    var result = await GenerateCompletionAsync(userId, system, prompt, useFallback: true, ct);
+                    var result = await GenerateCompletionAsync(userId, system, finalPrompt, useFallback: true, ct);
 
                     if (!string.IsNullOrWhiteSpace(result))
                     {
                         _logger.LogInformation("Success! Backup AI saved the day on attempt {Attempt}", attempt);
-                        return result;
+                        var review = await ReviewOutputWithThinkingModelAsync(userId, system, prompt, result, settings, ct);
+                        if (review.IsApproved) return result;
+
+                        _logger.LogWarning("Thinking model rejected backup AI output. Sending feedback for rewrite.");
+                        finalPrompt = $"[PREVIOUS_RESPONSE_REJECTED]\n{result}\n[/PREVIOUS_RESPONSE_REJECTED]\n\n[REVIEW_FEEDBACK]\n{review.Feedback}\n[/REVIEW_FEEDBACK]\n\n[ORIGINAL_QUERY]\n{prompt}\n[/ORIGINAL_QUERY]\n\nPlease try again and fix the issues mentioned in the feedback.";
+                        continue;
                     }
 
                     _logger.LogWarning("The backup AI also gave us an empty response on attempt {Attempt}", attempt);
@@ -618,9 +717,50 @@ Context Information:
         return "I'm so sorry, but I'm having a bit of trouble connecting to my 'analytical engine' right now. Your financial data is perfectly safe and I'm still syncing your transactions in the background. Please try again in a few minutes, or double-check your AI settings on the dashboard.";
     }
 
-    private async Task<string> GenerateCompletionAsync(int userId, string system, string prompt, bool useFallback, CancellationToken ct = default)
+    private async Task<(bool IsApproved, string Feedback)> ReviewOutputWithThinkingModelAsync(int userId, string system, string originalPrompt, string aiResult, AppSettings settings, CancellationToken ct)
     {
-        var config = await GetProviderConfigAsync(userId, useFallback);
+        if (!settings.EnableThinkingModel) return (true, "");
+
+        var primaryConfig = await GetProviderConfigAsync(userId, useFallback: false);
+        var thinkingConfig = await GetThinkingProviderConfigAsync(userId);
+        bool isDifferent = thinkingConfig.Provider != primaryConfig.Provider || 
+                           thinkingConfig.ModelName != primaryConfig.ModelName || 
+                           thinkingConfig.OllamaUrl != primaryConfig.OllamaUrl;
+
+        if (!isDifferent) return (true, "");
+
+        try
+        {
+            _logger.LogInformation("Reviewing output with Thinking Model for user {UserId}", userId);
+            
+            var reviewSystemPrompt = @"You are a strict quality control reviewer. Your job is to review the output of another AI to ensure it directly answers the user's prompt truthfully and accurately, following all rules.
+IF the response is perfect: Output EXACTLY '<APPROVED>' and nothing else.
+IF the response completely missed the prompt or is missing critical information: Provide specific feedback on what is wrong and what needs to be fixed. Do NOT rewrite the response yourself, just provide the feedback.";
+            
+            var reviewPrompt = $"[ORIGINAL_SYSTEM_PROMPT]\n{system}\n[/ORIGINAL_SYSTEM_PROMPT]\n\n[USER_PROMPT]\n{originalPrompt}\n[/USER_PROMPT]\n\n[AI_PROPOSED_RESPONSE]\n{aiResult}\n[/AI_PROPOSED_RESPONSE]\n\nAnalyze the AI_PROPOSED_RESPONSE. If it is high quality and addresses the USER_PROMPT according to the ORIGINAL_SYSTEM_PROMPT, output strictly <APPROVED>. If it is bad, write down exactly what is wrong so the AI can try again.";
+
+            var reviewedResult = await GenerateCompletionAsync(userId, reviewSystemPrompt, reviewPrompt, useFallback: false, ct, useThinking: true);
+
+            if (!string.IsNullOrWhiteSpace(reviewedResult))
+            {
+                _logger.LogInformation("Thinking Model review complete for user {UserId}", userId);
+                if (reviewedResult.Trim().Contains("<APPROVED>")) return (true, "");
+                return (false, reviewedResult);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Thinking model failed to review output for user {UserId}. Returning original output.", userId);
+        }
+
+        return (true, "");
+    }
+
+    private async Task<string> GenerateCompletionAsync(int userId, string system, string prompt, bool useFallback, CancellationToken ct = default, bool useThinking = false)
+    {
+        var config = useThinking 
+            ? await GetThinkingProviderConfigAsync(userId)
+            : await GetProviderConfigAsync(userId, useFallback);
 
         if (config.Provider == "Gemini")
         {

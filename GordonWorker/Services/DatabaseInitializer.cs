@@ -41,7 +41,20 @@ public class DatabaseInitializer
 
             // Seed System Admin
             var adminUser = _configuration["ADMIN_USERNAME"] ?? "admin";
-            var adminPass = _configuration["ADMIN_PASSWORD"] ?? "admin123";
+            var adminPass = _configuration["ADMIN_PASSWORD"];
+            
+            if (string.IsNullOrEmpty(adminPass))
+            {
+                // SECURITY FIX: Do not use weak default "admin123".
+                // If not provided in ENV, we generate a random one and log it once.
+                _logger.LogWarning("ADMIN_PASSWORD not set in environment. Generating a secure one...");
+                adminPass = Guid.NewGuid().ToString("N").Substring(0, 12);
+                _logger.LogCritical("******************************************************************");
+                _logger.LogCritical($" INITIAL ADMIN PASSWORD: {adminPass} ");
+                _logger.LogCritical(" PLEASE RECORD THIS AND CHANGE IT IN THE UI IMMEDIATELY. ");
+                _logger.LogCritical("******************************************************************");
+            }
+
             var adminHash = BCrypt.Net.BCrypt.HashPassword(adminPass);
 
             var upsertAdminSql = @"

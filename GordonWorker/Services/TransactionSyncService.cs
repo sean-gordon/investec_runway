@@ -64,7 +64,9 @@ public class TransactionSyncService : ITransactionSyncService
         // Initial sync or force repull should always be silent to prevent notification storms
         if (transactionCount == 0) silent = true;
 
-        var daysBack = transactionCount == 0 ? settings.HistoryDaysBack : settings.SyncBufferDays; 
+        // If fewer than 50 transactions exist, treat as effectively empty and pull full history
+        // This prevents the "only today's data" bug if an initial sync was interrupted
+        var daysBack = transactionCount < 50 ? settings.HistoryDaysBack : settings.SyncBufferDays; 
         var fromDate = DateTimeOffset.UtcNow.AddDays(-daysBack);
 
         bool triggerReport = false;

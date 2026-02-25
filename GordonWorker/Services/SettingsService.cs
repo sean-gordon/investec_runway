@@ -62,7 +62,7 @@ public class AppSettings
     public string InvestecClientId { get; set; } = "";
     public string InvestecSecret { get; set; } = "";
     public string InvestecApiKey { get; set; } = "";
-    public double SyncBufferDays { get; set; } = 0.05; // ~1 hour
+    public double SyncBufferDays { get; set; } = 7; // 7 days buffer for regular syncs
 
     // Data Settings
     public int HistoryDaysBack { get; set; } = 180;

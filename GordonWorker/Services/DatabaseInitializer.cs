@@ -169,6 +169,25 @@ public class DatabaseInitializer
             // Cleanup old config table
             try { await connection.ExecuteAsync("DROP TABLE IF EXISTS system_config;"); } catch {}
 
+            // 5. Historic Data Migration: Fix Transaction Polarity
+            try
+            {
+                _logger.LogInformation("Ensuring historic transactions have correct polarity...");
+                var fixPolaritySql = @"
+                    UPDATE transactions SET amount = ABS(amount) WHERE category = 'CREDIT';
+                    UPDATE transactions SET amount = -ABS(amount) WHERE category = 'DEBIT';
+                ";
+                var rowsAffected = await connection.ExecuteAsync(fixPolaritySql);
+                if (rowsAffected > 0)
+                {
+                    _logger.LogInformation("Corrected polarity for {Count} historic transactions.", rowsAffected);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to run transaction polarity migration.");
+            }
+
             _logger.LogInformation("Database multi-tenant schema ensured.");
         }
         catch (Exception ex)

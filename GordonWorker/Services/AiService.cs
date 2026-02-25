@@ -75,8 +75,11 @@ CATEGORIES & RULES:
 - Education: School fees, university, courses, books.
 - Finance: Bank fees, interest, loan repayments (NOT internal transfers).
 - Transfer: Moving money between the user's own accounts (Internal transfers, credit card payments from current account).
-- Income: Salary, dividends, refunds, gifts RECEIVED (Note: amount is NEGATIVE for income in this system).
+- Income: Salary, dividends, refunds, gifts RECEIVED (Note: amount is POSITIVE for income).
+- Expense: Any payment, debit, or purchase (Note: amount is NEGATIVE for expenses).
 - General: Anything that doesn't fit the above or is ambiguous.
+
+POLARITY RULE: In this system, NEGATIVE (-) indicates money LEAVING (Expense), and POSITIVE (+) indicates money ENTERING (Income). Use this as a primary lead for categorization.
 
 CONTEXT: The user is likely in South Africa.
 INPUT: A JSON list of transactions with 'id', 'description', and 'amount'.
@@ -134,14 +137,14 @@ IMPORTANT:
         var systemPrompt = $@"You are a financial data architect.
 Current Date: {today}
 Table 'transactions': id (uuid), user_id (int), transaction_date (timestamptz), description (text), amount (numeric), category (text).
-NOTE: Amount POSITIVE = Expense, NEGATIVE = Income.
+NOTE: Amount NEGATIVE = Expense, POSITIVE = Income.
 
 YOUR GOAL: Detect if the user wants a chart/graph of specific data.
 
 EXAMPLES:
-- 'Show me a barchart of Uber Eats' -> {{ ""isChart"": true, ""type"": ""bar"", ""sql"": ""SELECT description as Label, SUM(amount) as Value FROM transactions WHERE user_id = @userId AND description ILIKE '%UBER EATS%' GROUP BY description"", ""title"": ""Uber Eats Spending"" }}
-- 'Graph my total spending per day' -> {{ ""isChart"": true, ""type"": ""line"", ""sql"": ""SELECT transaction_date::date as Label, SUM(amount) as Value FROM transactions WHERE user_id = @userId AND amount > 0 GROUP BY 1 ORDER BY 1"", ""title"": ""Daily Spending Trend"" }}
-- 'Who are my top 5 categories?' -> {{ ""isChart"": true, ""type"": ""bar"", ""sql"": ""SELECT category as Label, SUM(amount) as Value FROM transactions WHERE user_id = @userId AND amount > 0 GROUP BY 1 ORDER BY 2 DESC LIMIT 5"", ""title"": ""Top 5 Categories"" }}
+- 'Show me a barchart of Uber Eats' -> {{ ""isChart"": true, ""type"": ""bar"", ""sql"": ""SELECT description as Label, SUM(ABS(amount)) as Value FROM transactions WHERE user_id = @userId AND description ILIKE '%UBER EATS%' GROUP BY description"", ""title"": ""Uber Eats Spending"" }}
+- 'Graph my total spending per day' -> {{ ""isChart"": true, ""type"": ""line"", ""sql"": ""SELECT transaction_date::date as Label, SUM(ABS(amount)) as Value FROM transactions WHERE user_id = @userId AND amount < 0 GROUP BY 1 ORDER BY 1"", ""title"": ""Daily Spending Trend"" }}
+- 'Who are my top 5 categories?' -> {{ ""isChart"": true, ""type"": ""bar"", ""sql"": ""SELECT category as Label, SUM(ABS(amount)) as Value FROM transactions WHERE user_id = @userId AND amount < 0 GROUP BY 1 ORDER BY 2 DESC LIMIT 5"", ""title"": ""Top 5 Categories"" }}
 
 OUTPUT FORMAT:
 JSON ONLY: {{ ""isChart"": boolean, ""type"": ""bar|line"", ""sql"": ""..."", ""title"": ""..."" }}
@@ -328,7 +331,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                 var url = $"https://generativelanguage.googleapis.com/v1beta/models?key={config.GeminiKey}";
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 var response = await _httpClient.GetAsync(url, cts.Token);
-                if (!response.IsSuccessStatusCode) return useThinking ? new List<string> { "gemini-2.0-flash-thinking-exp" } : new List<string> { "gemini-3-flash-preview" };
+                if (!response.IsSuccessStatusCode) return useThinking ? new List<string> { "gemini-2.0-flash-thinking-exp" } : new List<string> { "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro" };
 
                 var responseString = await response.Content.ReadAsStringAsync();
                 using var doc = JsonDocument.Parse(responseString);
@@ -369,7 +372,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to fetch Gemini models from Google API.");
-                return useThinking ? new List<string> { "gemini-3-flash-preview" } : new List<string> { "gemini-3-flash-preview" };
+                return useThinking ? new List<string> { "gemini-2.0-flash-thinking-exp" } : new List<string> { "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro" };
             }
         }
 
@@ -502,7 +505,7 @@ Current Date: {today}
 Table 'transactions' schema:
 - transaction_date (timestamptz)
 - description (text)
-- amount (numeric): IMPORTANT - POSITIVE numbers are Expenses (Debits), NEGATIVE numbers are Income/Credits (Deposits).
+- amount (numeric): IMPORTANT - NEGATIVE numbers are Expenses (Debits), POSITIVE numbers are Income/Credits (Deposits).
 - balance (numeric)
 - category (text)
 
@@ -673,8 +676,14 @@ Context Information:
                 _logger.LogWarning(ex, "Primary AI request failed on attempt {Attempt}/{Max}", attempt, maxAttempts);
                 if (attempt == maxAttempts) break;
                 
+                var delaySeconds = 2 * attempt;
+                if (ex is HttpRequestException httpEx && httpEx.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                {
+                    delaySeconds = 38; // Give Gemini time to cool down based on 'Retry-After: 36s' bounds
+                }
+                
                 // Wait a bit longer each time before we try again (exponential backoff)
-                await Task.Delay(TimeSpan.FromSeconds(2 * attempt), ct); 
+                await Task.Delay(TimeSpan.FromSeconds(delaySeconds), ct); 
             }
         }
 
@@ -706,8 +715,15 @@ Context Information:
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "Backup AI request failed on attempt {Attempt}/{Max}", attempt, maxAttempts);
-                    if (attempt < maxAttempts)
-                        await Task.Delay(TimeSpan.FromSeconds(2 * attempt), ct);
+                    if (attempt == maxAttempts) break;
+                    
+                    var delaySeconds = 2 * attempt;
+                    if (ex is HttpRequestException httpEx && httpEx.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                    {
+                        delaySeconds = 38;
+                    }
+                    
+                    await Task.Delay(TimeSpan.FromSeconds(delaySeconds), ct);
                 }
             }
         }
@@ -839,7 +855,7 @@ IF the response completely missed the prompt or is missing critical information:
         {
             var errorBody = await response.Content.ReadAsStringAsync(cts.Token);
             _logger.LogWarning("Gemini API error: {Status} - {Body}", response.StatusCode, errorBody);
-            throw new HttpRequestException($"Gemini API returned {response.StatusCode}");
+            throw new HttpRequestException($"Gemini API returned {response.StatusCode}", null, response.StatusCode);
         }
         var responseString = await response.Content.ReadAsStringAsync(cts.Token);
         using var doc = JsonDocument.Parse(responseString);

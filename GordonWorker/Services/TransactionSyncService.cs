@@ -87,8 +87,15 @@ public class TransactionSyncService : ITransactionSyncService
             {
                 if (newTxs.Count <= 50 || forceCategorizeAll)
                 {
-                    _logger.LogInformation("User {UserId}: Categorizing {Count} new transactions with AI...", userId, newTxs.Count);
-                    await _aiService.CategorizeTransactionsAsync(userId, newTxs);
+                    try
+                    {
+                        _logger.LogInformation("User {UserId}: Categorizing {Count} new transactions with AI...", userId, newTxs.Count);
+                        await _aiService.CategorizeTransactionsAsync(userId, newTxs);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "User {UserId}: AI categorization failed or service offline. Transactions will be stored uncategorized and retried in background.", userId);
+                    }
                 }
                 else
                 {
@@ -182,15 +189,22 @@ public class TransactionSyncService : ITransactionSyncService
             var uncategorized = (await connection.QueryAsync<Transaction>(sql, new { UserId = userId })).ToList();
             if (uncategorized.Any())
             {
-                _logger.LogInformation("User {UserId}: Processing background backlog of {Count} uncategorized/undetermined transactions.", userId, uncategorized.Count);
-                var categorized = await _aiService.CategorizeTransactionsAsync(userId, uncategorized);
-                foreach (var tx in categorized)
+                try
                 {
-                    await connection.ExecuteAsync(
-                        "UPDATE transactions SET category = @Category, is_ai_processed = TRUE WHERE id = @Id AND user_id = @UserId",
-                        new { tx.Category, tx.Id, UserId = userId });
+                    _logger.LogInformation("User {UserId}: Processing background backlog of {Count} uncategorized/undetermined transactions.", userId, uncategorized.Count);
+                    var categorized = await _aiService.CategorizeTransactionsAsync(userId, uncategorized);
+                    foreach (var tx in categorized)
+                    {
+                        await connection.ExecuteAsync(
+                            "UPDATE transactions SET category = @Category, is_ai_processed = TRUE WHERE id = @Id AND user_id = @UserId",
+                            new { tx.Category, tx.Id, UserId = userId });
+                    }
+                    _logger.LogInformation("User {UserId}: Background categorization step complete.", userId);
                 }
-                _logger.LogInformation("User {UserId}: Background categorization step complete.", userId);
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "User {UserId}: Background AI categorization failed. Will retry in next sync cycle.", userId);
+                }
             }
         }
     }

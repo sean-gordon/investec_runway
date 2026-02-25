@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Global Inverted Transaction Signs:** The system now correctly imports incomes as Positive (`+`) and expenses as Negative (`-`), reflecting standard accounting principles.
 - **Backend Algorithms:** Rewrote algorithmic thresholds in `ActuarialService.cs`, `AiService.cs`, and `SubscriptionService.cs` to accurately perform statistical analysis using exact absolute magnitudes under the new paradigm.
 - **Frontend Refactor:** The Vue `index.html` frontend styling correctly parses the new numerical polarities and applies red and green coloring.
+- **AI Resilience:** Wrapped transaction categorization in try-catch blocks to prevent sync failures if AI services (Ollama/Gemini) are offline. Failed attempts are automatically retried by the background process.
 
 ## [2.6.4] - 2026-02-25
 

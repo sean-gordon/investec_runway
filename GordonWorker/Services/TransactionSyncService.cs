@@ -6,7 +6,7 @@ namespace GordonWorker.Services;
 
 public interface ITransactionSyncService
 {
-    Task SyncTransactionsAsync(int userId, bool silent = false, CancellationToken token = default);
+    Task SyncTransactionsAsync(int userId, bool silent = false, bool forceCategorizeAll = false, CancellationToken token = default);
     Task ForceRepullAsync(int userId);
 }
 
@@ -44,7 +44,7 @@ public class TransactionSyncService : ITransactionSyncService
         _aiService = aiService;
     }
 
-    public async Task SyncTransactionsAsync(int userId, bool silent = false, CancellationToken token = default)
+    public async Task SyncTransactionsAsync(int userId, bool silent = false, bool forceCategorizeAll = false, CancellationToken token = default)
     {
         var settings = await _settingsService.GetSettingsAsync(userId);
         
@@ -85,8 +85,15 @@ public class TransactionSyncService : ITransactionSyncService
             
             if (newTxs.Any())
             {
-                _logger.LogInformation("User {UserId}: Categorizing {Count} new transactions with AI...", userId, newTxs.Count);
-                await _aiService.CategorizeTransactionsAsync(userId, newTxs);
+                if (newTxs.Count <= 50 || forceCategorizeAll)
+                {
+                    _logger.LogInformation("User {UserId}: Categorizing {Count} new transactions with AI...", userId, newTxs.Count);
+                    await _aiService.CategorizeTransactionsAsync(userId, newTxs);
+                }
+                else
+                {
+                    _logger.LogWarning("User {UserId}: Skipping AI categorization for {Count} transactions (batch too large). Guarding against timeouts. Will process in background.", userId, newTxs.Count);
+                }
             }
 
             foreach (var tx in newTxs)
@@ -166,6 +173,26 @@ public class TransactionSyncService : ITransactionSyncService
         {
             _logger.LogInformation("User {UserId}: Sync complete. No new transactions found.", userId);
         }
+
+        // --- BACKGROUND AUTOCATEGORIZATION ---
+        // Slowly chip away at the unprocessed backlog (or transactions that have "General" or no category)
+        if (!forceCategorizeAll)
+        {
+            var sql = "SELECT * FROM transactions WHERE user_id = @UserId AND (is_ai_processed = FALSE OR category IS NULL OR category = 'General' OR category = 'Undetermined') LIMIT 50";
+            var uncategorized = (await connection.QueryAsync<Transaction>(sql, new { UserId = userId })).ToList();
+            if (uncategorized.Any())
+            {
+                _logger.LogInformation("User {UserId}: Processing background backlog of {Count} uncategorized/undetermined transactions.", userId, uncategorized.Count);
+                var categorized = await _aiService.CategorizeTransactionsAsync(userId, uncategorized);
+                foreach (var tx in categorized)
+                {
+                    await connection.ExecuteAsync(
+                        "UPDATE transactions SET category = @Category, is_ai_processed = TRUE WHERE id = @Id AND user_id = @UserId",
+                        new { tx.Category, tx.Id, UserId = userId });
+                }
+                _logger.LogInformation("User {UserId}: Background categorization step complete.", userId);
+            }
+        }
     }
 
     public async Task ForceRepullAsync(int userId)
@@ -173,6 +200,6 @@ public class TransactionSyncService : ITransactionSyncService
         using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
         await connection.OpenAsync();
         await connection.ExecuteAsync("DELETE FROM transactions WHERE user_id = @userId", new { userId });
-        await SyncTransactionsAsync(userId, silent: true);
+        await SyncTransactionsAsync(userId, silent: true, forceCategorizeAll: true);
     }
 }

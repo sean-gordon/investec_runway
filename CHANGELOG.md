@@ -21,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OpenTelemetry distributed tracing
 - Admin dashboard for system monitoring
 
+## [2.6.4] - 2026-02-25
+
+### Changed
+- **Massive Sync Protection:** `TransactionSyncService` now guards against 90-second AI timeouts during massive historical syncs. If an automated background sync pulls >50 new transactions at once, it skips upfront AI categorisation.
+- **Background Autocategorisation:** `TransactionSyncService` now automatically snags up to 50 'Undetermined', 'General', or `NULL` transactions at the end of every 60-second sync pulse and quietly categorises them in the background until the backlog is cleared.
+- **Force Refresh Override:** Manually clicking 'Force Refresh' in the UI still forces the AI to categorise the entire historical batch sequentially.
+
+---
+
 ## [2.6.3] - 2026-02-25
 
 ### Fixed

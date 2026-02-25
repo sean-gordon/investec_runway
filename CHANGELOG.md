@@ -21,6 +21,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OpenTelemetry distributed tracing
 - Admin dashboard for system monitoring
 
+## [2.6.2] - 2026-02-25
+
+### Added
+- **Log File Persistence:** `LogSinkService` now writes every log entry to rotating daily files under `/app/logs/`. Three folders are maintained simultaneously:
+  - `info/` — Information, Warning, Error, Critical (e.g. `gordon-2026-02-25.log`)
+  - `error/` — Error and Critical only (for quick triage)
+  - `debug/` — All levels including Debug and Trace (complete trace)
+- **Log File Browser (UI):** New panel on the Logs tab to browse, view (last 200 lines), and download saved log files by level and date — directly from the dashboard.
+- **Log File API:** Three new endpoints on `LogsController`:
+  - `GET /api/logs/files` — list all available log files by level
+  - `GET /api/logs/files/{level}/{date}` — download full log file
+  - `GET /api/logs/files/{level}/{date}/tail?lines=200` — tail last N lines
+- **ActuarialService Structured Logging:** Injected `ILogger<ActuarialService>` and added detailed log lines at every key decision point: salary detection (keyword vs fallback), expense filtering (totals and excluded transfers), period start date, daily burn rate, runway, survival probability, spend projections, and upcoming fixed costs.
+
+### Changed
+- `LogSinkService` now dual-sinks: in-memory ring buffer (1000 entries, Logs tab) **and** disk files (unlimited, persisted across restarts). File I/O errors are silently swallowed to prevent log failures from crashing the app.
+
+---
+
 ## [2.6.1] - 2026-02-25
 
 ### Added

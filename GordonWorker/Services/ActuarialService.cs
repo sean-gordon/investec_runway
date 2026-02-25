@@ -1,5 +1,6 @@
 using GordonWorker.Models;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 
 namespace GordonWorker.Services;
 
@@ -41,9 +42,11 @@ public interface IActuarialService
 
 public class ActuarialService : IActuarialService
 {
-    // No injected services needed, purely mathematical logic based on inputs
-    public ActuarialService()
+    private readonly ILogger<ActuarialService> _logger;
+
+    public ActuarialService(ILogger<ActuarialService> logger)
     {
+        _logger = logger;
     }
 
     public string NormalizeDescription(string? desc)
@@ -73,6 +76,7 @@ public class ActuarialService : IActuarialService
     public async Task<FinancialHealthReport> AnalyzeHealthAsync(List<Transaction> history, decimal currentBalance, AppSettings settings)
     {
         var today = DateTime.Today;
+        _logger.LogInformation("[Actuarial] Starting analysis. History: {Count} transactions, Balance: {Balance:F2}", history.Count, currentBalance);
 
         // SALARY DETECTION (Sign-Agnostic)
         var salaryPayments = history
@@ -88,6 +92,15 @@ public class ActuarialService : IActuarialService
                 .OrderByDescending(t => Math.Abs(t.Amount))
                 .Take(1)
                 .ToList();
+            if (salaryPayments.Any())
+                _logger.LogInformation("[Actuarial] Salary: not found by keyword — fallback to largest credit: {Desc} (R{Amount:F2})", salaryPayments[0].Description, Math.Abs(salaryPayments[0].Amount));
+            else
+                _logger.LogWarning("[Actuarial] Salary: no salary detected by keyword or fallback. Using rolling 28-day period.");
+        }
+        else
+        {
+            _logger.LogInformation("[Actuarial] Salary: detected {Count} salary payment(s). Latest: {Desc} on {Date:yyyy-MM-dd} (R{Amount:F2})",
+                salaryPayments.Count, salaryPayments[0].Description, salaryPayments[0].TransactionDate.LocalDateTime, Math.Abs(salaryPayments[0].Amount));
         }
 
         DateTime periodStart; DateTime prevPeriodStart; DateTime prevPeriodEnd;
@@ -128,14 +141,24 @@ public class ActuarialService : IActuarialService
         if (compareDateInPrevPeriod > prevPeriodEnd) compareDateInPrevPeriod = prevPeriodEnd;
 
         // Investec: Debits are POSITIVE (> 0), Credits are NEGATIVE (< 0). 
+        var internalTransfers = history.Where(t => t.IsInternalTransfer()).ToList();
         var expenses = history.Where(t => t.Amount > 0 && 
                                         !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase) && 
                                         !t.IsInternalTransfer()).ToList();
+        _logger.LogInformation("[Actuarial] Expense filter: {Total} total txns → {ExpenseCount} expenses, {CreditCount} credits/income, {TransferCount} internal transfers excluded",
+            history.Count, expenses.Count,
+            history.Count(t => t.Amount < 0 && !t.IsInternalTransfer()),
+            internalTransfers.Count);
+        if (internalTransfers.Any())
+            _logger.LogDebug("[Actuarial] Internal transfers excluded: {Descriptions}",
+                string.Join(", ", internalTransfers.Select(t => t.Description).Distinct().Take(10)));
         
         DateTime ToDate(DateTimeOffset dto) => dto.LocalDateTime.Date;
         var thisPeriodExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= periodStart).ToList(); 
         var lastPeriodFullExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= prevPeriodStart && ToDate(t.TransactionDate) < prevPeriodEnd).ToList();
         var lastPeriodPtdExpenses = expenses.Where(t => ToDate(t.TransactionDate) >= prevPeriodStart && ToDate(t.TransactionDate) < compareDateInPrevPeriod).ToList();
+        _logger.LogInformation("[Actuarial] Period: start={PeriodStart:yyyy-MM-dd}, daysIn={DaysIn:F0}, nextSalary={NextSalary:yyyy-MM-dd} ({DaysUntil:F0} days away)",
+            periodStart, daysIntoPeriod, nextExpectedSalary, daysUntilNextSalary);
 
         var spendThisPeriod = thisPeriodExpenses.Sum(t => t.Amount);
         var spendLastPeriodFull = lastPeriodFullExpenses.Sum(t => t.Amount);
@@ -206,6 +229,9 @@ public class ActuarialService : IActuarialService
             }
         }
         decimal upcomingOverhead = upcomingFixedCosts.Sum(e => e.ExpectedAmount);
+        _logger.LogInformation("[Actuarial] Upcoming fixed costs: {Count} items totalling R{Total:F2}. Items: {Names}",
+            upcomingFixedCosts.Count, upcomingOverhead,
+            upcomingFixedCosts.Any() ? string.Join(", ", upcomingFixedCosts.Select(c => $"{c.Name} (R{c.ExpectedAmount:F2})")) : "none");
 
         // ACTUARIAL REFINEMENT: Calculate baseBurn ONLY from variable expenses to prevent double-counting fixed costs
         var variableExpenses = expenses.Where(t => !IsFixed(t)).ToList();
@@ -263,6 +289,15 @@ public class ActuarialService : IActuarialService
         decimal dailyFixedBurn = totalMonthlyFixed / 30m;
         decimal trueDailyBurn = baseBurn + dailyFixedBurn;
         if (trueDailyBurn < 1m) trueDailyBurn = 1m;
+
+        var expectedRunway = (currentBalance - upcomingOverhead) / trueDailyBurn;
+        var safeRunway = (currentBalance - upcomingOverhead) / (decimal)((double)trueDailyBurn + stdDev);
+        _logger.LogInformation(
+            "[Actuarial] Burn: base={BaseBurn:F2}/day, fixed={FixedBurn:F2}/day, total={TotalBurn:F2}/day | Runway: expected={ExpectedRunway:F1}d, safe={SafeRunway:F1}d | Survival: {SurvivalProb:F1}% | Trend: {Trend}",
+            baseBurn, dailyFixedBurn, trueDailyBurn, expectedRunway, safeRunway, probSurvival, trendDirection);
+        _logger.LogInformation(
+            "[Actuarial] Projections: spendThisPeriod=R{SpendThis:F2}, projectedCycleSpend=R{ProjSpend:F2}, projectedPaydayBalance=R{PaydayBal:F2}",
+            spendThisPeriod, projectedMonthEndSpend, projectedBalance);
 
         return await Task.FromResult(new FinancialHealthReport(
             CurrentBalance: currentBalance,

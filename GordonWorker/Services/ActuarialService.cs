@@ -88,8 +88,8 @@ public class ActuarialService : IActuarialService
         if (!salaryPayments.Any())
         {
             salaryPayments = history
-                .Where(t => (t.Amount < -settings.SalaryFallbackThreshold || t.Category == "CREDIT") && (t.TransactionDate.LocalDateTime.Date >= today.AddDays(-settings.SalaryFallbackDays)))
-                .OrderByDescending(t => Math.Abs(t.Amount))
+                .Where(t => (t.Amount > settings.SalaryFallbackThreshold || t.Category == "CREDIT") && (t.TransactionDate.LocalDateTime.Date >= today.AddDays(-settings.SalaryFallbackDays)))
+                .OrderByDescending(t => t.Amount)
                 .Take(1)
                 .ToList();
             if (salaryPayments.Any())
@@ -140,14 +140,20 @@ public class ActuarialService : IActuarialService
         var compareDateInPrevPeriod = prevPeriodStart.AddDays(daysIntoPeriod);
         if (compareDateInPrevPeriod > prevPeriodEnd) compareDateInPrevPeriod = prevPeriodEnd;
 
-        // Investec: Debits are POSITIVE (> 0), Credits are NEGATIVE (< 0). 
+        // Debits are NEGATIVE (< 0), Credits are POSITIVE (> 0). 
         var internalTransfers = history.Where(t => t.IsInternalTransfer()).ToList();
-        var expenses = history.Where(t => t.Amount > 0 && 
+        var expenses = history.Where(t => t.Amount < 0 && 
                                         !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase) && 
-                                        !t.IsInternalTransfer()).ToList();
+                                        !t.IsInternalTransfer())
+                              .Select(t => new Transaction {
+                                  Id = t.Id, AccountId = t.AccountId, TransactionDate = t.TransactionDate,
+                                  Description = t.Description, Amount = Math.Abs(t.Amount), Balance = t.Balance,
+                                  Category = t.Category, IsAiProcessed = t.IsAiProcessed, Notes = t.Notes
+                              }).ToList();
+                              
         _logger.LogInformation("[Actuarial] Expense filter: {Total} total txns → {ExpenseCount} expenses, {CreditCount} credits/income, {TransferCount} internal transfers excluded",
             history.Count, expenses.Count,
-            history.Count(t => t.Amount < 0 && !t.IsInternalTransfer()),
+            history.Count(t => t.Amount > 0 && !t.IsInternalTransfer()),
             internalTransfers.Count);
         if (internalTransfers.Any())
             _logger.LogDebug("[Actuarial] Internal transfers excluded: {Descriptions}",

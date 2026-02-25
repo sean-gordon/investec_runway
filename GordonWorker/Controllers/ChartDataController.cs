@@ -35,9 +35,9 @@ public class ChartDataController : ControllerBase
 
         using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
         var sql = @"
-            SELECT COALESCE(category, 'Uncategorized') AS Label, SUM(amount) AS Value 
+            SELECT COALESCE(category, 'Uncategorized') AS Label, SUM(ABS(amount)) AS Value 
             FROM transactions 
-            WHERE user_id = @userId AND amount > 0 AND transaction_date >= NOW() - INTERVAL '1 day' * @days
+            WHERE user_id = @userId AND amount < 0 AND transaction_date >= NOW() - INTERVAL '1 day' * @days
             GROUP BY category
             ORDER BY Value DESC";
 
@@ -69,7 +69,7 @@ public class ChartDataController : ControllerBase
 
         foreach (var tx in history)
         {
-            runner += tx.Amount; // Reverse the transaction to go back in time
+            runner -= tx.Amount; // Reverse the transaction to go back in time (Current - Tx = Previous)
             points.Add(new DailyBalancePoint { Date = tx.TransactionDate, Balance = runner });
         }
 

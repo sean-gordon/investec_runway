@@ -75,7 +75,7 @@ CATEGORIES & RULES:
 - Education: School fees, university, courses, books.
 - Finance: Bank fees, interest, loan repayments (NOT internal transfers).
 - Transfer: Moving money between the user's own accounts (Internal transfers, credit card payments from current account).
-- Income: Salary, dividends, refunds, gifts RECEIVED (Note: amount is NEGATIVE for income in this system).
+- Income: Salary, dividends, refunds, gifts RECEIVED (Note: amount is POSITIVE for income in this system).
 - General: Anything that doesn't fit the above or is ambiguous.
 
 CONTEXT: The user is likely in South Africa.
@@ -134,14 +134,14 @@ IMPORTANT:
         var systemPrompt = $@"You are a financial data architect.
 Current Date: {today}
 Table 'transactions': id (uuid), user_id (int), transaction_date (timestamptz), description (text), amount (numeric), category (text).
-NOTE: Amount POSITIVE = Expense, NEGATIVE = Income.
+NOTE: Amount NEGATIVE = Expense, POSITIVE = Income.
 
 YOUR GOAL: Detect if the user wants a chart/graph of specific data.
 
 EXAMPLES:
-- 'Show me a barchart of Uber Eats' -> {{ ""isChart"": true, ""type"": ""bar"", ""sql"": ""SELECT description as Label, SUM(amount) as Value FROM transactions WHERE user_id = @userId AND description ILIKE '%UBER EATS%' GROUP BY description"", ""title"": ""Uber Eats Spending"" }}
-- 'Graph my total spending per day' -> {{ ""isChart"": true, ""type"": ""line"", ""sql"": ""SELECT transaction_date::date as Label, SUM(amount) as Value FROM transactions WHERE user_id = @userId AND amount > 0 GROUP BY 1 ORDER BY 1"", ""title"": ""Daily Spending Trend"" }}
-- 'Who are my top 5 categories?' -> {{ ""isChart"": true, ""type"": ""bar"", ""sql"": ""SELECT category as Label, SUM(amount) as Value FROM transactions WHERE user_id = @userId AND amount > 0 GROUP BY 1 ORDER BY 2 DESC LIMIT 5"", ""title"": ""Top 5 Categories"" }}
+- 'Show me a barchart of Uber Eats' -> {{ ""isChart"": true, ""type"": ""bar"", ""sql"": ""SELECT description as Label, SUM(ABS(amount)) as Value FROM transactions WHERE user_id = @userId AND description ILIKE '%UBER EATS%' GROUP BY description"", ""title"": ""Uber Eats Spending"" }}
+- 'Graph my total spending per day' -> {{ ""isChart"": true, ""type"": ""line"", ""sql"": ""SELECT transaction_date::date as Label, SUM(ABS(amount)) as Value FROM transactions WHERE user_id = @userId AND amount < 0 GROUP BY 1 ORDER BY 1"", ""title"": ""Daily Spending Trend"" }}
+- 'Who are my top 5 categories?' -> {{ ""isChart"": true, ""type"": ""bar"", ""sql"": ""SELECT category as Label, SUM(ABS(amount)) as Value FROM transactions WHERE user_id = @userId AND amount < 0 GROUP BY 1 ORDER BY 2 DESC LIMIT 5"", ""title"": ""Top 5 Categories"" }}
 
 OUTPUT FORMAT:
 JSON ONLY: {{ ""isChart"": boolean, ""type"": ""bar|line"", ""sql"": ""..."", ""title"": ""..."" }}
@@ -502,7 +502,7 @@ Current Date: {today}
 Table 'transactions' schema:
 - transaction_date (timestamptz)
 - description (text)
-- amount (numeric): IMPORTANT - POSITIVE numbers are Expenses (Debits), NEGATIVE numbers are Income/Credits (Deposits).
+- amount (numeric): IMPORTANT - NEGATIVE numbers are Expenses (Debits), POSITIVE numbers are Income/Credits (Deposits).
 - balance (numeric)
 - category (text)
 

@@ -153,7 +153,7 @@ public class InvestecClient : IInvestecClient
                     AccountId = accountId, 
                     TransactionDate = t.TransactionDate == default ? DateTimeOffset.UtcNow : t.TransactionDate.ToUniversalTime(), 
                     Description = t.Description, 
-                    Amount = t.Amount, 
+                    Amount = -t.Amount, 
                     Balance = t.AccountBalance, 
                     Category = t.Type, 
                     IsAiProcessed = false 

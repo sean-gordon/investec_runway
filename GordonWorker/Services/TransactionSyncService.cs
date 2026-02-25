@@ -124,19 +124,19 @@ public class TransactionSyncService : ITransactionSyncService
                     
                     if (!silent)
                     {
-                        if (tx.Amount >= settings.UnexpectedPaymentThreshold)
+                        if (tx.Amount <= -settings.UnexpectedPaymentThreshold)
                         {
                             var normalizedDesc = _actuarialService.NormalizeDescription(tx.Description);
                             if (!_actuarialService.IsFixedCost(normalizedDesc, settings) && !_actuarialService.IsSalary(tx, settings))
                             {
                                 triggerReport = true;
-                                pendingAlerts.Add($"🚨 <b>High Spend:</b> {TelegramService.EscapeHtml(tx.Description)} (R{tx.Amount:N2})");
+                                pendingAlerts.Add($"🚨 <b>High Spend:</b> {TelegramService.EscapeHtml(tx.Description)} (R{Math.Abs(tx.Amount):N2})");
                             }
                         }
-                        if (tx.Amount <= -settings.IncomeAlertThreshold) 
+                        if (tx.Amount >= settings.IncomeAlertThreshold) 
                         {
                             triggerReport = true;
-                            pendingAlerts.Add($"💰 <b>Large Income:</b> {TelegramService.EscapeHtml(tx.Description)} (R{Math.Abs(tx.Amount):N2})");
+                            pendingAlerts.Add($"💰 <b>Large Income:</b> {TelegramService.EscapeHtml(tx.Description)} (R{tx.Amount:N2})");
                         }
                     }
                 }

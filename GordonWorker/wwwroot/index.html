@@ -435,10 +435,9 @@
                                         </div>
                                         <div class="text-right ml-4">
                                             <p class="text-sm font-bold"
-                                                :class="tx.amount > 0 ? 'text-red-600' : 'text-green-600'">
-                                                {{ tx.amount > 0 ? '-' : '+' }} {{ formatCurrency(Math.abs(tx.amount))
-                                                }}
-                                            </p>
+                                                :class="tx.amount < 0 ? 'text-red-600' : 'text-green-600'">
+                                                {{ tx.amount < 0 ? '-' : '+' }} {{ formatCurrency(Math.abs(tx.amount))
+                                                    }} </p>
                                         </div>
                                     </div>
                                 </div>

@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Historic Data Migration:** `DatabaseInitializer.cs` now automatically corrects the polarity of existing historical transactions in the database upon startup.
 - **Backend Algorithms:** Rewrote algorithmic thresholds in `ActuarialService.cs`, `AiService.cs`, and `SubscriptionService.cs` to accurately perform statistical analysis using exact absolute magnitudes under the new paradigm.
 - **Frontend Refactor:** The Vue `index.html` frontend styling correctly parses the new numerical polarities and applies red and green coloring.
+- **AI Resilience (Rate Limits):** Enhanced `AiService` exponential backoff logic to explicitly trap HTTP 429 (`Too Many Requests`) errors from Ollama and Gemini, automatically scaling the retry delay up to 38+ seconds to respect quota cooldowns cleanly.
+- **Gemini Model Discovery:** If the Google AI Studio model API endpoint hits rate limits or fails, the system now falls back to a robust hardcoded array of standard models (e.g., `gemini-2.5-flash`, `gemini-2.0-flash`, `gemini-1.5-pro`) ensuring the user can still select a model in the UI.
 - **AI Resilience:** Wrapped transaction categorization in try-catch blocks to prevent sync failures if AI services (Ollama/Gemini) are offline. Failed attempts are automatically retried by the background process.
 
 ## [2.6.4] - 2026-02-25

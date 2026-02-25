@@ -331,7 +331,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                 var url = $"https://generativelanguage.googleapis.com/v1beta/models?key={config.GeminiKey}";
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 var response = await _httpClient.GetAsync(url, cts.Token);
-                if (!response.IsSuccessStatusCode) return useThinking ? new List<string> { "gemini-2.0-flash-thinking-exp" } : new List<string> { "gemini-3-flash-preview" };
+                if (!response.IsSuccessStatusCode) return useThinking ? new List<string> { "gemini-2.0-flash-thinking-exp" } : new List<string> { "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro" };
 
                 var responseString = await response.Content.ReadAsStringAsync();
                 using var doc = JsonDocument.Parse(responseString);
@@ -372,7 +372,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to fetch Gemini models from Google API.");
-                return useThinking ? new List<string> { "gemini-3-flash-preview" } : new List<string> { "gemini-3-flash-preview" };
+                return useThinking ? new List<string> { "gemini-2.0-flash-thinking-exp" } : new List<string> { "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro" };
             }
         }
 
@@ -676,8 +676,14 @@ Context Information:
                 _logger.LogWarning(ex, "Primary AI request failed on attempt {Attempt}/{Max}", attempt, maxAttempts);
                 if (attempt == maxAttempts) break;
                 
+                var delaySeconds = 2 * attempt;
+                if (ex is HttpRequestException httpEx && httpEx.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                {
+                    delaySeconds = 38; // Give Gemini time to cool down based on 'Retry-After: 36s' bounds
+                }
+                
                 // Wait a bit longer each time before we try again (exponential backoff)
-                await Task.Delay(TimeSpan.FromSeconds(2 * attempt), ct); 
+                await Task.Delay(TimeSpan.FromSeconds(delaySeconds), ct); 
             }
         }
 
@@ -709,8 +715,15 @@ Context Information:
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "Backup AI request failed on attempt {Attempt}/{Max}", attempt, maxAttempts);
-                    if (attempt < maxAttempts)
-                        await Task.Delay(TimeSpan.FromSeconds(2 * attempt), ct);
+                    if (attempt == maxAttempts) break;
+                    
+                    var delaySeconds = 2 * attempt;
+                    if (ex is HttpRequestException httpEx && httpEx.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                    {
+                        delaySeconds = 38;
+                    }
+                    
+                    await Task.Delay(TimeSpan.FromSeconds(delaySeconds), ct);
                 }
             }
         }
@@ -842,7 +855,7 @@ IF the response completely missed the prompt or is missing critical information:
         {
             var errorBody = await response.Content.ReadAsStringAsync(cts.Token);
             _logger.LogWarning("Gemini API error: {Status} - {Body}", response.StatusCode, errorBody);
-            throw new HttpRequestException($"Gemini API returned {response.StatusCode}");
+            throw new HttpRequestException($"Gemini API returned {response.StatusCode}", null, response.StatusCode);
         }
         var responseString = await response.Content.ReadAsStringAsync(cts.Token);
         using var doc = JsonDocument.Parse(responseString);

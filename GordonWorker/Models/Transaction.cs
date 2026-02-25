@@ -19,7 +19,9 @@ public class Transaction
             Description.Contains("INT-ACC", StringComparison.OrdinalIgnoreCase) || 
             Description.Contains("INTERNAL TRANSFER", StringComparison.OrdinalIgnoreCase) ||
             Description.Contains("SAVINGS TO", StringComparison.OrdinalIgnoreCase) ||
-            Description.Contains("TO SAVINGS", StringComparison.OrdinalIgnoreCase))) 
+            Description.Contains("TO SAVINGS", StringComparison.OrdinalIgnoreCase) ||
+            Description.Contains("PAYED FROM", StringComparison.OrdinalIgnoreCase) ||
+            Description.Contains("PAID FROM", StringComparison.OrdinalIgnoreCase))) 
             return true;
         return false;
     }

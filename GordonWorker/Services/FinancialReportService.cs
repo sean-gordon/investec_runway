@@ -56,7 +56,7 @@ public class FinancialReportService : IFinancialReportService
         using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
         await connection.OpenAsync();
 
-        var fullHistorySql = "SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '400 days'";
+        var fullHistorySql = "SELECT * FROM transactions WHERE user_id = @userId ORDER BY transaction_date DESC";
         var fullHistory = (await connection.QueryAsync<Transaction>(fullHistorySql, new { userId })).ToList();
         
         var healthReport = await _actuarialService.AnalyzeHealthAsync(fullHistory, currentBalance, settings);

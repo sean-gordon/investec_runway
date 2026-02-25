@@ -21,6 +21,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OpenTelemetry distributed tracing
 - Admin dashboard for system monitoring
 
+## [2.6.1] - 2026-02-25
+
+### Added
+- **Financial Health & Runway Panel:** Added a dedicated actuarial summary panel to the dashboard UI, surfacing all health stats that were previously fetched but never displayed. Shows projected payday balance, days until next salary, projected runway (days), survival probability, spend this vs last period, upcoming committed total, and an itemised list of pending fixed costs for the current cycle.
+
+### Fixed
+- **Transaction Classification Bug:** Extended `IsInternalTransfer()` in `Transaction.cs` to detect `PAYED FROM` and `PAID FROM` description patterns. Transactions with these phrases (e.g. inter-account transfers received from another account) are now correctly excluded from expense totals, burn rate calculations, and upcoming fixed cost detection — resolving a contradiction where such transactions were displayed as credits but counted as debits in the actuarial engine.
+
+---
+
 ## [2.6.0] - 2026-02-24
 
 ### Added

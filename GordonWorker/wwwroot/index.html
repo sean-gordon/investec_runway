@@ -293,6 +293,74 @@
                             </div>
                         </div>
 
+                        <!-- FINANCIAL HEALTH & RUNWAY PANEL -->
+                        <div v-if="healthStats" class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                            <div class="px-6 py-4 border-b border-slate-50 bg-gradient-to-r from-brand-50 to-indigo-50 flex justify-between items-center">
+                                <div>
+                                    <h3 class="font-bold text-slate-800 text-sm">Financial Health &amp; Runway</h3>
+                                    <p class="text-[10px] text-slate-400 mt-0.5">Salary-cycle actuarial analysis</p>
+                                </div>
+                                <div class="flex items-center gap-2 bg-white/70 backdrop-blur-sm px-3 py-1.5 rounded-full border border-slate-200 shadow-sm">
+                                    <span class="text-[10px] font-bold uppercase tracking-wider" :class="parseFloat(healthStats.ProbabilityToReachPayday) >= 80 ? 'text-green-600' : (parseFloat(healthStats.ProbabilityToReachPayday) >= 50 ? 'text-amber-600' : 'text-red-600')">
+                                        {{ healthStats.ProbabilityToReachPayday }}
+                                    </span>
+                                    <span class="text-[10px] text-slate-400 font-medium">survival prob.</span>
+                                </div>
+                            </div>
+                            <div class="p-6">
+                                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                                    <!-- Projected Payday Balance -->
+                                    <div class="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Projected Payday Balance</p>
+                                        <p class="text-xl font-bold mt-1" :class="parseFloat(healthStats.ProjectedBalanceAtPayday) >= 0 ? 'text-green-600' : 'text-red-600'">
+                                            {{ formatCurrency(parseFloat(healthStats.ProjectedBalanceAtPayday)) }}
+                                        </p>
+                                        <p class="text-[10px] text-slate-400 mt-1">In {{ healthStats.DaysUntilNextSalary }} days</p>
+                                    </div>
+                                    <!-- Runway -->
+                                    <div class="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Projected Runway</p>
+                                        <p class="text-xl font-bold mt-1" :class="parseFloat(healthStats.RunwayDays) >= healthStats.DaysUntilNextSalary ? 'text-green-600' : 'text-red-600'">
+                                            {{ healthStats.RunwayDays }} <span class="text-sm font-medium">days</span>
+                                        </p>
+                                        <p class="text-[10px] text-slate-400 mt-1">Expected at current burn</p>
+                                    </div>
+                                    <!-- Spend This Period -->
+                                    <div class="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Spend This Period</p>
+                                        <p class="text-xl font-bold mt-1 text-slate-800">{{ formatCurrency(parseFloat(healthStats.SpendThisPeriod)) }}</p>
+                                        <p class="text-[10px] mt-1" :class="parseFloat(healthStats.SpendThisPeriod) > parseFloat(healthStats.SpendLastPeriod) ? 'text-red-500' : 'text-green-500'">
+                                            vs {{ formatCurrency(parseFloat(healthStats.SpendLastPeriod)) }} last period
+                                        </p>
+                                    </div>
+                                    <!-- Upcoming Payments Total -->
+                                    <div class="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Upcoming Committed</p>
+                                        <p class="text-xl font-bold mt-1 text-amber-600">{{ formatCurrency(parseFloat(healthStats.UpcomingExpectedPaymentsTotal)) }}</p>
+                                        <p class="text-[10px] text-slate-400 mt-1">{{ healthStats.UpcomingFixedCosts?.length || 0 }} fixed costs pending</p>
+                                    </div>
+                                </div>
+
+                                <!-- Upcoming Fixed Costs List -->
+                                <div v-if="healthStats.UpcomingFixedCosts && healthStats.UpcomingFixedCosts.length > 0">
+                                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Upcoming Fixed Costs This Cycle</p>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                                        <div v-for="cost in healthStats.UpcomingFixedCosts" :key="cost.Name"
+                                            class="flex items-center justify-between bg-amber-50 border border-amber-100 rounded-lg px-4 py-2.5">
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-amber-500 text-xs">📅</span>
+                                                <span class="text-xs font-semibold text-slate-700 truncate max-w-28">{{ cost.Name }}</span>
+                                            </div>
+                                            <span class="text-xs font-bold text-amber-700 ml-2 shrink-0">{{ formatCurrency(parseFloat(cost.Amount)) }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div v-else class="text-center py-3 text-[10px] text-green-600 font-bold">
+                                    ✅ All expected fixed costs have been paid this cycle
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
                                 <p class="text-xs font-medium text-slate-400 uppercase">Telegram Hits</p>

@@ -21,6 +21,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OpenTelemetry distributed tracing
 - Admin dashboard for system monitoring
 
+## [2.6.5] - 2026-02-25
+
+### Changed
+- **Global Inverted Transaction Signs:** The system now correctly imports incomes as Positive (`+`) and expenses as Negative (`-`), reflecting standard accounting principles.
+- **Historic Data Migration:** `DatabaseInitializer.cs` now automatically corrects the polarity of existing historical transactions in the database upon startup.
+- **Backend Algorithms:** Rewrote algorithmic thresholds in `ActuarialService.cs`, `AiService.cs`, and `SubscriptionService.cs` to accurately perform statistical analysis using exact absolute magnitudes under the new paradigm.
+- **Frontend Refactor:** The Vue `index.html` frontend styling correctly parses the new numerical polarities and applies red and green coloring.
+- **AI Resilience (Rate Limits):** Enhanced `AiService` exponential backoff logic to explicitly trap HTTP 429 (`Too Many Requests`) errors from Ollama and Gemini, automatically scaling the retry delay up to 38+ seconds to respect quota cooldowns cleanly.
+- **Gemini Model Discovery:** If the Google AI Studio model API endpoint hits rate limits or fails, the system now falls back to a robust hardcoded array of standard models (e.g., `gemini-2.5-flash`, `gemini-2.0-flash`, `gemini-1.5-pro`) ensuring the user can still select a model in the UI.
+- **AI Resilience:** Wrapped transaction categorization in try-catch blocks to prevent sync failures if AI services (Ollama/Gemini) are offline. Failed attempts are automatically retried by the background process.
+
+## [2.6.4] - 2026-02-25
+
+### Changed
+- **Massive Sync Protection:** `TransactionSyncService` now guards against 90-second AI timeouts during massive historical syncs. If an automated background sync pulls >50 new transactions at once, it skips upfront AI categorisation.
+- **Background Autocategorisation:** `TransactionSyncService` now automatically snags up to 50 'Undetermined', 'General', or `NULL` transactions at the end of every 60-second sync pulse and quietly categorises them in the background until the backlog is cleared.
+- **Force Refresh Override:** Manually clicking 'Force Refresh' in the UI still forces the AI to categorise the entire historical batch sequentially.
+
+---
+
+## [2.6.3] - 2026-02-25
+
+### Fixed
+- **Chart Data Crash (500 Bad Gateway):** Resolved an `InvalidOperationException` affecting the `/api/chartdata/daily-balance` endpoint. The crash occurred due to attempting to dynamically sort an anonymous object list containing mixed `DateTime` and `DateTimeOffset` types. Fixed by introducing a strongly-typed `DailyBalancePoint` struct and standardizing on `DateTimeOffset.UtcNow`.
+- **Missing Upcoming Expenses:** Fixed an issue where the Actuarial Engine's recurring expense detection algorithm was too restrictive. 
+  - The permitted Coefficient of Variation (CV) was relaxed from 10% to 35%, ensuring fluctuating utility bills (electricity, water) and grocery deliveries are correctly recognized as recurring fixed costs.
+  - Significantly expanded the default `FixedCostKeywords` in settings to catch dozens of standard South African municipal, utility, investment, and insurance bill descriptors automatically.
+
+---
+
+## [2.6.2] - 2026-02-25
+
+### Added
+- **Log File Persistence:** `LogSinkService` now writes every log entry to rotating daily files under `/app/logs/`. Three folders are maintained simultaneously:
+  - `info/` — Information, Warning, Error, Critical (e.g. `gordon-2026-02-25.log`)
+  - `error/` — Error and Critical only (for quick triage)
+  - `debug/` — All levels including Debug and Trace (complete trace)
+- **Log File Browser (UI):** New panel on the Logs tab to browse, view (last 200 lines), and download saved log files by level and date — directly from the dashboard.
+- **Log File API:** Three new endpoints on `LogsController`:
+  - `GET /api/logs/files` — list all available log files by level
+  - `GET /api/logs/files/{level}/{date}` — download full log file
+  - `GET /api/logs/files/{level}/{date}/tail?lines=200` — tail last N lines
+- **ActuarialService Structured Logging:** Injected `ILogger<ActuarialService>` and added detailed log lines at every key decision point: salary detection (keyword vs fallback), expense filtering (totals and excluded transfers), period start date, daily burn rate, runway, survival probability, spend projections, and upcoming fixed costs.
+
+### Changed
+- `LogSinkService` now dual-sinks: in-memory ring buffer (1000 entries, Logs tab) **and** disk files (unlimited, persisted across restarts). File I/O errors are silently swallowed to prevent log failures from crashing the app.
+
+---
+
+## [2.6.1] - 2026-02-25
+
+### Added
+- **Financial Health & Runway Panel:** Added a dedicated actuarial summary panel to the dashboard UI, surfacing all health stats that were previously fetched but never displayed. Shows projected payday balance, days until next salary, projected runway (days), survival probability, spend this vs last period, upcoming committed total, and an itemised list of pending fixed costs for the current cycle.
+
+### Fixed
+- **Transaction Classification Bug:** Extended `IsInternalTransfer()` in `Transaction.cs` to detect `PAYED FROM` and `PAID FROM` description patterns. Transactions with these phrases (e.g. inter-account transfers received from another account) are now correctly excluded from expense totals, burn rate calculations, and upcoming fixed cost detection — resolving a contradiction where such transactions were displayed as credits but counted as debits in the actuarial engine.
+
+---
+
 ## [2.6.0] - 2026-02-24
 
 ### Added

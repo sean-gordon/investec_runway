@@ -39,7 +39,7 @@ public class SubscriptionService : ISubscriptionService
                 SELECT * FROM transactions 
                 WHERE user_id = @userId 
                 AND transaction_date >= NOW() - INTERVAL '90 days'
-                AND amount > 0 -- Expenses only
+                AND amount < 0 -- Expenses only
                 ORDER BY transaction_date DESC";
 
             var transactions = (await connection.QueryAsync<Transaction>(sql, new { userId })).ToList();
@@ -66,10 +66,13 @@ public class SubscriptionService : ISubscriptionService
                 // Heuristic: If variance is > 0 and < 15% (inflationary bump), alert. 
                 // If it doubles, it might be double usage (two Ubers).
                 
-                decimal increase = latest.Amount - previous.Amount;
+                decimal previousAmt = Math.Abs(previous.Amount);
+                decimal latestAmt = Math.Abs(latest.Amount);
+                decimal increase = latestAmt - previousAmt;
+                
                 if (increase > 0)
                 {
-                    decimal percent = (increase / previous.Amount) * 100;
+                    decimal percent = (increase / previousAmt) * 100;
                     
                     // Alert threshold: Increase is between 0.1% and 20% (likely price hike, not usage spike)
                     // And explicitly ignore "Groceries" or known variable categories if possible, but we don't have tags yet.

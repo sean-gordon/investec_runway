@@ -85,8 +85,9 @@ public class ChartService : IChartService
 
         foreach (var tx in sortedHistory)
         {
-            // Reverse spend (Debit +) and income (Credit -)
-            runner += (double)tx.Amount; 
+            // Reverse transactions to go back in time
+            // Previous Balance = Current - (+Income) or Current - (-Expense)
+            runner -= (double)tx.Amount; 
             plotPoints.Add((tx.TransactionDate.UtcDateTime, runner));
         }
 

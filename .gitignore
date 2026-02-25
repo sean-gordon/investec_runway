@@ -15,6 +15,7 @@ obj/
 *.user
 *.suo
 *.launchSettings.json
+.github/
 
 # Environment Variables (Secrets)
 .env

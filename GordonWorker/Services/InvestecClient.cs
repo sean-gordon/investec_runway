@@ -147,13 +147,25 @@ public class InvestecClient : IInvestecClient
                     var hashKey = $"{accountId}_{t.TransactionDate:O}_{t.Description}_{t.Amount.ToString("F2", CultureInfo.InvariantCulture)}_{t.AccountBalance.ToString("F2", CultureInfo.InvariantCulture)}";
                     id = GenerateUuidFromString(hashKey);
                 }
+                var amount = t.Amount;
+                // Defensive sign enforcement: Force Debit to be negative and Credit to be positive 
+                // regardless of what the native API returns, to align with Gordon Engine's standard.
+                if (string.Equals(t.Type, "DEBIT", StringComparison.OrdinalIgnoreCase))
+                {
+                    amount = -Math.Abs(amount);
+                }
+                else if (string.Equals(t.Type, "CREDIT", StringComparison.OrdinalIgnoreCase))
+                {
+                    amount = Math.Abs(amount);
+                }
+
                 transactions.Add(new Transaction 
                 { 
                     Id = id, 
                     AccountId = accountId, 
                     TransactionDate = t.TransactionDate == default ? DateTimeOffset.UtcNow : t.TransactionDate.ToUniversalTime(), 
                     Description = t.Description, 
-                    Amount = t.Amount, 
+                    Amount = amount, 
                     Balance = t.AccountBalance, 
                     Category = t.Type, 
                     IsAiProcessed = false 

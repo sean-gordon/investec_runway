@@ -75,8 +75,11 @@ CATEGORIES & RULES:
 - Education: School fees, university, courses, books.
 - Finance: Bank fees, interest, loan repayments (NOT internal transfers).
 - Transfer: Moving money between the user's own accounts (Internal transfers, credit card payments from current account).
-- Income: Salary, dividends, refunds, gifts RECEIVED (Note: amount is POSITIVE for income in this system).
+- Income: Salary, dividends, refunds, gifts RECEIVED (Note: amount is POSITIVE for income).
+- Expense: Any payment, debit, or purchase (Note: amount is NEGATIVE for expenses).
 - General: Anything that doesn't fit the above or is ambiguous.
+
+POLARITY RULE: In this system, NEGATIVE (-) indicates money LEAVING (Expense), and POSITIVE (+) indicates money ENTERING (Income). Use this as a primary lead for categorization.
 
 CONTEXT: The user is likely in South Africa.
 INPUT: A JSON list of transactions with 'id', 'description', and 'amount'.

@@ -88,7 +88,10 @@ public class ActuarialService : IActuarialService
         if (!salaryPayments.Any())
         {
             salaryPayments = history
-                .Where(t => (t.Amount > settings.SalaryFallbackThreshold || t.Category == "CREDIT") && (t.TransactionDate.LocalDateTime.Date >= today.AddDays(-settings.SalaryFallbackDays)))
+                .Where(t => (t.Amount > settings.SalaryFallbackThreshold || 
+                             string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(t.Category, "Income", StringComparison.OrdinalIgnoreCase)) && 
+                            (t.TransactionDate.LocalDateTime.Date >= today.AddDays(-settings.SalaryFallbackDays)))
                 .OrderByDescending(t => t.Amount)
                 .Take(1)
                 .ToList();
@@ -142,9 +145,7 @@ public class ActuarialService : IActuarialService
 
         // Debits are NEGATIVE (< 0), Credits are POSITIVE (> 0). 
         var internalTransfers = history.Where(t => t.IsInternalTransfer()).ToList();
-        var expenses = history.Where(t => t.Amount < 0 && 
-                                        !string.Equals(t.Category, "CREDIT", StringComparison.OrdinalIgnoreCase) && 
-                                        !t.IsInternalTransfer())
+        var expenses = history.Where(t => t.Amount < 0 && !t.IsInternalTransfer())
                               .Select(t => new Transaction {
                                   Id = t.Id, AccountId = t.AccountId, TransactionDate = t.TransactionDate,
                                   Description = t.Description, Amount = Math.Abs(t.Amount), Balance = t.Balance,

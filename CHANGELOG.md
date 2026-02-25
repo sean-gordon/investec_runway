@@ -21,6 +21,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OpenTelemetry distributed tracing
 - Admin dashboard for system monitoring
 
+## [2.6.3] - 2026-02-25
+
+### Fixed
+- **Chart Data Crash (500 Bad Gateway):** Resolved an `InvalidOperationException` affecting the `/api/chartdata/daily-balance` endpoint. The crash occurred due to attempting to dynamically sort an anonymous object list containing mixed `DateTime` and `DateTimeOffset` types. Fixed by introducing a strongly-typed `DailyBalancePoint` struct and standardizing on `DateTimeOffset.UtcNow`.
+- **Missing Upcoming Expenses:** Fixed an issue where the Actuarial Engine's recurring expense detection algorithm was too restrictive. 
+  - The permitted Coefficient of Variation (CV) was relaxed from 10% to 35%, ensuring fluctuating utility bills (electricity, water) and grocery deliveries are correctly recognized as recurring fixed costs.
+  - Significantly expanded the default `FixedCostKeywords` in settings to catch dozens of standard South African municipal, utility, investment, and insurance bill descriptors automatically.
+
+---
+
 ## [2.6.2] - 2026-02-25
 
 ### Added

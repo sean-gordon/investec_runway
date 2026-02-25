@@ -185,7 +185,7 @@ public class ActuarialService : IActuarialService
                 var avgFreq = monthCount > 0 ? (decimal)count / monthCount : 0m;
                 return new { Name = g.Key, MonthCount = monthCount, CV = cv, AvgFreq = avgFreq };
             })
-            .Where(x => IsFixedCost(x.Name, settings) || (x.MonthCount >= 2 && x.CV < 0.1m && x.AvgFreq <= 5m))
+            .Where(x => IsFixedCost(x.Name, settings) || (x.MonthCount >= 2 && x.CV < 0.35m && x.AvgFreq <= 5m))
             .Select(x => x.Name)
             .ToHashSet();
 

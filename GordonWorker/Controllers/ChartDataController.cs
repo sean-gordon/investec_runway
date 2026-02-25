@@ -63,16 +63,22 @@ public class ChartDataController : ControllerBase
         var balances = await Task.WhenAll(accounts.Select(a => _investecClient.GetAccountBalanceAsync(a.AccountId)));
         decimal currentBalance = balances.Sum();
 
-        var points = new List<object>();
+        var points = new List<DailyBalancePoint>();
         decimal runner = currentBalance;
-        points.Add(new { Date = DateTime.UtcNow, Balance = runner });
+        points.Add(new DailyBalancePoint { Date = DateTimeOffset.UtcNow, Balance = runner });
 
         foreach (var tx in history)
         {
             runner += tx.Amount; // Reverse the transaction to go back in time
-            points.Add(new { Date = tx.TransactionDate, Balance = runner });
+            points.Add(new DailyBalancePoint { Date = tx.TransactionDate, Balance = runner });
         }
 
-        return Ok(points.OrderBy(p => ((dynamic)p).Date));
+        return Ok(points.OrderBy(p => p.Date));
+    }
+
+    public class DailyBalancePoint
+    {
+        public DateTimeOffset Date { get; set; }
+        public decimal Balance { get; set; }
     }
 }

@@ -130,15 +130,21 @@ public class InvestecClient : IInvestecClient
     public async Task<List<Transaction>> GetTransactionsAsync(string accountId, DateTimeOffset fromDate)
     {
         if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry) await AuthenticateAsync();
-        var url = $"za/pb/v1/accounts/{accountId}/transactions?fromDate={fromDate:yyyy-MM-dd}";
-        var request = new HttpRequestMessage(HttpMethod.Get, GetUri(url));
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
-        var response = await _httpClient.SendAsync(request);
-        if (!response.IsSuccessStatusCode) return new List<Transaction>();
-        var content = await response.Content.ReadAsStringAsync();
-        var root = JsonSerializer.Deserialize<InvestecResponse>(content, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        
         var transactions = new List<Transaction>();
-        if (root?.Data?.Transactions != null)
+        var url = $"za/pb/v1/accounts/{accountId}/transactions?fromDate={fromDate:yyyy-MM-dd}";
+        
+        while (!string.IsNullOrEmpty(url))
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, GetUri(url));
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+            var response = await _httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode) break;
+            
+            var content = await response.Content.ReadAsStringAsync();
+            var root = JsonSerializer.Deserialize<InvestecResponse>(content, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            
+            if (root?.Data?.Transactions != null)
         {
             foreach (var t in root.Data.Transactions)
             {
@@ -147,26 +153,51 @@ public class InvestecClient : IInvestecClient
                     var hashKey = $"{accountId}_{t.TransactionDate:O}_{t.Description}_{t.Amount.ToString("F2", CultureInfo.InvariantCulture)}_{t.AccountBalance.ToString("F2", CultureInfo.InvariantCulture)}";
                     id = GenerateUuidFromString(hashKey);
                 }
+                var amount = t.Amount;
+                // Defensive sign enforcement: Force Debit to be negative and Credit to be positive 
+                // regardless of what the native API returns, to align with Gordon Engine's standard.
+                if (string.Equals(t.Type, "DEBIT", StringComparison.OrdinalIgnoreCase))
+                {
+                    amount = -Math.Abs(amount);
+                }
+                else if (string.Equals(t.Type, "CREDIT", StringComparison.OrdinalIgnoreCase))
+                {
+                    amount = Math.Abs(amount);
+                }
+
                 transactions.Add(new Transaction 
                 { 
                     Id = id, 
                     AccountId = accountId, 
                     TransactionDate = t.TransactionDate == default ? DateTimeOffset.UtcNow : t.TransactionDate.ToUniversalTime(), 
                     Description = t.Description, 
-                    Amount = t.Amount, 
+                    Amount = amount, 
                     Balance = t.AccountBalance, 
                     Category = t.Type, 
                     IsAiProcessed = false 
                 });
             }
+            }
+            
+            var nextUrl = root?.Links?.Next;
+            if (!string.IsNullOrEmpty(nextUrl))
+            {
+                url = nextUrl.TrimStart('/'); 
+            }
+            else
+            {
+                url = string.Empty;
+            }
         }
+        
         return transactions;
     }
 
     private Guid GenerateUuidFromString(string input) { using (var md5 = System.Security.Cryptography.MD5.Create()) { return new Guid(md5.ComputeHash(Encoding.UTF8.GetBytes(input))); } }
     private class InvestecAccountsResponse { public InvestecAccountsData? Data { get; set; } }
     private class InvestecAccountsData { public List<InvestecAccount>? Accounts { get; set; } }
-    private class InvestecResponse { public InvestecData? Data { get; set; } }
+    private class InvestecResponse { public InvestecData? Data { get; set; } public InvestecLinks? Links { get; set; } }
+    private class InvestecLinks { public string? Next { get; set; } }
     private class InvestecData { public List<InvestecTransaction>? Transactions { get; set; } }
     private class InvestecTransaction { public string? Id { get; set; } public string? Description { get; set; } public decimal Amount { get; set; } public decimal AccountBalance { get; set; } public DateTimeOffset TransactionDate { get; set; } public string? Type { get; set; } }
 }

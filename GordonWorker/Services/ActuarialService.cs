@@ -180,23 +180,43 @@ public class ActuarialService : IActuarialService
 
         // Improved Recurring Expense Detection (Automated)
         var priorExpenses = expenses.Where(t => ToDate(t.TransactionDate) < periodStart).ToList();
+        var analysisWindowDays = settings.AnalysisWindowDays > 0 ? settings.AnalysisWindowDays : 90;
+        var recentCutoff = today.AddDays(-analysisWindowDays);
+
         var recurringNames = priorExpenses
-            .GroupBy(t => t.Category ?? NormalizeDescription(t.Description))
+            .GroupBy(t => NormalizeDescription(t.Description))
             .Select(g => {
                 var count = g.Count();
+                var recentCount = g.Count(t => ToDate(t.TransactionDate) >= recentCutoff);
                 var avg = g.Average(t => t.Amount);
                 var variance = count > 1 ? g.Sum(t => (t.Amount - avg) * (t.Amount - avg)) / (count - 1) : 0m;
                 var stdDev = (decimal)Math.Sqrt((double)variance);
                 var cv = avg > 0 ? stdDev / avg : 0m;
                 var monthCount = g.GroupBy(t => $"{t.TransactionDate.Year}-{t.TransactionDate.Month}").Count();
                 var avgFreq = monthCount > 0 ? (decimal)count / monthCount : 0m;
-                return new { Name = g.Key, MonthCount = monthCount, CV = cv, AvgFreq = avgFreq };
+                
+                // Track if any transaction in this group was a definitive debit order or EFT
+                // Investec uses 'DEBIT' category for all card swipes, so we must check the original Description for SA banking keywords
+                var isDebitOrEft = g.Any(t => 
+                    (t.Description != null && (
+                        t.Description.Contains("DEBIT ORDER", StringComparison.OrdinalIgnoreCase) ||
+                        t.Description.Contains("MAGTAPE", StringComparison.OrdinalIgnoreCase) ||
+                        t.Description.Contains("MAG TAPE", StringComparison.OrdinalIgnoreCase) ||
+                        t.Description.Contains("NAEDO", StringComparison.OrdinalIgnoreCase) ||
+                        t.Description.Contains("EFT", StringComparison.OrdinalIgnoreCase) ||
+                        t.Description.Contains("STOP ORDER", StringComparison.OrdinalIgnoreCase) ||
+                        t.Description.Contains("PAYMENT", StringComparison.OrdinalIgnoreCase)
+                    )) ||
+                    string.Equals(t.Category, "FASTER_PAY", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(t.Category, "TRANSFER", StringComparison.OrdinalIgnoreCase));
+
+                return new { Name = g.Key, MonthCount = monthCount, CV = cv, AvgFreq = avgFreq, Count = count, RecentCount = recentCount, IsDebitOrEft = isDebitOrEft };
             })
-            .Where(x => IsFixedCost(x.Name, settings) || (x.MonthCount >= 2 && x.CV < 0.35m && x.AvgFreq <= 5m))
+            .Where(x => IsFixedCost(x.Name, settings) || (x.IsDebitOrEft && x.RecentCount > 2))
             .Select(x => x.Name)
             .ToHashSet();
 
-        bool IsFixed(Transaction t) => recurringNames.Contains(t.Category ?? NormalizeDescription(t.Description));
+        bool IsFixed(Transaction t) => recurringNames.Contains(NormalizeDescription(t.Description));
 
         // Pulse Comparison: If PTD spend is suspiciously low (< 10% of full), use Full month as baseline to avoid "700% increase" errors
         var pulseBaseline = (spendLastPeriodPtd < (spendLastPeriodFull * settings.PulseBaselineThreshold)) ? spendLastPeriodFull : spendLastPeriodPtd;
@@ -220,19 +240,21 @@ public class ActuarialService : IActuarialService
             decimal percent = baseline > 0 ? (diff / baseline) * 100 : 100;
 
             bool isStable = Math.Abs(percent) < settings.StabilityPercentageThreshold || Math.Abs(diff) < settings.StabilityAmountThreshold;
-            categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent, isStable, IsFixed(new Transaction { Category = cat.Name })));                                                                                                           
+            categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent, isStable, IsFixed(new Transaction { Description = cat.Name })));                                                                                                           
         }
 
         // Identify Upcoming Expected Payments
         var upcomingFixedCosts = new List<UpcomingExpense>();
-        var historicalFixedExpenses = lastPeriodFullExpenses.Where(t => IsFixed(t))
-            .GroupBy(t => t.Category ?? NormalizeDescription(t.Description)).ToList();
+        var historicalFixedExpenses = priorExpenses.Where(t => IsFixed(t))
+            .GroupBy(t => NormalizeDescription(t.Description)).ToList();
 
         foreach (var group in historicalFixedExpenses)
         {
-            if (!thisPeriodExpenses.Any(t => IsFixed(t) && (t.Category ?? NormalizeDescription(t.Description)) == group.Key))
+            if (!thisPeriodExpenses.Any(t => IsFixed(t) && NormalizeDescription(t.Description) == group.Key))
             {
-                upcomingFixedCosts.Add(new UpcomingExpense(group.Key, group.Sum(t => t.Amount)));    
+                // Take the average of the last few occurrences to be more accurate than just the absolute sum of all history
+                var avgAmount = group.OrderByDescending(x => x.TransactionDate).Take(3).Average(t => Math.Abs(t.Amount));
+                upcomingFixedCosts.Add(new UpcomingExpense(group.Key, avgAmount));    
             }
         }
         decimal upcomingOverhead = upcomingFixedCosts.Sum(e => e.ExpectedAmount);
@@ -243,7 +265,6 @@ public class ActuarialService : IActuarialService
         // ACTUARIAL REFINEMENT: Calculate baseBurn ONLY from variable expenses to prevent double-counting fixed costs
         var variableExpenses = expenses.Where(t => !IsFixed(t)).ToList();
         
-        var analysisWindowDays = settings.AnalysisWindowDays > 0 ? settings.AnalysisWindowDays : 90;
         var windowStartDate = today.AddDays(-analysisWindowDays);
         var validVariableExpenses = variableExpenses.Where(t => ToDate(t.TransactionDate) >= windowStartDate).OrderBy(t => t.TransactionDate).ToList();
         var dailyVariableExpensesMap = validVariableExpenses.GroupBy(t => ToDate(t.TransactionDate)).ToDictionary(g => g.Key, g => (double)g.Sum(t => t.Amount));
@@ -292,7 +313,7 @@ public class ActuarialService : IActuarialService
         var lastSalaryAmount = salaryPayments.Any() ? Math.Abs(salaryPayments[0].Amount) : 0m;
 
         // ACTUARIAL REFINEMENT: Calculate Total Daily Burn by combining variable baseBurn and amortized fixed costs
-        decimal totalMonthlyFixed = historicalFixedExpenses.Sum(g => g.Sum(t => t.Amount));
+        decimal totalMonthlyFixed = historicalFixedExpenses.Sum(g => g.OrderByDescending(t => t.TransactionDate).Take(3).Average(t => t.Amount));
         decimal dailyFixedBurn = totalMonthlyFixed / 30m;
         decimal trueDailyBurn = baseBurn + dailyFixedBurn;
         if (trueDailyBurn < 1m) trueDailyBurn = 1m;

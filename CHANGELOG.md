@@ -21,6 +21,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OpenTelemetry distributed tracing
 - Admin dashboard for system monitoring
 
+### Changed
+- **Ollama AI Health Check Optimization**: `ConnectivityWorker` now only polls the AI providers once every 4 hours instead of every 5 minutes to prevent Ollama from experiencing timeout errors and exhaustion.
+- **Dynamic Gemini Model Discovery Fix**: `SettingsController` now explicitly unmasks `********` placeholder settings sent by the frontend UI, allowing the `AiService` to authenticate with the true API key and fetch the live dynamic model list from Google's endpoint successfully instead of defaulting to hardcoded fallbacks.
+
+## [2.7.0] - 2026-02-26
+
+### Added
+- **What-If Scenario Analysis Tab**: Added a dedicated interactive simulation environment to the frontend.
+  - Allows injecting hypothetical One-off Expenses, One-off Income, Recurring Expenses, and Recurring Income into the current balance baseline.
+  - Instantly recalculates Actuarial Projected Payday Balance, Runway, and Survival Probability based on the strict engine rules.
+  - Injected recurring expenses now automatically adopt the `"DEBIT ORDER"` description format to correctly trigger the strict `ActuarialService.cs` detection engine inside the simulation timeline.
+
+## [2.6.10] - 2026-02-26
+
+### Fixed
+- **Historic Recurring EFT False Positives**: Constrained the Actuarial detection engine to exclusively count Debit Order and EFT occurrences within the trailing 90-day evaluation window. Previously, the engine counted lifetime history, erroneously flagging sparse, historic once-off manual EFTs (e.g. 3 payments made across 2 years) as current monthly commitments.
+
+## [2.6.9] - 2026-02-26
+
+### Fixed
+- **Upcoming Expenses Strict Grouping**: Investigating further revealed that Investec categorizes nearly everything (including card swipes like Uber or Pizza Hut) as `"DEBIT"`. Replaced the `IsDebitOrEft` logic to search raw un-normalized transaction descriptions for strict South African banking syntax (`DEBIT ORDER`, `MAGTAPE`, `NAEDO`, `EFT`, etc) rather than relying on Investec's flawed `t.Category` tag.
+- **Removed Unreliable Variance Rules**: Stripped out the ambiguous 90-day coefficient of variance (`CV`) recurring expense detector entirely to prevent coincidentally identical card swipes from being flagged as Fixed Costs. Upcoming commitments are now strictly limited to formal Debit Orders/EFTs or manually registered Fixed Keywords.
+- **Frontend App Warnings**: Removed duplicate CDN references for Vue.js Dev Build and Tailwind.css from `index.html` to eliminate browser console warnings.
+
+## [2.6.8] - 2026-02-26
+
+### Fixed
+- **403 Forbidden (Domain Validation)**: Added support for a strict `*` wildcard in the `Security:AllowedDomains` configuration array. This allows users deploying to remote VMs or reverse proxies to deliberately bypass the strict host header CSRF checks when needed.
+
+## [2.6.7] - 2026-02-26
+
+### Fixed
+- **Upcoming Expenses Grouping**: Fixed an issue in `ActuarialService.cs` where debit orders were grouped under the generic "DEBIT" category instead of their normalized vendor description.
+- **Improved Recurring Expense Detection**: Refined the Actuarial Engine to explicitly flag `DEBIT`, `FASTER_PAY`, and `TRANSFER` transaction categories as valid recurring fixed costs if they occur more than twice within the 90-day evaluation window, bypassing stricter coefficient of variation rules.
+
+## [2.6.6] - 2026-02-26
+
+### Fixed
+- **AI Connection Settings**: `AiService` now adheres to user-configured retry attempts and timeouts during connection testing.
+- **Test Cache Invalidation**: Explicitly bypassed the 15-minute connection test runtime cache in `SettingsController`, ensuring new UI setting changes are immediately verifiable using live calls.
+
 ## [2.6.5] - 2026-02-25
 
 ### Changed

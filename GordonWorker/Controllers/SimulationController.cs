@@ -57,7 +57,7 @@ public class SimulationController : ControllerBase
                 currentBalance -= adj.Amount;
                 history.Add(new Transaction 
                 { 
-                    Amount = adj.Amount, 
+                    Amount = -adj.Amount, // Expense = Negative
                     TransactionDate = DateTimeOffset.Now, 
                     Description = "SIMULATION: " + adj.Description,
                     Category = "SIMULATION"
@@ -66,6 +66,13 @@ public class SimulationController : ControllerBase
             else if (adj.Type == "OneOffIncome")
             {
                 currentBalance += adj.Amount;
+                history.Add(new Transaction 
+                { 
+                    Amount = adj.Amount, // Income = Positive
+                    TransactionDate = DateTimeOffset.Now, 
+                    Description = "SIMULATION INCOME: " + adj.Description,
+                    Category = "CREDIT"
+                });
             }
             else if (adj.Type == "MonthlyExpense")
             {
@@ -74,7 +81,7 @@ public class SimulationController : ControllerBase
                 {
                     history.Add(new Transaction 
                     { 
-                        Amount = adj.Amount, 
+                        Amount = -adj.Amount, // Expense = Negative
                         TransactionDate = DateTimeOffset.Now.AddMonths(-i).AddDays(-1), 
                         Description = "SIMULATION DEBIT ORDER: " + adj.Description,
                         Category = "DEBIT"
@@ -87,10 +94,10 @@ public class SimulationController : ControllerBase
                 {
                     history.Add(new Transaction 
                     { 
-                        Amount = -adj.Amount, // Negative is income
+                        Amount = adj.Amount, // Income = Positive
                         TransactionDate = DateTimeOffset.Now.AddMonths(-i).AddDays(-1), 
                         Description = "SIMULATION SALARY: " + adj.Description,
-                        Category = "TRANSFER"
+                        Category = "CREDIT"
                     });
                 }
             }

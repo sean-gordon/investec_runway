@@ -50,8 +50,9 @@ public class SecurityValidationMiddleware
         }
 
         // Check if host is in allowed domains list
-        // SECURITY FIX: Exact match or authorized subdomain only
+        // SECURITY FIX: Exact match, authorized subdomain, or explicit wildcard (*)
         bool isAllowedDomain = _allowedDomains.Any(domain =>
+            domain == "*" ||
             effectiveHost.Equals(domain, StringComparison.OrdinalIgnoreCase) ||
             effectiveHost.EndsWith($".{domain}", StringComparison.OrdinalIgnoreCase));
 
@@ -81,6 +82,6 @@ public class SecurityValidationMiddleware
     {
         var uri = new Uri(origin);
         var host = uri.Host;
-        return _allowedDomains.Any(d => host.Equals(d, StringComparison.OrdinalIgnoreCase) || host.EndsWith($".{d}", StringComparison.OrdinalIgnoreCase));
+        return _allowedDomains.Any(d => d == "*" || host.Equals(d, StringComparison.OrdinalIgnoreCase) || host.EndsWith($".{d}", StringComparison.OrdinalIgnoreCase));
     }
 }

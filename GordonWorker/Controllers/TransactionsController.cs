@@ -66,4 +66,25 @@ public class TransactionsController : ControllerBase
             return StatusCode(500, new { Error = ex.Message });
         }
     }
+
+    [HttpGet]
+    public async Task<IActionResult> GetTransactions([FromQuery] int limit = 500)
+    {
+        var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(userIdStr, out var userId)) return Unauthorized();
+
+        try
+        {
+            using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+            var sql = "SELECT * FROM transactions WHERE user_id = @userId ORDER BY transaction_date DESC LIMIT @limit";
+            var transactions = await connection.QueryAsync<Transaction>(sql, new { userId, limit });
+            
+            return Ok(transactions);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get raw transactions for user {UserId}", userId);
+            return StatusCode(500, new { Error = ex.Message });
+        }
+    }
 }

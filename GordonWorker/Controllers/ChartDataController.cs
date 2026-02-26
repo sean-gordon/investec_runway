@@ -69,8 +69,8 @@ public class ChartDataController : ControllerBase
 
         foreach (var tx in history)
         {
-            runner -= tx.Amount; // Reverse the transaction to go back in time (Current - Tx = Previous)
             points.Add(new DailyBalancePoint { Date = tx.TransactionDate, Balance = runner });
+            runner -= tx.Amount; // Reverse the transaction to go back in time for the previous state
         }
 
         return Ok(points.OrderBy(p => p.Date));

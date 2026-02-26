@@ -8,6 +8,8 @@ public class ConnectivityWorker : BackgroundService
     private readonly ILogger<ConnectivityWorker> _logger;
     private readonly ISystemStatusService _statusService;
 
+    private DateTime _lastAiPoll = DateTime.MinValue;
+
     public ConnectivityWorker(IServiceProvider serviceProvider, ILogger<ConnectivityWorker> logger, ISystemStatusService statusService)
     {
         _serviceProvider = serviceProvider;
@@ -82,6 +84,8 @@ public class ConnectivityWorker : BackgroundService
 
             _logger.LogInformation("Checking connectivity for {Count} users. Global status reported for User ID: {StatusUserId}", usersToCheck.Count, statusUserId);
 
+            bool performAiCheck = (DateTime.UtcNow - _lastAiPoll).TotalHours >= 4;
+
             foreach (var userId in usersToCheck)
             {
                 try
@@ -104,28 +108,31 @@ public class ConnectivityWorker : BackgroundService
                     }
 
                     // 3. Check AI Providers
-                    // We only test ALL users if they use Ollama (to keep models warm). 
-                    // For Gemini, we only test the status user to save quota.
-                    bool shouldTestPrimary = (settings.AiProvider == "Ollama") || (userId == statusUserId);
-                    bool shouldTestFallback = settings.EnableAiFallback && ((settings.FallbackAiProvider == "Ollama") || (userId == statusUserId));
-
-                    if (shouldTestPrimary)
+                    if (performAiCheck)
                     {
-                        var (primaryOk, error) = await aiService.TestConnectionAsync(userId, useFallback: false);
-                        if (userId == statusUserId)
+                        // We only test ALL users if they use Ollama (to keep models warm). 
+                        // For Gemini, we only test the status user to save quota.
+                        bool shouldTestPrimary = (settings.AiProvider == "Ollama") || (userId == statusUserId);
+                        bool shouldTestFallback = settings.EnableAiFallback && ((settings.FallbackAiProvider == "Ollama") || (userId == statusUserId));
+
+                        if (shouldTestPrimary)
                         {
-                            _statusService.IsAiPrimaryOnline = primaryOk;
-                            _statusService.PrimaryAiError = primaryOk ? string.Empty : error;
+                            var (primaryOk, error) = await aiService.TestConnectionAsync(userId, useFallback: false);
+                            if (userId == statusUserId)
+                            {
+                                _statusService.IsAiPrimaryOnline = primaryOk;
+                                _statusService.PrimaryAiError = primaryOk ? string.Empty : error;
+                            }
                         }
-                    }
 
-                    if (shouldTestFallback)
-                    {
-                        var (fallbackOk, error) = await aiService.TestConnectionAsync(userId, useFallback: true);
-                        if (userId == statusUserId)
+                        if (shouldTestFallback)
                         {
-                            _statusService.IsAiFallbackOnline = fallbackOk;
-                            _statusService.FallbackAiError = fallbackOk ? string.Empty : error;
+                            var (fallbackOk, error) = await aiService.TestConnectionAsync(userId, useFallback: true);
+                            if (userId == statusUserId)
+                            {
+                                _statusService.IsAiFallbackOnline = fallbackOk;
+                                _statusService.FallbackAiError = fallbackOk ? string.Empty : error;
+                            }
                         }
                     }
                 }
@@ -135,7 +142,11 @@ public class ConnectivityWorker : BackgroundService
                 }
             }
             
-            _statusService.LastAiCheck = DateTime.UtcNow;
+            if (performAiCheck)
+            {
+                _statusService.LastAiCheck = DateTime.UtcNow;
+                _lastAiPoll = DateTime.UtcNow;
+            }
 
             _logger.LogInformation("Connectivity check complete. DB: {Db}, Investec: {Inv}, AI Primary: {AiP}, AI Fallback: {AiF}",
                 _statusService.IsDatabaseOnline, _statusService.IsInvestecOnline, _statusService.IsAiPrimaryOnline, _statusService.IsAiFallbackOnline);

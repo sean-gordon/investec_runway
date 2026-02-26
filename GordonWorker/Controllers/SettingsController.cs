@@ -240,6 +240,12 @@ public class SettingsController : ControllerBase
         // If settings are provided in the body, use those. Otherwise load from DB.
         if (settings != null)
         {
+            var dbSettings = await _settingsService.GetSettingsAsync(UserId);
+            const string mask = "********";
+            if (settings.GeminiApiKey == mask) settings.GeminiApiKey = dbSettings.GeminiApiKey;
+            if (settings.FallbackGeminiApiKey == mask) settings.FallbackGeminiApiKey = dbSettings.FallbackGeminiApiKey;
+            if (settings.ThinkingGeminiApiKey == mask) settings.ThinkingGeminiApiKey = dbSettings.ThinkingGeminiApiKey;
+
             var models = await _aiService.GetAvailableModelsAsync(UserId, useFallback, useThinking, settings);
             return Ok(models);
         }

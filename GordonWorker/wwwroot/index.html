@@ -1097,8 +1097,8 @@
                                                 class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
                                                 Survival Prob.</p>
                                             <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-bold text-sm"
-                                                :class="(simulationResult.survivalProbability || 0) > 0.8 ? 'bg-green-50 text-green-700' : ((simulationResult.survivalProbability || 0) > 0.4 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700')">
-                                                {{ ((simulationResult.survivalProbability || 0) * 100).toFixed(1) }}%
+                                                :class="(simulationResult.runwayProbability || 0) > 0.8 ? 'bg-green-50 text-green-700' : ((simulationResult.runwayProbability || 0) > 0.4 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700')">
+                                                {{ ((simulationResult.runwayProbability || 0) * 100).toFixed(1) }}%
                                             </div>
                                         </div>
                                     </div>
@@ -1116,12 +1116,12 @@
                                             </p>
                                             <div class="mt-4 flex items-baseline gap-2">
                                                 <h3 class="text-3xl font-black tracking-tight"
-                                                    :class="simulationResult.projectedPaydayBalance >= 0 ? 'text-green-600' : 'text-red-500'">
-                                                    {{ formatCurrency(simulationResult.projectedPaydayBalance) }}
+                                                    :class="simulationResult.projectedBalanceAtNextSalary >= 0 ? 'text-green-600' : 'text-red-500'">
+                                                    {{ formatCurrency(simulationResult.projectedBalanceAtNextSalary) }}
                                                 </h3>
                                             </div>
                                             <p class="text-xs font-semibold mt-2 text-slate-500">
-                                                In {{ simulationResult.daysUntilPayday }} days
+                                                In {{ simulationResult.daysUntilNextSalary }} days
                                             </p>
                                         </div>
 
@@ -1137,8 +1137,8 @@
                                             </p>
                                             <div class="mt-4 flex items-baseline gap-2">
                                                 <h3 class="text-3xl font-black tracking-tight"
-                                                    :class="(simulationResult.projectedRunwayDays || 0) >= simulationResult.daysUntilPayday ? 'text-green-600' : 'text-red-500'">
-                                                    {{ (simulationResult.projectedRunwayDays || 0).toFixed(1) }} <span
+                                                    :class="(simulationResult.expectedRunwayDays || 0) >= simulationResult.daysUntilNextSalary ? 'text-green-600' : 'text-red-500'">
+                                                    {{ (simulationResult.expectedRunwayDays || 0).toFixed(1) }} <span
                                                         class="text-lg text-slate-400 font-medium">days</span>
                                                 </h3>
                                             </div>
@@ -1155,11 +1155,11 @@
                                             </p>
                                             <div class="mt-4 flex items-baseline gap-2">
                                                 <h3 class="text-xl font-black text-slate-800 tracking-tight">
-                                                    {{ formatCurrency(simulationResult.spentThisCycle) }}
+                                                    {{ formatCurrency(simulationResult.spendThisMonth) }}
                                                 </h3>
                                             </div>
                                             <p class="text-xs font-semibold mt-2 text-slate-500">
-                                                vs {{ formatCurrency(simulationResult.spentLastCycle) }} last period
+                                                vs {{ formatCurrency(simulationResult.spendLastMonth) }} last period
                                             </p>
                                         </div>
 
@@ -1171,11 +1171,12 @@
                                             </p>
                                             <div class="mt-4 flex items-baseline gap-2">
                                                 <h3 class="text-xl font-black text-orange-600 tracking-tight">
-                                                    {{ formatCurrency(simulationResult.upcomingFixedCostsAmount) }}
+                                                    {{ formatCurrency(simulationResult.upcomingExpectedPayments) }}
                                                 </h3>
                                             </div>
                                             <p class="text-xs font-semibold mt-2 text-slate-500">
-                                                {{ simulationResult.upcomingFixedCostsCount }} fixed costs pending
+                                                {{ simulationResult.upcomingFixedCosts?.length || 0 }} fixed costs
+                                                pending
                                             </p>
                                         </div>
                                     </div>

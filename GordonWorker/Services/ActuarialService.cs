@@ -313,7 +313,7 @@ public class ActuarialService : IActuarialService
         var lastSalaryAmount = salaryPayments.Any() ? Math.Abs(salaryPayments[0].Amount) : 0m;
 
         // ACTUARIAL REFINEMENT: Calculate Total Daily Burn by combining variable baseBurn and amortized fixed costs
-        decimal totalMonthlyFixed = historicalFixedExpenses.Sum(g => g.Sum(t => t.Amount));
+        decimal totalMonthlyFixed = historicalFixedExpenses.Sum(g => g.OrderByDescending(t => t.TransactionDate).Take(3).Average(t => t.Amount));
         decimal dailyFixedBurn = totalMonthlyFixed / 30m;
         decimal trueDailyBurn = baseBurn + dailyFixedBurn;
         if (trueDailyBurn < 1m) trueDailyBurn = 1m;

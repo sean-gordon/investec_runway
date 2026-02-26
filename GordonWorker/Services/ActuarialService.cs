@@ -181,7 +181,7 @@ public class ActuarialService : IActuarialService
         // Improved Recurring Expense Detection (Automated)
         var priorExpenses = expenses.Where(t => ToDate(t.TransactionDate) < periodStart).ToList();
         var recurringNames = priorExpenses
-            .GroupBy(t => t.Category ?? NormalizeDescription(t.Description))
+            .GroupBy(t => NormalizeDescription(t.Description))
             .Select(g => {
                 var count = g.Count();
                 var avg = g.Average(t => t.Amount);
@@ -190,13 +190,22 @@ public class ActuarialService : IActuarialService
                 var cv = avg > 0 ? stdDev / avg : 0m;
                 var monthCount = g.GroupBy(t => $"{t.TransactionDate.Year}-{t.TransactionDate.Month}").Count();
                 var avgFreq = monthCount > 0 ? (decimal)count / monthCount : 0m;
-                return new { Name = g.Key, MonthCount = monthCount, CV = cv, AvgFreq = avgFreq };
+                
+                // Track if any transaction in this group was a debit order or EFT
+                var isDebitOrEft = g.Any(t => 
+                    string.Equals(t.Category, "DEBIT", StringComparison.OrdinalIgnoreCase) || 
+                    string.Equals(t.Category, "FASTER_PAY", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(t.Category, "TRANSFER", StringComparison.OrdinalIgnoreCase));
+
+                return new { Name = g.Key, MonthCount = monthCount, CV = cv, AvgFreq = avgFreq, Count = count, IsDebitOrEft = isDebitOrEft };
             })
-            .Where(x => IsFixedCost(x.Name, settings) || (x.MonthCount >= 2 && x.CV < 0.35m && x.AvgFreq <= 5m))
+            .Where(x => IsFixedCost(x.Name, settings) || 
+                        (x.IsDebitOrEft && x.Count > 2) || 
+                        (x.MonthCount >= 2 && x.CV < 0.35m && x.AvgFreq <= 5m))
             .Select(x => x.Name)
             .ToHashSet();
 
-        bool IsFixed(Transaction t) => recurringNames.Contains(t.Category ?? NormalizeDescription(t.Description));
+        bool IsFixed(Transaction t) => recurringNames.Contains(NormalizeDescription(t.Description));
 
         // Pulse Comparison: If PTD spend is suspiciously low (< 10% of full), use Full month as baseline to avoid "700% increase" errors
         var pulseBaseline = (spendLastPeriodPtd < (spendLastPeriodFull * settings.PulseBaselineThreshold)) ? spendLastPeriodFull : spendLastPeriodPtd;
@@ -220,17 +229,17 @@ public class ActuarialService : IActuarialService
             decimal percent = baseline > 0 ? (diff / baseline) * 100 : 100;
 
             bool isStable = Math.Abs(percent) < settings.StabilityPercentageThreshold || Math.Abs(diff) < settings.StabilityAmountThreshold;
-            categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent, isStable, IsFixed(new Transaction { Category = cat.Name })));                                                                                                           
+            categoryReport.Add(new CategorySpend(cat.Name, cat.Amount, diff, percent, isStable, IsFixed(new Transaction { Description = cat.Name })));                                                                                                           
         }
 
         // Identify Upcoming Expected Payments
         var upcomingFixedCosts = new List<UpcomingExpense>();
         var historicalFixedExpenses = priorExpenses.Where(t => IsFixed(t))
-            .GroupBy(t => t.Category ?? NormalizeDescription(t.Description)).ToList();
+            .GroupBy(t => NormalizeDescription(t.Description)).ToList();
 
         foreach (var group in historicalFixedExpenses)
         {
-            if (!thisPeriodExpenses.Any(t => IsFixed(t) && (t.Category ?? NormalizeDescription(t.Description)) == group.Key))
+            if (!thisPeriodExpenses.Any(t => IsFixed(t) && NormalizeDescription(t.Description) == group.Key))
             {
                 // Take the average of the last few occurrences to be more accurate than just the absolute sum of all history
                 var avgAmount = group.OrderByDescending(x => x.TransactionDate).Take(3).Average(t => Math.Abs(t.Amount));

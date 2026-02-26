@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Ollama AI Health Check Optimization**: `ConnectivityWorker` now only polls the AI providers once every 4 hours instead of every 5 minutes to prevent Ollama from experiencing timeout errors and exhaustion.
 - **Dynamic Gemini Model Discovery Fix**: `SettingsController` now explicitly unmasks `********` placeholder settings sent by the frontend UI, allowing the `AiService` to authenticate with the true API key and fetch the live dynamic model list from Google's endpoint successfully instead of defaulting to hardcoded fallbacks.
 
+## [2.6.7] - 2026-02-26
+
+### Fixed
+- **Upcoming Expenses Grouping**: Fixed an issue in `ActuarialService.cs` where debit orders were grouped under the generic "DEBIT" category instead of their normalized vendor description.
+- **Improved Recurring Expense Detection**: Refined the Actuarial Engine to explicitly flag `DEBIT`, `FASTER_PAY`, and `TRANSFER` transaction categories as valid recurring fixed costs if they occur more than twice within the 90-day evaluation window, bypassing stricter coefficient of variation rules.
+
 ## [2.6.6] - 2026-02-26
 
 ### Fixed

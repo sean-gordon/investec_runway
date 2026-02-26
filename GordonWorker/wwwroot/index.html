@@ -245,7 +245,8 @@
                                     class="text-[9px] text-amber-500 mt-1 italic truncate"
                                     :title="systemStatus.aiFallbackError">{{ systemStatus.aiFallbackError }}</p>
                                 <p v-else class="text-[10px] text-slate-400 mt-1 truncate">{{
-                                    settings.fallbackOllamaModelName || 'Gemini' }}</p>
+                                    settings.fallbackAiProvider === 'Gemini' ? settings.fallbackGeminiModelName :
+                                    settings.fallbackOllamaModelName }}</p>
                             </div>
 
                             <!-- YoY Seasonality -->

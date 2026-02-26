@@ -180,10 +180,14 @@ public class ActuarialService : IActuarialService
 
         // Improved Recurring Expense Detection (Automated)
         var priorExpenses = expenses.Where(t => ToDate(t.TransactionDate) < periodStart).ToList();
+        var analysisWindowDays = settings.AnalysisWindowDays > 0 ? settings.AnalysisWindowDays : 90;
+        var recentCutoff = today.AddDays(-analysisWindowDays);
+
         var recurringNames = priorExpenses
             .GroupBy(t => NormalizeDescription(t.Description))
             .Select(g => {
                 var count = g.Count();
+                var recentCount = g.Count(t => ToDate(t.TransactionDate) >= recentCutoff);
                 var avg = g.Average(t => t.Amount);
                 var variance = count > 1 ? g.Sum(t => (t.Amount - avg) * (t.Amount - avg)) / (count - 1) : 0m;
                 var stdDev = (decimal)Math.Sqrt((double)variance);
@@ -206,9 +210,9 @@ public class ActuarialService : IActuarialService
                     string.Equals(t.Category, "FASTER_PAY", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(t.Category, "TRANSFER", StringComparison.OrdinalIgnoreCase));
 
-                return new { Name = g.Key, MonthCount = monthCount, CV = cv, AvgFreq = avgFreq, Count = count, IsDebitOrEft = isDebitOrEft };
+                return new { Name = g.Key, MonthCount = monthCount, CV = cv, AvgFreq = avgFreq, Count = count, RecentCount = recentCount, IsDebitOrEft = isDebitOrEft };
             })
-            .Where(x => IsFixedCost(x.Name, settings) || (x.IsDebitOrEft && x.Count > 2))
+            .Where(x => IsFixedCost(x.Name, settings) || (x.IsDebitOrEft && x.RecentCount > 2))
             .Select(x => x.Name)
             .ToHashSet();
 
@@ -261,7 +265,6 @@ public class ActuarialService : IActuarialService
         // ACTUARIAL REFINEMENT: Calculate baseBurn ONLY from variable expenses to prevent double-counting fixed costs
         var variableExpenses = expenses.Where(t => !IsFixed(t)).ToList();
         
-        var analysisWindowDays = settings.AnalysisWindowDays > 0 ? settings.AnalysisWindowDays : 90;
         var windowStartDate = today.AddDays(-analysisWindowDays);
         var validVariableExpenses = variableExpenses.Where(t => ToDate(t.TransactionDate) >= windowStartDate).OrderBy(t => t.TransactionDate).ToList();
         var dailyVariableExpensesMap = validVariableExpenses.GroupBy(t => ToDate(t.TransactionDate)).ToDictionary(g => g.Key, g => (double)g.Sum(t => t.Amount));

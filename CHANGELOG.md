@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Ollama AI Health Check Optimization**: `ConnectivityWorker` now only polls the AI providers once every 4 hours instead of every 5 minutes to prevent Ollama from experiencing timeout errors and exhaustion.
 - **Dynamic Gemini Model Discovery Fix**: `SettingsController` now explicitly unmasks `********` placeholder settings sent by the frontend UI, allowing the `AiService` to authenticate with the true API key and fetch the live dynamic model list from Google's endpoint successfully instead of defaulting to hardcoded fallbacks.
 
+## [2.6.10] - 2026-02-26
+
+### Fixed
+- **Historic Recurring EFT False Positives**: Constrained the Actuarial detection engine to exclusively count Debit Order and EFT occurrences within the trailing 90-day evaluation window. Previously, the engine counted lifetime history, erroneously flagging sparse, historic once-off manual EFTs (e.g. 3 payments made across 2 years) as current monthly commitments.
+
 ## [2.6.9] - 2026-02-26
 
 ### Fixed

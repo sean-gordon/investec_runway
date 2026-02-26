@@ -73,7 +73,20 @@ public class ChartDataController : ControllerBase
             runner -= tx.Amount; // Reverse the transaction to go back in time for the previous state
         }
 
-        return Ok(points.OrderBy(p => p.Date));
+        // Group by Date to provide exactly one point per day (End of Day balance)
+        var dailyPoints = points
+            .GroupBy(p => p.Date.Date)
+            .Select(g => new DailyBalancePoint 
+            { 
+                Date = g.Key, 
+                // The points are recorded backwards in time, so the FIRST point in the group 
+                // is the newest transaction of that day (i.e. the End of Day balance)
+                Balance = g.First().Balance 
+            })
+            .OrderBy(p => p.Date)
+            .ToList();
+
+        return Ok(dailyPoints);
     }
 
     public class DailyBalancePoint

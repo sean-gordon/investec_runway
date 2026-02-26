@@ -37,7 +37,7 @@ public class ChartDataController : ControllerBase
         var sql = @"
             SELECT COALESCE(category, 'Uncategorized') AS Label, SUM(ABS(amount)) AS Value 
             FROM transactions 
-            WHERE user_id = @userId AND amount < 0 AND transaction_date >= NOW() - INTERVAL '1 day' * @days
+            WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '1 day' * @days
             GROUP BY category
             ORDER BY Value DESC";
 

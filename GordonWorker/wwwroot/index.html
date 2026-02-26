@@ -416,725 +416,743 @@
 
                         <!-- RECENT ACTIVITY REMOVED AS REQUESTED -->
                     </div>
-            </div>
 
-            <!-- ADMIN: USERS -->
-            <div v-if="activeTab === 'admin-users' && auth.role === 'Admin'" class="space-y-6">
-                <div class="flex justify-between items-center">
-                    <h2 class="text-xl font-bold">User Management</h2>
-                    <button @click="openUserModal()"
-                        class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm">Add
-                        User</button>
-                </div>
-                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                    <table class="w-full text-left text-sm">
-                        <thead class="bg-slate-50 border-b border-slate-200">
-                            <tr>
-                                <th class="px-6 py-3">Username</th>
-                                <th class="px-6 py-3">Role</th>
-                                <th class="px-6 py-3">System</th>
-                                <th class="px-6 py-3 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100">
-                            <tr v-for="u in users" :key="u.id" class="hover:bg-slate-50">
-                                <td class="px-6 py-3">{{ u.username }}</td>
-                                <td class="px-6 py-3">{{ u.role }}</td>
-                                <td class="px-6 py-3">{{ u.isSystem ? 'YES' : '-' }}</td>
-                                <td class="px-6 py-3 text-right space-x-2">
-                                    <button @click="openUserModal(u)" class="text-blue-600 font-bold">Edit</button>
-                                    <button v-if="!u.isSystem" @click="deleteUser(u.id)"
-                                        class="text-red-600 font-bold">Delete</button>
-                                </td>
-                            </tr>
-                        </tbody>
-                        <!-- End Users -->
-                    </table>
-                </div>
-            </div>
-
-            <!-- RAW DATA (for debugging ledger exact values) -->
-            <div v-if="activeTab === 's-rawdata'" class="space-y-6">
-                <div class="flex justify-between items-center">
-                    <h2 class="text-xl font-bold">Raw Database Ledger</h2>
-                    <button @click="loadRawData"
-                        class="bg-slate-200 text-slate-800 px-4 py-2 rounded-lg font-bold text-sm hover:bg-slate-300">Refresh</button>
-                </div>
-                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-auto max-h-[70vh]">
-                    <table class="w-full text-left text-sm whitespace-nowrap">
-                        <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
-                            <tr>
-                                <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Date
-                                </th>
-                                <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Amount
-                                </th>
-                                <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Balance
-                                </th>
-                                <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Category
-                                </th>
-                                <th
-                                    class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider max-w-xs break-all">
-                                    Description</th>
-                                <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Acct ID
-                                </th>
-                                <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">AI?</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100">
-                            <tr v-for="tx in rawTransactions" :key="tx.id" class="hover:bg-slate-50">
-                                <td class="px-4 py-3 text-[10px] text-slate-500">{{ tx.transactionDate }}</td>
-                                <td class="px-4 py-3 font-mono font-bold"
-                                    :class="tx.amount < 0 ? 'text-red-600' : 'text-green-600'">{{ tx.amount }}</td>
-                                <td class="px-4 py-3 font-mono text-slate-500">{{ tx.balance }}</td>
-                                <td class="px-4 py-3 text-xs">{{ tx.category }}</td>
-                                <td class="px-4 py-3 text-slate-900 truncate max-w-xs">{{ tx.description }}</td>
-                                <td class="px-4 py-3 text-[10px]">{{ tx.accountId }}</td>
-                                <td class="px-4 py-3 text-xs">{{ tx.isAiProcessed ? '✅' : '❌' }}</td>
-                            </tr>
-                            <tr v-if="!rawTransactions || rawTransactions.length === 0">
-                                <td colspan="7" class="px-4 py-8 text-center text-slate-500">No raw data to display.
-                                    Pull data from Investec first.</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- SETTINGS PAGES -->
-            <div v-if="activeTab.startsWith('s-')" class="max-w-3xl space-y-6 pb-20">
-                <div class="flex justify-between items-center">
-                    <h2 class="text-xl font-bold">Configuration</h2>
-                    <button @click="saveSettings"
-                        class="bg-brand-600 text-white px-6 py-2 rounded-lg font-bold shadow-md hover:bg-brand-700">Save
-                        Changes</button>
-                </div>
-
-                <!-- IDENTITY -->
-                <div v-if="activeTab === 's-identity'"
-                    class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
-                    <div>
-                        <label class="text-xs font-bold text-slate-700">Display Name</label>
-                        <input v-model="settings.userName" type="text"
-                            class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
+                    <!-- ADMIN: USERS -->
+                    <div v-if="activeTab === 'admin-users' && auth.role === 'Admin'" class="space-y-6">
+                        <div class="flex justify-between items-center">
+                            <h2 class="text-xl font-bold">User Management</h2>
+                            <button @click="openUserModal()"
+                                class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm">Add
+                                User</button>
+                        </div>
+                        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th class="px-6 py-3">Username</th>
+                                        <th class="px-6 py-3">Role</th>
+                                        <th class="px-6 py-3">System</th>
+                                        <th class="px-6 py-3 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    <tr v-for="u in users" :key="u.id" class="hover:bg-slate-50">
+                                        <td class="px-6 py-3">{{ u.username }}</td>
+                                        <td class="px-6 py-3">{{ u.role }}</td>
+                                        <td class="px-6 py-3">{{ u.isSystem ? 'YES' : '-' }}</td>
+                                        <td class="px-6 py-3 text-right space-x-2">
+                                            <button @click="openUserModal(u)"
+                                                class="text-blue-600 font-bold">Edit</button>
+                                            <button v-if="!u.isSystem" @click="deleteUser(u.id)"
+                                                class="text-red-600 font-bold">Delete</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                                <!-- End Users -->
+                            </table>
+                        </div>
                     </div>
-                    <div>
-                        <label class="text-xs font-bold text-slate-700">Currency / Locale</label>
-                        <select v-model="settings.currencyCulture"
-                            class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
-                            <option value="en-ZA">South Africa (ZAR)</option>
-                            <option value="en-US">United States (USD)</option>
-                            <option value="en-GB">United Kingdom (GBP)</option>
-                        </select>
-                    </div>
-                </div>
 
-                <!-- MATH / ACTUARIAL -->
-                <div v-if="activeTab === 's-math'" class="space-y-6">
-                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
-                        <h3 class="font-bold text-slate-800 text-sm border-b pb-2 mb-4">Core Parameters</h3>
-                        <div class="grid grid-cols-2 gap-4">
+                    <!-- RAW DATA (for debugging ledger exact values) -->
+                    <div v-if="activeTab === 's-rawdata'" class="space-y-6">
+                        <div class="flex justify-between items-center">
+                            <h2 class="text-xl font-bold">Raw Database Ledger</h2>
+                            <button @click="loadRawData"
+                                class="bg-slate-200 text-slate-800 px-4 py-2 rounded-lg font-bold text-sm hover:bg-slate-300">Refresh</button>
+                        </div>
+                        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-auto max-h-[70vh]">
+                            <table class="w-full text-left text-sm whitespace-nowrap">
+                                <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+                                    <tr>
+                                        <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                            Date
+                                        </th>
+                                        <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                            Amount
+                                        </th>
+                                        <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                            Balance
+                                        </th>
+                                        <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                            Category
+                                        </th>
+                                        <th
+                                            class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider max-w-xs break-all">
+                                            Description</th>
+                                        <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                            Acct ID
+                                        </th>
+                                        <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                            AI?</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    <tr v-for="tx in rawTransactions" :key="tx.id" class="hover:bg-slate-50">
+                                        <td class="px-4 py-3 text-[10px] text-slate-500">{{ tx.transactionDate }}</td>
+                                        <td class="px-4 py-3 font-mono font-bold"
+                                            :class="tx.amount < 0 ? 'text-red-600' : 'text-green-600'">{{ tx.amount }}
+                                        </td>
+                                        <td class="px-4 py-3 font-mono text-slate-500">{{ tx.balance }}</td>
+                                        <td class="px-4 py-3 text-xs">{{ tx.category }}</td>
+                                        <td class="px-4 py-3 text-slate-900 truncate max-w-xs">{{ tx.description }}</td>
+                                        <td class="px-4 py-3 text-[10px]">{{ tx.accountId }}</td>
+                                        <td class="px-4 py-3 text-xs">{{ tx.isAiProcessed ? '✅' : '❌' }}</td>
+                                    </tr>
+                                    <tr v-if="!rawTransactions || rawTransactions.length === 0">
+                                        <td colspan="7" class="px-4 py-8 text-center text-slate-500">No raw data to
+                                            display.
+                                            Pull data from Investec first.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- SETTINGS PAGES -->
+                    <div v-if="activeTab.startsWith('s-')" class="max-w-3xl space-y-6 pb-20">
+                        <div class="flex justify-between items-center">
+                            <h2 class="text-xl font-bold">Configuration</h2>
+                            <button @click="saveSettings"
+                                class="bg-brand-600 text-white px-6 py-2 rounded-lg font-bold shadow-md hover:bg-brand-700">Save
+                                Changes</button>
+                        </div>
+
+                        <!-- IDENTITY -->
+                        <div v-if="activeTab === 's-identity'"
+                            class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
                             <div>
-                                <label class="text-xs font-bold text-slate-700">Analysis Window (Days)
-                                    <help-tooltip
-                                        text="How far back to look when calculating your average daily spend."></help-tooltip></label>
-                                <input v-model.number="settings.analysisWindowDays" type="number"
-                                    class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
+                                <label class="text-xs font-bold text-slate-700">Display Name</label>
+                                <input v-model="settings.userName" type="text"
+                                    class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
                             </div>
                             <div>
-                                <label class="text-xs font-bold text-slate-700">EMA Alpha ({{
-                                    settings.actuarialAlpha }}) <help-tooltip
-                                        text="Lower values make the average react slower to recent spending spikes (more stable)."></help-tooltip></label>
-                                <input type="range" v-model.number="settings.actuarialAlpha" min="0.01" max="0.5"
-                                    step="0.01"
-                                    class="w-full mt-2 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="text-xs font-bold text-slate-700">Unexpected Alert (R)
-                                    <help-tooltip
-                                        text="Alert via Telegram if a single transaction exceeds this amount unexpectedly."></help-tooltip></label>
-                                <input v-model.number="settings.unexpectedPaymentThreshold" type="number"
-                                    class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
-                            </div>
-                            <div>
-                                <label class="text-xs font-bold text-slate-700">Income Alert (R) <help-tooltip
-                                        text="Alert via Telegram if a single credit/deposit exceeds this amount."></help-tooltip></label>
-                                <input v-model.number="settings.incomeAlertThreshold" type="number"
-                                    class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
-                        <div class="flex justify-between items-center border-b pb-2 mb-4">
-                            <h3 class="font-bold text-slate-800 text-sm">Classification</h3>
-                            <button @click="categorizeHistory" :disabled="categorizing"
-                                class="text-[10px] font-bold px-3 py-1 bg-brand-50 text-brand-700 rounded-full border border-brand-100 hover:bg-brand-100 transition-all disabled:opacity-50">
-                                {{ categorizing ? '🏷️ CATEGORIZING...' : '🏷️ CATEGORIZE HISTORY' }}
-                            </button>
-                        </div>
-                        <div v-if="categorizeResult"
-                            class="text-[10px] font-bold text-green-600 bg-green-50 p-2 rounded-lg border border-green-100">
-                            {{ categorizeResult }}
-                        </div>
-                        <div>
-                            <label class="text-xs font-bold text-slate-700">Fixed Cost Keywords <help-tooltip
-                                    text="Comma-separated words. Transactions with these words are treated as bills, not variable spending."></help-tooltip></label>
-                            <textarea v-model="settings.fixedCostKeywords" rows="2"
-                                class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono"></textarea>
-                        </div>
-                        <div>
-                            <label class="text-xs font-bold text-slate-700">Salary Keywords <help-tooltip
-                                    text="Words used to identify your paycheck for cycle detection (e.g., 'SALARY', 'PAYROLL')."></help-tooltip></label>
-                            <textarea v-model="settings.salaryKeywords" rows="2"
-                                class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono"></textarea>
-                        </div>
-                    </div>
-
-                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
-                        <h3 class="font-bold text-slate-800 text-sm border-b pb-2 mb-4">Advanced Actuarial</h3>
-                        <div class="grid grid-cols-3 gap-4">
-                            <div><label class="text-xs font-bold text-slate-700">Min Cycle <help-tooltip
-                                        text="Minimum allowed days between paychecks."></help-tooltip></label><input
-                                    v-model.number="settings.minCycleDays" type="number"
-                                    class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
-                            </div>
-                            <div><label class="text-xs font-bold text-slate-700">Default Cycle <help-tooltip
-                                        text="Fallback cycle length if no salary is detected."></help-tooltip></label><input
-                                    v-model.number="settings.defaultCycleDays" type="number"
-                                    class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
-                            </div>
-                            <div><label class="text-xs font-bold text-slate-700">Max Cycle <help-tooltip
-                                        text="Maximum allowed days between paychecks before clamping."></help-tooltip></label><input
-                                    v-model.number="settings.maxCycleDays" type="number"
-                                    class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-4">
-                            <div><label class="text-xs font-bold text-slate-700">Pulse Baseline ({{
-                                    settings.pulseBaselineThreshold }}) <help-tooltip
-                                        text="Sensitivity for detecting spending drops (Month-to-Date vs Full Month)."></help-tooltip></label><input
-                                    v-model.number="settings.pulseBaselineThreshold" type="number" step="0.01"
-                                    class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
-                            </div>
-                            <div><label class="text-xs font-bold text-slate-700">Hybrid Baseline ({{
-                                    settings.hybridBaselineThreshold }}) <help-tooltip
-                                        text="Sensitivity for category-specific spending drops."></help-tooltip></label><input
-                                    v-model.number="settings.hybridBaselineThreshold" type="number" step="0.01"
-                                    class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
-                            </div>
-                        </div>
-                        <div>
-                            <label class="text-xs font-bold text-slate-700">VaR Confidence ({{
-                                settings.varConfidenceInterval }}) <help-tooltip
-                                    text="Standard deviations for Value at Risk. 1.645 = 95% confidence."></help-tooltip></label>
-                            <input v-model.number="settings.varConfidenceInterval" type="number" step="0.001"
-                                class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
-                        </div>
-                        <div>
-                            <label class="text-xs font-bold text-slate-700">Degrees of Freedom (ν: {{
-                                settings.actuarialDegreesOfFreedom }}) <help-tooltip
-                                    text="Lower values (e.g. 3) increase 'fat-tail' sensitivity (Black Swan modeling). Higher values approach Normal distribution."></help-tooltip></label>
-                            <input v-model.number="settings.actuarialDegreesOfFreedom" type="number" step="0.1"
-                                class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
-                        </div>
-                    </div>
-                </div>
-
-                <!-- CONNECTIONS -->
-                <div v-if="activeTab === 's-connections'" class="space-y-6">
-                    <!-- Investec -->
-                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                        <div class="bg-slate-50 px-6 py-3 border-b border-slate-100 flex justify-between items-center">
-                            <h3 class="font-bold text-slate-800 text-sm">Investec API</h3>
-                            <button @click="testInvestec"
-                                class="text-[10px] font-bold text-brand-600 hover:underline">TEST CONN</button>
-                        </div>
-                        <div class="p-6 space-y-4">
-                            <div><label class="text-xs font-bold text-slate-700">Client ID</label><input
-                                    v-model="settings.investecClientId" type="text"
-                                    class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
-                            </div>
-                            <div><label class="text-xs font-bold text-slate-700">Secret</label><input
-                                    v-model="settings.investecSecret" type="password"
-                                    class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
-                            </div>
-                            <div><label class="text-xs font-bold text-slate-700">API Key</label><input
-                                    v-model="settings.investecApiKey" type="password"
-                                    class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
-                            </div>
-                            <div class="grid grid-cols-2 gap-4">
-                                <div><label class="text-xs font-bold text-slate-700">History
-                                        (Days)</label><input v-model.number="settings.historyDaysBack" type="number"
-                                        class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                                </div>
-                                <div><label class="text-xs font-bold text-slate-700">Sync Buffer</label><input
-                                        v-model.number="settings.syncBufferDays" type="number" step="0.01"
-                                        class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <!-- Telegram -->
-                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                        <div class="bg-slate-50 px-6 py-3 border-b border-slate-100 flex justify-between items-center">
-                            <h3 class="font-bold text-slate-800 text-sm">Telegram Bot</h3>
-                            <div class="flex gap-2">
-                                <button @click="registerWebhook"
-                                    class="text-[10px] font-bold text-indigo-600 hover:underline">SET
-                                    WEBHOOK</button>
-                                <button @click="testTelegram"
-                                    class="text-[10px] font-bold text-brand-600 hover:underline">TEST
-                                    MSG</button>
-                            </div>
-                        </div>
-                        <div class="p-6 space-y-4">
-                            <div><label class="text-xs font-bold text-slate-700">Bot Token</label><input
-                                    v-model="settings.telegramBotToken" type="password"
-                                    class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
-                            </div>
-                            <div><label class="text-xs font-bold text-slate-700">Chat ID</label><input
-                                    v-model="settings.telegramChatId" type="text"
-                                    class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
-                            </div>
-                            <div><label class="text-xs font-bold text-slate-700">Allowed IDs (Comma
-                                    sep)</label><textarea v-model="settings.telegramAuthorizedChatIds" rows="2"
-                                    class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono"></textarea>
-                            </div>
-                        </div>
-                    </div>
-                    <!-- Twilio -->
-                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                        <div class="bg-slate-50 px-6 py-3 border-b border-slate-100 flex justify-between">
-                            <h3 class="font-bold text-slate-800 text-sm">WhatsApp (Twilio)</h3><button
-                                @click="testWhatsApp" class="text-[10px] font-bold text-brand-600 hover:underline">TEST
-                                MSG</button>
-                        </div>
-                        <div class="p-6 space-y-4">
-                            <div><label class="text-xs font-bold text-slate-700">Account SID</label><input
-                                    v-model="settings.twilioAccountSid" type="text"
-                                    class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
-                            </div>
-                            <div><label class="text-xs font-bold text-slate-700">Auth Token</label><input
-                                    v-model="settings.twilioAuthToken" type="password"
-                                    class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
-                            </div>
-                            <div class="grid grid-cols-2 gap-4">
-                                <div><label class="text-xs font-bold text-slate-700">Twilio Num</label><input
-                                        v-model="settings.twilioWhatsAppNumber" type="text"
-                                        class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
-                                </div>
-                                <div><label class="text-xs font-bold text-slate-700">Your Num</label><input
-                                        v-model="settings.authorizedWhatsAppNumber" type="text"
-                                        class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- AI -->
-                <div v-if="activeTab === 's-ai'" class="space-y-6">
-                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
-                        <h3 class="font-bold text-slate-800 text-sm border-b pb-2 mb-4">Primary Brain</h3>
-                        <div class="grid grid-cols-2 gap-4">
-                            <div><label class="text-xs font-bold text-slate-700">Provider</label><select
-                                    v-model="settings.aiProvider" @change="loadModels(false)"
-                                    class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                                    <option value="Ollama">Ollama</option>
-                                    <option value="Gemini">Gemini</option>
-                                </select></div>
-                            <div><label class="text-xs font-bold text-slate-700">Persona Name</label><input
-                                    v-model="settings.systemPersona" type="text"
-                                    class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                            </div>
-                        </div>
-                        <div>
-                            <label class="text-xs font-bold text-slate-700">{{ settings.aiProvider === 'Ollama'
-                                ? 'Ollama URL' : 'Gemini Key' }}</label>
-                            <div class="flex gap-2 mt-1">
-                                <input v-if="settings.aiProvider === 'Ollama'" v-model="settings.ollamaBaseUrl"
-                                    type="text"
-                                    class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
-                                <input v-else v-model="settings.geminiApiKey" type="password"
-                                    class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
-                                <button @click="testAi"
-                                    class="px-4 py-2 bg-slate-800 text-white rounded-lg text-xs font-bold">Test</button>
-                            </div>
-                        </div>
-                        <div>
-                            <label class="text-xs font-bold text-slate-700">Model</label>
-                            <select v-if="settings.aiProvider === 'Ollama'" v-model="settings.ollamaModelName"
-                                class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                                <option v-if="availableModels.length === 0" :value="settings.ollamaModelName">{{
-                                    settings.ollamaModelName }}</option>
-                                <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
-                            </select>
-                            <select v-else v-model="settings.geminiModelName"
-                                class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                                <option v-if="availableModels.length === 0" :value="settings.geminiModelName">{{
-                                    settings.geminiModelName }}</option>
-                                <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- RELIABILITY & FALLBACK -->
-                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
-                        <div class="flex justify-between items-center border-b pb-2 mb-4">
-                            <h3 class="font-bold text-slate-800 text-sm">Reliability & Fallback</h3>
-                            <div class="flex items-center gap-2">
-                                <label class="text-[10px] font-bold text-slate-400 uppercase">Enable
-                                    Fallback</label>
-                                <input type="checkbox" v-model="settings.enableAiFallback"
-                                    class="w-4 h-4 text-brand-600 rounded">
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="text-xs font-bold text-slate-700">Retry Attempts</label>
-                                <input v-model.number="settings.aiRetryAttempts" type="number"
-                                    class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                            </div>
-                            <div>
-                                <label class="text-xs font-bold text-slate-700">Timeout (Seconds)</label>
-                                <input v-model.number="settings.aiTimeoutSeconds" type="number"
-                                    class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                            </div>
-                        </div>
-
-                        <div v-if="settings.enableAiFallback" class="space-y-4 pt-4 border-t border-slate-100">
-                            <div class="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label class="text-xs font-bold text-slate-700">Fallback Provider</label>
-                                    <select v-model="settings.fallbackAiProvider" @change="loadModels(true)"
-                                        class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                                        <option value="Ollama">Ollama</option>
-                                        <option value="Gemini">Gemini</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label class="text-xs font-bold text-slate-700">Fallback Model</label>
-                                    <select v-if="settings.fallbackAiProvider === 'Ollama'"
-                                        v-model="settings.fallbackOllamaModelName"
-                                        class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                                        <option v-if="availableFallbackModels.length === 0"
-                                            :value="settings.fallbackOllamaModelName">{{
-                                            settings.fallbackOllamaModelName }}</option>
-                                        <option v-for="m in availableFallbackModels" :key="m" :value="m">{{ m }}
-                                        </option>
-                                    </select>
-                                    <select v-else v-model="settings.fallbackGeminiModelName"
-                                        class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                                        <option v-if="availableFallbackModels.length === 0"
-                                            :value="settings.fallbackGeminiModelName">{{
-                                            settings.fallbackGeminiModelName }}</option>
-                                        <option v-for="m in availableFallbackModels" :key="m" :value="m">{{ m }}
-                                        </option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div>
-                                <label class="text-xs font-bold text-slate-700">{{ settings.fallbackAiProvider
-                                    === 'Ollama' ? 'Fallback Ollama URL' : 'Fallback Gemini Key' }}</label>
-                                <div class="flex gap-2 mt-1">
-                                    <input v-if="settings.fallbackAiProvider === 'Ollama'"
-                                        v-model="settings.fallbackOllamaBaseUrl" type="text"
-                                        class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
-                                    <input v-else v-model="settings.fallbackGeminiApiKey" type="password"
-                                        class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
-                                    <button @click="testFallbackAi"
-                                        class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold border border-slate-200">Test
-                                        Fallback</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- THINKING MODEL -->
-                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
-                        <div class="flex justify-between items-center border-b pb-2 mb-4">
-                            <h3 class="font-bold text-slate-800 text-sm">Thinking Model (Advanced)</h3>
-                            <div class="flex items-center gap-2">
-                                <label class="text-[10px] font-bold text-slate-400 uppercase">Enable
-                                    Thinking</label>
-                                <input type="checkbox" v-model="settings.enableThinkingModel"
-                                    class="w-4 h-4 text-brand-600 rounded">
-                            </div>
-                        </div>
-                        <p class="text-[10px] text-slate-500 italic -mt-4 mb-4">When enabled, Gordon uses this
-                            model to "think" and reason before answering. If set to the same as Primary, it is
-                            ignored.</p>
-
-                        <div v-if="settings.enableThinkingModel" class="space-y-4">
-                            <div class="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label class="text-xs font-bold text-slate-700">Thinking Provider</label>
-                                    <select v-model="settings.thinkingAiProvider" @change="loadModels(false, true)"
-                                        class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                                        <option value="Ollama">Ollama</option>
-                                        <option value="Gemini">Gemini</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label class="text-xs font-bold text-slate-700">Thinking Model</label>
-                                    <select v-if="settings.thinkingAiProvider === 'Ollama'"
-                                        v-model="settings.thinkingOllamaModelName"
-                                        class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                                        <option v-if="availableThinkingModels.length === 0"
-                                            :value="settings.thinkingOllamaModelName">{{
-                                            settings.thinkingOllamaModelName }}</option>
-                                        <option v-for="m in availableThinkingModels" :key="m" :value="m">{{ m }}
-                                        </option>
-                                    </select>
-                                    <select v-else v-model="settings.thinkingGeminiModelName"
-                                        class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                                        <option v-if="availableThinkingModels.length === 0"
-                                            :value="settings.thinkingGeminiModelName">{{
-                                            settings.thinkingGeminiModelName }}</option>
-                                        <option v-for="m in availableThinkingModels" :key="m" :value="m">{{ m }}
-                                        </option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div>
-                                <label class="text-xs font-bold text-slate-700">{{ settings.thinkingAiProvider
-                                    === 'Ollama' ? 'Thinking Ollama URL' : 'Thinking Gemini Key' }}</label>
-                                <div class="flex gap-2 mt-1">
-                                    <input v-if="settings.thinkingAiProvider === 'Ollama'"
-                                        v-model="settings.thinkingOllamaBaseUrl" type="text"
-                                        class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
-                                    <input v-else v-model="settings.thinkingGeminiApiKey" type="password"
-                                        class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
-                                    <button @click="testThinkingAi"
-                                        class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold border border-slate-200">Test
-                                        Thinking</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- EMAIL -->
-                <div v-if="activeTab === 's-delivery'"
-                    class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
-                    <div class="flex justify-between">
-                        <h3 class="font-bold text-slate-800 text-sm">SMTP Settings</h3><button @click="testEmail"
-                            class="text-[10px] font-bold text-brand-600 hover:underline">TEST
-                            EMAIL</button>
-                    </div>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div><label class="text-xs font-bold text-slate-700">Host</label><input
-                                v-model="settings.smtpHost" type="text"
-                                class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                        </div>
-                        <div><label class="text-xs font-bold text-slate-700">Port</label><input
-                                v-model.number="settings.smtpPort" type="number"
-                                class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                        </div>
-                    </div>
-                    <div><label class="text-xs font-bold text-slate-700">User</label><input v-model="settings.smtpUser"
-                            type="text"
-                            class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                    </div>
-                    <div><label class="text-xs font-bold text-slate-700">Password</label><input
-                            v-model="settings.smtpPass" type="password"
-                            class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                    </div>
-                    <div><label class="text-xs font-bold text-slate-700">To Address</label><input
-                            v-model="settings.emailTo" type="text"
-                            class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                    </div>
-                    <div class="grid grid-cols-2 gap-4 border-t pt-4">
-                        <div>
-                            <label class="text-xs font-bold text-slate-700">Schedule Day</label>
-                            <select v-model="settings.reportDayOfWeek"
-                                class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                                <option v-for="d in days" :key="d" :value="d">{{ d }}</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="text-xs font-bold text-slate-700">Schedule Hour (24h)</label>
-                            <select v-model.number="settings.reportHour"
-                                class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                                <option v-for="h in 24" :key="h-1" :value="h-1">{{ (h-1).toString().padStart(2,
-                                    '0') }}:00</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- LOG TAB -->
-            <div v-if="activeTab === 'logs'" class="h-full flex flex-col space-y-4">
-                <div class="flex flex-col md:flex-row md:items-center justify-between shrink-0 gap-4">
-                    <div>
-                        <h2 class="text-2xl font-bold text-slate-900 leading-tight">System Logs</h2>
-                        <p class="text-xs text-slate-500 font-medium">Live backend activity (Auto-refresh: 3s)
-                        </p>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <div class="relative">
-                            <input v-model="logSearch" type="text" placeholder="Search logs..."
-                                class="pl-8 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 w-48 shadow-sm transition-all">
-                            <span class="absolute left-2.5 top-2.5 text-slate-400 text-xs text-[10px]">🔍</span>
-                        </div>
-                        <select v-model="logFilter"
-                            class="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none font-bold text-slate-700 shadow-sm focus:border-brand-500 transition-all">
-                            <option value="ALL">All Levels</option>
-                            <option value="INFORMATION">Info</option>
-                            <option value="WARNING">Warnings</option>
-                            <option value="ERROR">Errors</option>
-                        </select>
-                        <button @click="fetchLogs"
-                            class="p-2 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all shadow-sm active:scale-95">🔄</button>
-                    </div>
-                </div>
-
-                <!-- SAVED LOG FILE BROWSER -->
-                <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden shrink-0">
-                    <div class="px-5 py-3 border-b border-slate-100 bg-slate-50/60 flex items-center justify-between">
-                        <div class="flex items-center gap-2">
-                            <span class="text-sm">📁</span>
-                            <h3 class="font-bold text-slate-700 text-sm">Saved Log Files</h3>
-                            <span class="text-[10px] text-slate-400">(rolling daily, persisted to disk)</span>
-                        </div>
-                        <button @click="loadLogFiles"
-                            class="text-[10px] font-bold text-brand-600 hover:underline">REFRESH</button>
-                    </div>
-                    <div class="p-4">
-                        <div class="flex flex-wrap items-center gap-3">
-                            <div>
-                                <label class="text-[10px] font-bold text-slate-400 uppercase block mb-1">Level</label>
-                                <select v-model="logFileLevel"
-                                    class="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700">
-                                    <option value="info">Info (INFO+)</option>
-                                    <option value="error">Error (ERROR only)</option>
-                                    <option value="debug">Debug (ALL)</option>
+                                <label class="text-xs font-bold text-slate-700">Currency / Locale</label>
+                                <select v-model="settings.currencyCulture"
+                                    class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm outline-none">
+                                    <option value="en-ZA">South Africa (ZAR)</option>
+                                    <option value="en-US">United States (USD)</option>
+                                    <option value="en-GB">United Kingdom (GBP)</option>
                                 </select>
                             </div>
+                        </div>
+
+                        <!-- MATH / ACTUARIAL -->
+                        <div v-if="activeTab === 's-math'" class="space-y-6">
+                            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
+                                <h3 class="font-bold text-slate-800 text-sm border-b pb-2 mb-4">Core Parameters</h3>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="text-xs font-bold text-slate-700">Analysis Window (Days)
+                                            <help-tooltip
+                                                text="How far back to look when calculating your average daily spend."></help-tooltip></label>
+                                        <input v-model.number="settings.analysisWindowDays" type="number"
+                                            class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs font-bold text-slate-700">EMA Alpha ({{
+                                            settings.actuarialAlpha }}) <help-tooltip
+                                                text="Lower values make the average react slower to recent spending spikes (more stable)."></help-tooltip></label>
+                                        <input type="range" v-model.number="settings.actuarialAlpha" min="0.01"
+                                            max="0.5" step="0.01"
+                                            class="w-full mt-2 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="text-xs font-bold text-slate-700">Unexpected Alert (R)
+                                            <help-tooltip
+                                                text="Alert via Telegram if a single transaction exceeds this amount unexpectedly."></help-tooltip></label>
+                                        <input v-model.number="settings.unexpectedPaymentThreshold" type="number"
+                                            class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs font-bold text-slate-700">Income Alert (R) <help-tooltip
+                                                text="Alert via Telegram if a single credit/deposit exceeds this amount."></help-tooltip></label>
+                                        <input v-model.number="settings.incomeAlertThreshold" type="number"
+                                            class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
+                                <div class="flex justify-between items-center border-b pb-2 mb-4">
+                                    <h3 class="font-bold text-slate-800 text-sm">Classification</h3>
+                                    <button @click="categorizeHistory" :disabled="categorizing"
+                                        class="text-[10px] font-bold px-3 py-1 bg-brand-50 text-brand-700 rounded-full border border-brand-100 hover:bg-brand-100 transition-all disabled:opacity-50">
+                                        {{ categorizing ? '🏷️ CATEGORIZING...' : '🏷️ CATEGORIZE HISTORY' }}
+                                    </button>
+                                </div>
+                                <div v-if="categorizeResult"
+                                    class="text-[10px] font-bold text-green-600 bg-green-50 p-2 rounded-lg border border-green-100">
+                                    {{ categorizeResult }}
+                                </div>
+                                <div>
+                                    <label class="text-xs font-bold text-slate-700">Fixed Cost Keywords <help-tooltip
+                                            text="Comma-separated words. Transactions with these words are treated as bills, not variable spending."></help-tooltip></label>
+                                    <textarea v-model="settings.fixedCostKeywords" rows="2"
+                                        class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono"></textarea>
+                                </div>
+                                <div>
+                                    <label class="text-xs font-bold text-slate-700">Salary Keywords <help-tooltip
+                                            text="Words used to identify your paycheck for cycle detection (e.g., 'SALARY', 'PAYROLL')."></help-tooltip></label>
+                                    <textarea v-model="settings.salaryKeywords" rows="2"
+                                        class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono"></textarea>
+                                </div>
+                            </div>
+
+                            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
+                                <h3 class="font-bold text-slate-800 text-sm border-b pb-2 mb-4">Advanced Actuarial</h3>
+                                <div class="grid grid-cols-3 gap-4">
+                                    <div><label class="text-xs font-bold text-slate-700">Min Cycle <help-tooltip
+                                                text="Minimum allowed days between paychecks."></help-tooltip></label><input
+                                            v-model.number="settings.minCycleDays" type="number"
+                                            class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
+                                    </div>
+                                    <div><label class="text-xs font-bold text-slate-700">Default Cycle <help-tooltip
+                                                text="Fallback cycle length if no salary is detected."></help-tooltip></label><input
+                                            v-model.number="settings.defaultCycleDays" type="number"
+                                            class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
+                                    </div>
+                                    <div><label class="text-xs font-bold text-slate-700">Max Cycle <help-tooltip
+                                                text="Maximum allowed days between paychecks before clamping."></help-tooltip></label><input
+                                            v-model.number="settings.maxCycleDays" type="number"
+                                            class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div><label class="text-xs font-bold text-slate-700">Pulse Baseline ({{
+                                            settings.pulseBaselineThreshold }}) <help-tooltip
+                                                text="Sensitivity for detecting spending drops (Month-to-Date vs Full Month)."></help-tooltip></label><input
+                                            v-model.number="settings.pulseBaselineThreshold" type="number" step="0.01"
+                                            class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
+                                    </div>
+                                    <div><label class="text-xs font-bold text-slate-700">Hybrid Baseline ({{
+                                            settings.hybridBaselineThreshold }}) <help-tooltip
+                                                text="Sensitivity for category-specific spending drops."></help-tooltip></label><input
+                                            v-model.number="settings.hybridBaselineThreshold" type="number" step="0.01"
+                                            class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-xs font-bold text-slate-700">VaR Confidence ({{
+                                        settings.varConfidenceInterval }}) <help-tooltip
+                                            text="Standard deviations for Value at Risk. 1.645 = 95% confidence."></help-tooltip></label>
+                                    <input v-model.number="settings.varConfidenceInterval" type="number" step="0.001"
+                                        class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
+                                </div>
+                                <div>
+                                    <label class="text-xs font-bold text-slate-700">Degrees of Freedom (ν: {{
+                                        settings.actuarialDegreesOfFreedom }}) <help-tooltip
+                                            text="Lower values (e.g. 3) increase 'fat-tail' sensitivity (Black Swan modeling). Higher values approach Normal distribution."></help-tooltip></label>
+                                    <input v-model.number="settings.actuarialDegreesOfFreedom" type="number" step="0.1"
+                                        class="w-full mt-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- CONNECTIONS -->
+                        <div v-if="activeTab === 's-connections'" class="space-y-6">
+                            <!-- Investec -->
+                            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                <div
+                                    class="bg-slate-50 px-6 py-3 border-b border-slate-100 flex justify-between items-center">
+                                    <h3 class="font-bold text-slate-800 text-sm">Investec API</h3>
+                                    <button @click="testInvestec"
+                                        class="text-[10px] font-bold text-brand-600 hover:underline">TEST CONN</button>
+                                </div>
+                                <div class="p-6 space-y-4">
+                                    <div><label class="text-xs font-bold text-slate-700">Client ID</label><input
+                                            v-model="settings.investecClientId" type="text"
+                                            class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                    </div>
+                                    <div><label class="text-xs font-bold text-slate-700">Secret</label><input
+                                            v-model="settings.investecSecret" type="password"
+                                            class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                    </div>
+                                    <div><label class="text-xs font-bold text-slate-700">API Key</label><input
+                                            v-model="settings.investecApiKey" type="password"
+                                            class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div><label class="text-xs font-bold text-slate-700">History
+                                                (Days)</label><input v-model.number="settings.historyDaysBack"
+                                                type="number"
+                                                class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                        </div>
+                                        <div><label class="text-xs font-bold text-slate-700">Sync Buffer</label><input
+                                                v-model.number="settings.syncBufferDays" type="number" step="0.01"
+                                                class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Telegram -->
+                            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                <div
+                                    class="bg-slate-50 px-6 py-3 border-b border-slate-100 flex justify-between items-center">
+                                    <h3 class="font-bold text-slate-800 text-sm">Telegram Bot</h3>
+                                    <div class="flex gap-2">
+                                        <button @click="registerWebhook"
+                                            class="text-[10px] font-bold text-indigo-600 hover:underline">SET
+                                            WEBHOOK</button>
+                                        <button @click="testTelegram"
+                                            class="text-[10px] font-bold text-brand-600 hover:underline">TEST
+                                            MSG</button>
+                                    </div>
+                                </div>
+                                <div class="p-6 space-y-4">
+                                    <div><label class="text-xs font-bold text-slate-700">Bot Token</label><input
+                                            v-model="settings.telegramBotToken" type="password"
+                                            class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                    </div>
+                                    <div><label class="text-xs font-bold text-slate-700">Chat ID</label><input
+                                            v-model="settings.telegramChatId" type="text"
+                                            class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                    </div>
+                                    <div><label class="text-xs font-bold text-slate-700">Allowed IDs (Comma
+                                            sep)</label><textarea v-model="settings.telegramAuthorizedChatIds" rows="2"
+                                            class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Twilio -->
+                            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                <div class="bg-slate-50 px-6 py-3 border-b border-slate-100 flex justify-between">
+                                    <h3 class="font-bold text-slate-800 text-sm">WhatsApp (Twilio)</h3><button
+                                        @click="testWhatsApp"
+                                        class="text-[10px] font-bold text-brand-600 hover:underline">TEST
+                                        MSG</button>
+                                </div>
+                                <div class="p-6 space-y-4">
+                                    <div><label class="text-xs font-bold text-slate-700">Account SID</label><input
+                                            v-model="settings.twilioAccountSid" type="text"
+                                            class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                    </div>
+                                    <div><label class="text-xs font-bold text-slate-700">Auth Token</label><input
+                                            v-model="settings.twilioAuthToken" type="password"
+                                            class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div><label class="text-xs font-bold text-slate-700">Twilio Num</label><input
+                                                v-model="settings.twilioWhatsAppNumber" type="text"
+                                                class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                        </div>
+                                        <div><label class="text-xs font-bold text-slate-700">Your Num</label><input
+                                                v-model="settings.authorizedWhatsAppNumber" type="text"
+                                                class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- AI -->
+                        <div v-if="activeTab === 's-ai'" class="space-y-6">
+                            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
+                                <h3 class="font-bold text-slate-800 text-sm border-b pb-2 mb-4">Primary Brain</h3>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div><label class="text-xs font-bold text-slate-700">Provider</label><select
+                                            v-model="settings.aiProvider" @change="loadModels(false)"
+                                            class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                            <option value="Ollama">Ollama</option>
+                                            <option value="Gemini">Gemini</option>
+                                        </select></div>
+                                    <div><label class="text-xs font-bold text-slate-700">Persona Name</label><input
+                                            v-model="settings.systemPersona" type="text"
+                                            class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-xs font-bold text-slate-700">{{ settings.aiProvider === 'Ollama'
+                                        ? 'Ollama URL' : 'Gemini Key' }}</label>
+                                    <div class="flex gap-2 mt-1">
+                                        <input v-if="settings.aiProvider === 'Ollama'" v-model="settings.ollamaBaseUrl"
+                                            type="text"
+                                            class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                        <input v-else v-model="settings.geminiApiKey" type="password"
+                                            class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                        <button @click="testAi"
+                                            class="px-4 py-2 bg-slate-800 text-white rounded-lg text-xs font-bold">Test</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-xs font-bold text-slate-700">Model</label>
+                                    <select v-if="settings.aiProvider === 'Ollama'" v-model="settings.ollamaModelName"
+                                        class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                        <option v-if="availableModels.length === 0" :value="settings.ollamaModelName">{{
+                                            settings.ollamaModelName }}</option>
+                                        <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
+                                    </select>
+                                    <select v-else v-model="settings.geminiModelName"
+                                        class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                        <option v-if="availableModels.length === 0" :value="settings.geminiModelName">{{
+                                            settings.geminiModelName }}</option>
+                                        <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- RELIABILITY & FALLBACK -->
+                            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
+                                <div class="flex justify-between items-center border-b pb-2 mb-4">
+                                    <h3 class="font-bold text-slate-800 text-sm">Reliability & Fallback</h3>
+                                    <div class="flex items-center gap-2">
+                                        <label class="text-[10px] font-bold text-slate-400 uppercase">Enable
+                                            Fallback</label>
+                                        <input type="checkbox" v-model="settings.enableAiFallback"
+                                            class="w-4 h-4 text-brand-600 rounded">
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="text-xs font-bold text-slate-700">Retry Attempts</label>
+                                        <input v-model.number="settings.aiRetryAttempts" type="number"
+                                            class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs font-bold text-slate-700">Timeout (Seconds)</label>
+                                        <input v-model.number="settings.aiTimeoutSeconds" type="number"
+                                            class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                    </div>
+                                </div>
+
+                                <div v-if="settings.enableAiFallback" class="space-y-4 pt-4 border-t border-slate-100">
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label class="text-xs font-bold text-slate-700">Fallback Provider</label>
+                                            <select v-model="settings.fallbackAiProvider" @change="loadModels(true)"
+                                                class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                                <option value="Ollama">Ollama</option>
+                                                <option value="Gemini">Gemini</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="text-xs font-bold text-slate-700">Fallback Model</label>
+                                            <select v-if="settings.fallbackAiProvider === 'Ollama'"
+                                                v-model="settings.fallbackOllamaModelName"
+                                                class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                                <option v-if="availableFallbackModels.length === 0"
+                                                    :value="settings.fallbackOllamaModelName">{{
+                                                    settings.fallbackOllamaModelName }}</option>
+                                                <option v-for="m in availableFallbackModels" :key="m" :value="m">{{ m }}
+                                                </option>
+                                            </select>
+                                            <select v-else v-model="settings.fallbackGeminiModelName"
+                                                class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                                <option v-if="availableFallbackModels.length === 0"
+                                                    :value="settings.fallbackGeminiModelName">{{
+                                                    settings.fallbackGeminiModelName }}</option>
+                                                <option v-for="m in availableFallbackModels" :key="m" :value="m">{{ m }}
+                                                </option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs font-bold text-slate-700">{{ settings.fallbackAiProvider
+                                            === 'Ollama' ? 'Fallback Ollama URL' : 'Fallback Gemini Key' }}</label>
+                                        <div class="flex gap-2 mt-1">
+                                            <input v-if="settings.fallbackAiProvider === 'Ollama'"
+                                                v-model="settings.fallbackOllamaBaseUrl" type="text"
+                                                class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                            <input v-else v-model="settings.fallbackGeminiApiKey" type="password"
+                                                class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                            <button @click="testFallbackAi"
+                                                class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold border border-slate-200">Test
+                                                Fallback</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- THINKING MODEL -->
+                            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
+                                <div class="flex justify-between items-center border-b pb-2 mb-4">
+                                    <h3 class="font-bold text-slate-800 text-sm">Thinking Model (Advanced)</h3>
+                                    <div class="flex items-center gap-2">
+                                        <label class="text-[10px] font-bold text-slate-400 uppercase">Enable
+                                            Thinking</label>
+                                        <input type="checkbox" v-model="settings.enableThinkingModel"
+                                            class="w-4 h-4 text-brand-600 rounded">
+                                    </div>
+                                </div>
+                                <p class="text-[10px] text-slate-500 italic -mt-4 mb-4">When enabled, Gordon uses this
+                                    model to "think" and reason before answering. If set to the same as Primary, it is
+                                    ignored.</p>
+
+                                <div v-if="settings.enableThinkingModel" class="space-y-4">
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label class="text-xs font-bold text-slate-700">Thinking Provider</label>
+                                            <select v-model="settings.thinkingAiProvider"
+                                                @change="loadModels(false, true)"
+                                                class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                                <option value="Ollama">Ollama</option>
+                                                <option value="Gemini">Gemini</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="text-xs font-bold text-slate-700">Thinking Model</label>
+                                            <select v-if="settings.thinkingAiProvider === 'Ollama'"
+                                                v-model="settings.thinkingOllamaModelName"
+                                                class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                                <option v-if="availableThinkingModels.length === 0"
+                                                    :value="settings.thinkingOllamaModelName">{{
+                                                    settings.thinkingOllamaModelName }}</option>
+                                                <option v-for="m in availableThinkingModels" :key="m" :value="m">{{ m }}
+                                                </option>
+                                            </select>
+                                            <select v-else v-model="settings.thinkingGeminiModelName"
+                                                class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                                <option v-if="availableThinkingModels.length === 0"
+                                                    :value="settings.thinkingGeminiModelName">{{
+                                                    settings.thinkingGeminiModelName }}</option>
+                                                <option v-for="m in availableThinkingModels" :key="m" :value="m">{{ m }}
+                                                </option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs font-bold text-slate-700">{{ settings.thinkingAiProvider
+                                            === 'Ollama' ? 'Thinking Ollama URL' : 'Thinking Gemini Key' }}</label>
+                                        <div class="flex gap-2 mt-1">
+                                            <input v-if="settings.thinkingAiProvider === 'Ollama'"
+                                                v-model="settings.thinkingOllamaBaseUrl" type="text"
+                                                class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                            <input v-else v-model="settings.thinkingGeminiApiKey" type="password"
+                                                class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                            <button @click="testThinkingAi"
+                                                class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold border border-slate-200">Test
+                                                Thinking</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- EMAIL -->
+                        <div v-if="activeTab === 's-delivery'"
+                            class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
+                            <div class="flex justify-between">
+                                <h3 class="font-bold text-slate-800 text-sm">SMTP Settings</h3><button
+                                    @click="testEmail" class="text-[10px] font-bold text-brand-600 hover:underline">TEST
+                                    EMAIL</button>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div><label class="text-xs font-bold text-slate-700">Host</label><input
+                                        v-model="settings.smtpHost" type="text"
+                                        class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                </div>
+                                <div><label class="text-xs font-bold text-slate-700">Port</label><input
+                                        v-model.number="settings.smtpPort" type="number"
+                                        class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                </div>
+                            </div>
+                            <div><label class="text-xs font-bold text-slate-700">User</label><input
+                                    v-model="settings.smtpUser" type="text"
+                                    class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                            </div>
+                            <div><label class="text-xs font-bold text-slate-700">Password</label><input
+                                    v-model="settings.smtpPass" type="password"
+                                    class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                            </div>
+                            <div><label class="text-xs font-bold text-slate-700">To Address</label><input
+                                    v-model="settings.emailTo" type="text"
+                                    class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                            </div>
+                            <div class="grid grid-cols-2 gap-4 border-t pt-4">
+                                <div>
+                                    <label class="text-xs font-bold text-slate-700">Schedule Day</label>
+                                    <select v-model="settings.reportDayOfWeek"
+                                        class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                        <option v-for="d in days" :key="d" :value="d">{{ d }}</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-xs font-bold text-slate-700">Schedule Hour (24h)</label>
+                                    <select v-model.number="settings.reportHour"
+                                        class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                        <option v-for="h in 24" :key="h-1" :value="h-1">{{ (h-1).toString().padStart(2,
+                                            '0') }}:00</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- LOG TAB -->
+                    <div v-if="activeTab === 'logs'" class="h-full flex flex-col space-y-4">
+                        <div class="flex flex-col md:flex-row md:items-center justify-between shrink-0 gap-4">
                             <div>
-                                <label class="text-[10px] font-bold text-slate-400 uppercase block mb-1">Date</label>
-                                <select v-model="logFileDate"
-                                    class="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-700 min-w-[130px]">
-                                    <option value="">— select date —</option>
-                                    <option v-for="d in (logFileDates[logFileLevel] || [])" :key="d" :value="d">
-                                        {{ d }}</option>
+                                <h2 class="text-2xl font-bold text-slate-900 leading-tight">System Logs</h2>
+                                <p class="text-xs text-slate-500 font-medium">Live backend activity (Auto-refresh: 3s)
+                                </p>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <div class="relative">
+                                    <input v-model="logSearch" type="text" placeholder="Search logs..."
+                                        class="pl-8 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 w-48 shadow-sm transition-all">
+                                    <span class="absolute left-2.5 top-2.5 text-slate-400 text-xs text-[10px]">🔍</span>
+                                </div>
+                                <select v-model="logFilter"
+                                    class="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none font-bold text-slate-700 shadow-sm focus:border-brand-500 transition-all">
+                                    <option value="ALL">All Levels</option>
+                                    <option value="INFORMATION">Info</option>
+                                    <option value="WARNING">Warnings</option>
+                                    <option value="ERROR">Errors</option>
                                 </select>
-                            </div>
-                            <div class="mt-5">
-                                <button @click="loadLogFileContent" :disabled="!logFileDate || logFileLoading"
-                                    class="px-4 py-2 bg-brand-600 text-white rounded-lg text-xs font-bold disabled:opacity-40 hover:bg-brand-700 transition-all">
-                                    {{ logFileLoading ? '⏳ Loading...' : '📄 Load' }}
-                                </button>
-                            </div>
-                            <div v-if="logFileContent" class="mt-5">
-                                <a :href="'/api/logs/files/' + logFileLevel + '/' + logFileDate"
-                                    :download="'gordon-' + logFileLevel + '-' + logFileDate + '.log'"
-                                    class="px-4 py-2 bg-slate-100 border border-slate-200 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-200 transition-all">
-                                    ⬇ Download
-                                </a>
+                                <button @click="fetchLogs"
+                                    class="p-2 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all shadow-sm active:scale-95">🔄</button>
                             </div>
                         </div>
-                        <div v-if="logFileContent" class="mt-4 bg-slate-900 rounded-xl p-4 overflow-auto max-h-64">
-                            <pre
-                                class="text-[10px] text-slate-300 font-mono leading-relaxed whitespace-pre-wrap">{{ logFileContent }}</pre>
+
+                        <!-- SAVED LOG FILE BROWSER -->
+                        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden shrink-0">
+                            <div
+                                class="px-5 py-3 border-b border-slate-100 bg-slate-50/60 flex items-center justify-between">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-sm">📁</span>
+                                    <h3 class="font-bold text-slate-700 text-sm">Saved Log Files</h3>
+                                    <span class="text-[10px] text-slate-400">(rolling daily, persisted to disk)</span>
+                                </div>
+                                <button @click="loadLogFiles"
+                                    class="text-[10px] font-bold text-brand-600 hover:underline">REFRESH</button>
+                            </div>
+                            <div class="p-4">
+                                <div class="flex flex-wrap items-center gap-3">
+                                    <div>
+                                        <label
+                                            class="text-[10px] font-bold text-slate-400 uppercase block mb-1">Level</label>
+                                        <select v-model="logFileLevel"
+                                            class="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700">
+                                            <option value="info">Info (INFO+)</option>
+                                            <option value="error">Error (ERROR only)</option>
+                                            <option value="debug">Debug (ALL)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label
+                                            class="text-[10px] font-bold text-slate-400 uppercase block mb-1">Date</label>
+                                        <select v-model="logFileDate"
+                                            class="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-700 min-w-[130px]">
+                                            <option value="">— select date —</option>
+                                            <option v-for="d in (logFileDates[logFileLevel] || [])" :key="d" :value="d">
+                                                {{ d }}</option>
+                                        </select>
+                                    </div>
+                                    <div class="mt-5">
+                                        <button @click="loadLogFileContent" :disabled="!logFileDate || logFileLoading"
+                                            class="px-4 py-2 bg-brand-600 text-white rounded-lg text-xs font-bold disabled:opacity-40 hover:bg-brand-700 transition-all">
+                                            {{ logFileLoading ? '⏳ Loading...' : '📄 Load' }}
+                                        </button>
+                                    </div>
+                                    <div v-if="logFileContent" class="mt-5">
+                                        <a :href="'/api/logs/files/' + logFileLevel + '/' + logFileDate"
+                                            :download="'gordon-' + logFileLevel + '-' + logFileDate + '.log'"
+                                            class="px-4 py-2 bg-slate-100 border border-slate-200 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-200 transition-all">
+                                            ⬇ Download
+                                        </a>
+                                    </div>
+                                </div>
+                                <div v-if="logFileContent"
+                                    class="mt-4 bg-slate-900 rounded-xl p-4 overflow-auto max-h-64">
+                                    <pre
+                                        class="text-[10px] text-slate-300 font-mono leading-relaxed whitespace-pre-wrap">{{ logFileContent }}</pre>
+                                </div>
+                                <div v-else-if="!logFileDates.info?.length && !logFileLoading"
+                                    class="mt-3 text-[10px] text-slate-400 italic">
+                                    No saved log files yet — they are created automatically as the app runs.
+                                </div>
+                            </div>
                         </div>
-                        <div v-else-if="!logFileDates.info?.length && !logFileLoading"
-                            class="mt-3 text-[10px] text-slate-400 italic">
-                            No saved log files yet — they are created automatically as the app runs.
-                        </div>
-                    </div>
-                </div>
 
 
-                <!-- LIVE LOG STREAM -->
-                <div
-                    class="flex-1 bg-slate-900 rounded-3xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col">
-                    <div
-                        class="flex-1 overflow-y-auto p-4 font-mono text-[11px] leading-relaxed divide-y divide-slate-800">
-                        <div v-for="(log, idx) in filteredLogs" :key="idx"
-                            class="py-3 flex items-start gap-4 hover:bg-white/5 transition-colors group">
-                            <span class="text-slate-500 shrink-0 select-none tabular-nums">{{
-                                formatTime(log.timestamp) }}</span>
-                            <span :class="getLogLevelClass(log.level)"
-                                class="px-2 py-0.5 rounded text-[9px] font-bold uppercase shrink-0 min-w-[80px] text-center shadow-sm">
-                                {{ log.level }}
-                            </span>
-                            <div class="flex-1 min-w-0">
-                                <span class="text-indigo-400 font-bold block md:inline mb-1 md:mb-0 md:mr-2">[{{
-                                    log.category.split('.').pop() }}]</span>
-                                <span class="text-slate-300 break-words whitespace-pre-wrap">{{ log.message
-                                    }}</span>
+                        <!-- LIVE LOG STREAM -->
+                        <div
+                            class="flex-1 bg-slate-900 rounded-3xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col">
+                            <div
+                                class="flex-1 overflow-y-auto p-4 font-mono text-[11px] leading-relaxed divide-y divide-slate-800">
+                                <div v-for="(log, idx) in filteredLogs" :key="idx"
+                                    class="py-3 flex items-start gap-4 hover:bg-white/5 transition-colors group">
+                                    <span class="text-slate-500 shrink-0 select-none tabular-nums">{{
+                                        formatTime(log.timestamp) }}</span>
+                                    <span :class="getLogLevelClass(log.level)"
+                                        class="px-2 py-0.5 rounded text-[9px] font-bold uppercase shrink-0 min-w-[80px] text-center shadow-sm">
+                                        {{ log.level }}
+                                    </span>
+                                    <div class="flex-1 min-w-0">
+                                        <span class="text-indigo-400 font-bold block md:inline mb-1 md:mb-0 md:mr-2">[{{
+                                            log.category.split('.').pop() }}]</span>
+                                        <span class="text-slate-300 break-words whitespace-pre-wrap">{{ log.message
+                                            }}</span>
+                                    </div>
+                                </div>
+                                <div v-if="filteredLogs.length === 0"
+                                    class="flex flex-col items-center justify-center h-full text-slate-500 py-20 opacity-50">
+                                    <span class="text-5xl mb-4">🧊</span>
+                                    <p class="font-bold">No logs found matching criteria.</p>
+                                </div>
+                            </div>
+                            <div
+                                class="px-6 py-3 bg-slate-800 text-slate-400 text-[10px] flex justify-between border-t border-slate-700 items-center">
+                                <span class="font-medium tracking-wide">Showing {{ filteredLogs.length }} / {{
+                                    logs.length }} entries</span>
+                                <span
+                                    class="text-brand-400 animate-pulse font-bold flex items-center gap-1.5 uppercase tracking-widest">
+                                    <span class="w-1.5 h-1.5 bg-brand-500 rounded-full"></span> LIVE STREAMING</span>
                             </div>
                         </div>
-                        <div v-if="filteredLogs.length === 0"
-                            class="flex flex-col items-center justify-center h-full text-slate-500 py-20 opacity-50">
-                            <span class="text-5xl mb-4">🧊</span>
-                            <p class="font-bold">No logs found matching criteria.</p>
-                        </div>
                     </div>
-                    <div
-                        class="px-6 py-3 bg-slate-800 text-slate-400 text-[10px] flex justify-between border-t border-slate-700 items-center">
-                        <span class="font-medium tracking-wide">Showing {{ filteredLogs.length }} / {{
-                            logs.length }} entries</span>
-                        <span
-                            class="text-brand-400 animate-pulse font-bold flex items-center gap-1.5 uppercase tracking-widest">
-                            <span class="w-1.5 h-1.5 bg-brand-500 rounded-full"></span> LIVE STREAMING</span>
-                    </div>
-                </div>
+                </main>
             </div>
-            </main>
-    </div>
 
-    <!-- MOBILE BOTTOM NAVBAR -->
-    <div
-        class="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-4 py-2 z-50 flex items-center justify-between shadow-lg">
-        <button v-for="item in menuItems.slice(0, 4)" :key="item.id" @click="activeTab = item.id"
-            v-show="!item.adminOnly || auth.role === 'Admin'"
-            class="flex flex-col items-center gap-1 p-2 flex-1 rounded-xl transition-all"
-            :class="activeTab === item.id ? 'text-brand-600 bg-brand-50' : 'text-slate-400'">
-            <span class="text-xl">{{ item.icon }}</span>
-            <span class="text-[9px] font-bold uppercase tracking-tight">{{ item.name }}</span>
-        </button>
-        <button @click="activeTab = 's-ai'"
-            class="flex flex-col items-center gap-1 p-2 flex-1 rounded-xl transition-all"
-            :class="activeTab.startsWith('s-') ? 'text-brand-600 bg-brand-50' : 'text-slate-400'">
-            <span class="text-xl">⚙️</span>
-            <span class="text-[9px] font-bold uppercase tracking-tight">Setup</span>
-        </button>
-    </div>
-    </template>
+            <!-- MOBILE BOTTOM NAVBAR -->
+            <div
+                class="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-4 py-2 z-50 flex items-center justify-between shadow-lg">
+                <button v-for="item in menuItems.slice(0, 4)" :key="item.id" @click="activeTab = item.id"
+                    v-show="!item.adminOnly || auth.role === 'Admin'"
+                    class="flex flex-col items-center gap-1 p-2 flex-1 rounded-xl transition-all"
+                    :class="activeTab === item.id ? 'text-brand-600 bg-brand-50' : 'text-slate-400'">
+                    <span class="text-xl">{{ item.icon }}</span>
+                    <span class="text-[9px] font-bold uppercase tracking-tight">{{ item.name }}</span>
+                </button>
+                <button @click="activeTab = 's-ai'"
+                    class="flex flex-col items-center gap-1 p-2 flex-1 rounded-xl transition-all"
+                    :class="activeTab.startsWith('s-') ? 'text-brand-600 bg-brand-50' : 'text-slate-400'">
+                    <span class="text-xl">⚙️</span>
+                    <span class="text-[9px] font-bold uppercase tracking-tight">Setup</span>
+                </button>
+            </div>
+        </template>
 
-    <!-- TOAST NOTIFICATION -->
-    <div v-if="toast.show"
-        class="fixed top-4 right-4 z-[200] bg-slate-800 text-white px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-pulse">
-        <span class="text-xl">🔔</span>
-        <span class="font-bold text-sm">{{ toast.msg }}</span>
-    </div>
+        <!-- TOAST NOTIFICATION -->
+        <div v-if="toast.show"
+            class="fixed top-4 right-4 z-[200] bg-slate-800 text-white px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-pulse">
+            <span class="text-xl">🔔</span>
+            <span class="font-bold text-sm">{{ toast.msg }}</span>
+        </div>
 
-    <!-- USER MODAL -->
-    <div v-if="isUserModalOpen" class="fixed inset-0 z-[150] bg-black/50 flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
-            <h3 class="text-lg font-bold">{{ userForm.id ? 'Edit User' : 'New User' }}</h3>
-            <input v-if="!userForm.id" v-model="userForm.username" type="text" placeholder="Username"
-                class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none">
-            <input v-model="userForm.password" type="password"
-                :placeholder="userForm.id ? 'New Password (Optional)' : 'Password'"
-                class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none">
-            <select v-model="userForm.role"
-                class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none">
-                <option value="User">User</option>
-                <option value="Admin">Admin</option>
-            </select>
-            <div class="flex gap-2 justify-end pt-2">
-                <button @click="isUserModalOpen = false" class="px-4 py-2 text-slate-500 font-bold">Cancel</button>
-                <button @click="saveUser" class="px-4 py-2 bg-brand-600 text-white rounded-lg font-bold">Save</button>
+        <!-- USER MODAL -->
+        <div v-if="isUserModalOpen" class="fixed inset-0 z-[150] bg-black/50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
+                <h3 class="text-lg font-bold">{{ userForm.id ? 'Edit User' : 'New User' }}</h3>
+                <input v-if="!userForm.id" v-model="userForm.username" type="text" placeholder="Username"
+                    class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none">
+                <input v-model="userForm.password" type="password"
+                    :placeholder="userForm.id ? 'New Password (Optional)' : 'Password'"
+                    class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none">
+                <select v-model="userForm.role"
+                    class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none">
+                    <option value="User">User</option>
+                    <option value="Admin">Admin</option>
+                </select>
+                <div class="flex gap-2 justify-end pt-2">
+                    <button @click="isUserModalOpen = false" class="px-4 py-2 text-slate-500 font-bold">Cancel</button>
+                    <button @click="saveUser"
+                        class="px-4 py-2 bg-brand-600 text-white rounded-lg font-bold">Save</button>
+                </div>
             </div>
         </div>
-    </div>
 
     </div>
 

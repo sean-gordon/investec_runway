@@ -90,13 +90,19 @@ public class SimulationController : ControllerBase
             }
             else if (adj.Type == "MonthlyIncome")
             {
+                var primaryKeyword = "SIMULATION SALARY";
+                if (!string.IsNullOrWhiteSpace(settings.SalaryKeywords))
+                {
+                    primaryKeyword = settings.SalaryKeywords.Split(',').FirstOrDefault()?.Trim() ?? primaryKeyword;
+                }
+
                 for (int i = 0; i < 3; i++)
                 {
                     history.Add(new Transaction 
                     { 
                         Amount = adj.Amount, // Income = Positive
                         TransactionDate = DateTimeOffset.Now.AddMonths(-i).AddDays(-1), 
-                        Description = "SIMULATION SALARY: " + adj.Description,
+                        Description = $"{primaryKeyword} SIMULATION: {adj.Description}",
                         Category = "CREDIT"
                     });
                 }

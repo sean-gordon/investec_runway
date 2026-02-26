@@ -1307,37 +1307,27 @@
                     localStorage.clear();
                 },
                 async loadData() {
-                    try {
-                        const [settingsRes, dashboardRes] = await Promise.all([
-                            this.api('/api/settings'),
-                            this.api('/api/dashboard')
-                        ]);
+                    const resS = await this.api('/api/settings');
+                    if (resS.ok) {
+                        this.settings = await resS.json();
+                        this.loadModels(false);
+                        this.loadModels(true);
+                        this.loadModels(false, true);
+                        this.$nextTick(() => {
+                            document.title = `Gordon | ${this.settings.userName || this.auth.username}`;
+                        });
+                    }
+                    const resSt = await this.api('/api/settings/status');
+                    if (resSt.ok) this.systemStatus = await resSt.json();
 
-                        if (settingsRes.ok) {
-                            this.settings = await settingsRes.json();
-                            this.loadModels(false);
-                            this.loadModels(true);
-                            this.loadModels(false, true);
-                            this.$nextTick(() => {
-                                document.title = `Gordon | ${this.settings.userName || this.auth.username}`;
-                            });
-                        }
+                    const resStats = await this.api('/api/settings/stats');
+                    if (resStats.ok) this.healthStats = await resStats.json();
 
-                        if (dashboardRes.ok) {
-                            const dashboardData = await dashboardRes.json();
-                            this.healthStats = dashboardData.healthStats || null;
-                            this.systemStatus = dashboardData.systemStatus || {};
+                    const resTx = await this.api('/api/settings/recent-transactions');
+                    if (resTx.ok) this.recentTransactions = await resTx.json();
 
-                            // Re-enable if needed in another view, but removed from UI main panel per prompt
-                            this.recentTransactions = dashboardData.recentTransactions || [];
-
-                            if (this.activeTab === 'dashboard') {
-                                this.loadCharts();
-                            }
-                        }
-                    } catch (e) {
-                        if (e.message && e.message.includes("401")) this.logout();
-                        console.error("Failed to load dashboard data.", e);
+                    if (this.activeTab === 'dashboard') {
+                        this.loadCharts();
                     }
                 },
                 async loadRawData() {

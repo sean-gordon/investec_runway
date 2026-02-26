@@ -225,14 +225,16 @@ public class ActuarialService : IActuarialService
 
         // Identify Upcoming Expected Payments
         var upcomingFixedCosts = new List<UpcomingExpense>();
-        var historicalFixedExpenses = lastPeriodFullExpenses.Where(t => IsFixed(t))
+        var historicalFixedExpenses = priorExpenses.Where(t => IsFixed(t))
             .GroupBy(t => t.Category ?? NormalizeDescription(t.Description)).ToList();
 
         foreach (var group in historicalFixedExpenses)
         {
             if (!thisPeriodExpenses.Any(t => IsFixed(t) && (t.Category ?? NormalizeDescription(t.Description)) == group.Key))
             {
-                upcomingFixedCosts.Add(new UpcomingExpense(group.Key, group.Sum(t => t.Amount)));    
+                // Take the average of the last few occurrences to be more accurate than just the absolute sum of all history
+                var avgAmount = group.OrderByDescending(x => x.TransactionDate).Take(3).Average(t => Math.Abs(t.Amount));
+                upcomingFixedCosts.Add(new UpcomingExpense(group.Key, avgAmount));    
             }
         }
         decimal upcomingOverhead = upcomingFixedCosts.Sum(e => e.ExpectedAmount);

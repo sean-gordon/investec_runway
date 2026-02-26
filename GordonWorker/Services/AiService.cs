@@ -14,7 +14,7 @@ public interface IAiService
     Task<(Guid? TransactionId, string? Note)> AnalyzeExpenseExplanationAsync(int userId, string userMessage, List<Transaction> recentTransactions);
     Task<(bool IsAffordabilityCheck, decimal? Amount, string? Description)> AnalyzeAffordabilityAsync(int userId, string userMessage);
     Task<(bool IsChartRequest, string? ChartType, string? Sql, string? Title)> AnalyzeChartRequestAsync(int userId, string userMessage);
-    Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false, bool useThinking = false);
+    Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false, bool useThinking = false, bool forceRefresh = false);
     Task<List<string>> GetAvailableModelsAsync(int userId, bool useFallback = false, bool useThinking = false, AppSettings? overriddenSettings = null);
     Task<List<Transaction>> CategorizeTransactionsAsync(int userId, List<Transaction> transactions);
 }
@@ -291,7 +291,8 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                 OllamaUrl = settings.FallbackOllamaBaseUrl,
                 ModelName = settings.FallbackAiProvider == "Gemini" ? settings.FallbackGeminiModelName : settings.FallbackOllamaModelName,
                 GeminiKey = settings.FallbackGeminiApiKey,
-                TimeoutSeconds = settings.AiTimeoutSeconds
+                TimeoutSeconds = settings.AiTimeoutSeconds,
+                RetryAttempts = settings.AiRetryAttempts
             };
         }
 
@@ -301,7 +302,8 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
             OllamaUrl = settings.OllamaBaseUrl,
             ModelName = settings.AiProvider == "Gemini" ? settings.GeminiModelName : settings.OllamaModelName,
             GeminiKey = settings.GeminiApiKey,
-            TimeoutSeconds = settings.AiTimeoutSeconds
+            TimeoutSeconds = settings.AiTimeoutSeconds,
+            RetryAttempts = settings.AiRetryAttempts
         };
     }
 
@@ -314,7 +316,8 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
             OllamaUrl = settings.ThinkingOllamaBaseUrl,
             ModelName = settings.ThinkingAiProvider == "Gemini" ? settings.ThinkingGeminiModelName : settings.ThinkingOllamaModelName,
             GeminiKey = settings.ThinkingGeminiApiKey,
-            TimeoutSeconds = settings.AiTimeoutSeconds
+            TimeoutSeconds = settings.AiTimeoutSeconds,
+            RetryAttempts = settings.AiRetryAttempts
         };
     }
 
@@ -397,10 +400,10 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
         catch (Exception ex) { _logger.LogError(ex, "Failed to fetch models from {Provider}.", useFallback ? "Fallback AI" : "Primary AI"); return new List<string> { $"Ollama Fetch Error: {ex.Message}" }; }
     }
 
-    public async Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false, bool useThinking = false)
+    public async Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false, bool useThinking = false, bool forceRefresh = false)
     {
         var cacheKey = $"{userId}_{useFallback}_{useThinking}";
-        if (_testCache.TryGetValue(cacheKey, out var cached) && (DateTime.UtcNow - cached.Timestamp).TotalMinutes < 15)
+        if (!forceRefresh && _testCache.TryGetValue(cacheKey, out var cached) && (DateTime.UtcNow - cached.Timestamp).TotalMinutes < 15)
         {
             return (cached.Success, cached.Error);
         }
@@ -409,8 +412,8 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
             ? await GetThinkingProviderConfigAsync(userId)
             : await GetProviderConfigAsync(userId, useFallback);
 
-        var testTimeout = TimeSpan.FromSeconds(15); 
-        var maxAttempts = config.Provider == "Gemini" ? 1 : 2; 
+        var testTimeout = TimeSpan.FromSeconds(config.TimeoutSeconds > 0 ? config.TimeoutSeconds : 15); 
+        var maxAttempts = config.RetryAttempts > 0 ? config.RetryAttempts : 1; 
 
         for (int attempt = 1; attempt <= maxAttempts; attempt++)
         {
@@ -422,7 +425,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                     
                     try 
                     {
-                        var result = await GenerateGeminiCompletionAsync(userId, "System", "Say 'OK'", config.GeminiKey, config.ModelName, timeoutSeconds: 15);
+                        var result = await GenerateGeminiCompletionAsync(userId, "System", "Say 'OK'", config.GeminiKey, config.ModelName, timeoutSeconds: (int)testTimeout.TotalSeconds);
                         var finalResult = (Success: !string.IsNullOrWhiteSpace(result) && !result.Contains("Error:"), Error: result ?? "Empty response.");
                         _testCache[cacheKey] = (finalResult.Success, finalResult.Error, DateTime.UtcNow);
                         return finalResult;
@@ -430,6 +433,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                     catch (HttpRequestException ex) when (ex.Message.Contains("TooManyRequests") || ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
                     {
                         _logger.LogWarning("Gemini Rate Limit hit during test.");
+                        if (attempt < maxAttempts) continue;
                         return (false, "Rate Limited - Gemini is cooling down. Please wait a few minutes.");
                     }
                 }
@@ -897,6 +901,7 @@ IF the response completely missed the prompt or is missing critical information:
         public string ModelName { get; set; } = "";
         public string GeminiKey { get; set; } = "";
         public int TimeoutSeconds { get; set; } = 90;
+        public int RetryAttempts { get; set; } = 2;
     }
 
     private class OllamaResponse { [System.Text.Json.Serialization.JsonPropertyName("response")] public string? Response { get; set; } }

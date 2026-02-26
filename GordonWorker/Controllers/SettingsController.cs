@@ -133,7 +133,7 @@ public class SettingsController : ControllerBase
     {
         try
         {
-            var result = await _aiService.TestConnectionAsync(UserId, useFallback: false);
+            var result = await _aiService.TestConnectionAsync(UserId, useFallback: false, forceRefresh: true);
             _statusService.IsAiPrimaryOnline = result.Success;
             _statusService.PrimaryAiError = result.Success ? string.Empty : result.Error;
             
@@ -160,7 +160,7 @@ public class SettingsController : ControllerBase
     {
         try
         {
-            var result = await _aiService.TestConnectionAsync(UserId, useFallback: true);
+            var result = await _aiService.TestConnectionAsync(UserId, useFallback: true, forceRefresh: true);
             _statusService.IsAiFallbackOnline = result.Success;
             _statusService.FallbackAiError = result.Success ? string.Empty : result.Error;
 
@@ -187,7 +187,7 @@ public class SettingsController : ControllerBase
     {
         try
         {
-            var result = await _aiService.TestConnectionAsync(UserId, useFallback: false, useThinking: true);
+            var result = await _aiService.TestConnectionAsync(UserId, useFallback: false, useThinking: true, forceRefresh: true);
             if (result.Success)
             {
                 return Ok(new { Message = "Connected to Thinking AI successfully." });

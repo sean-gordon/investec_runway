@@ -1097,8 +1097,8 @@
                                                 class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
                                                 Survival Prob.</p>
                                             <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-bold text-sm"
-                                                :class="(simulationResult.runwayProbability || 0) > 0.8 ? 'bg-green-50 text-green-700' : ((simulationResult.runwayProbability || 0) > 0.4 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700')">
-                                                {{ ((simulationResult.runwayProbability || 0) * 100).toFixed(1) }}%
+                                                :class="(simulationResult.runwayProbability || 0) > 80 ? 'bg-green-50 text-green-700' : ((simulationResult.runwayProbability || 0) > 40 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700')">
+                                                {{ (simulationResult.runwayProbability || 0).toFixed(1) }}%
                                             </div>
                                         </div>
                                     </div>

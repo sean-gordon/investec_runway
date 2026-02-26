@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Ollama AI Health Check Optimization**: `ConnectivityWorker` now only polls the AI providers once every 4 hours instead of every 5 minutes to prevent Ollama from experiencing timeout errors and exhaustion.
 - **Dynamic Gemini Model Discovery Fix**: `SettingsController` now explicitly unmasks `********` placeholder settings sent by the frontend UI, allowing the `AiService` to authenticate with the true API key and fetch the live dynamic model list from Google's endpoint successfully instead of defaulting to hardcoded fallbacks.
 
+## [2.6.9] - 2026-02-26
+
+### Fixed
+- **Upcoming Expenses Strict Grouping**: Investigating further revealed that Investec categorizes nearly everything (including card swipes like Uber or Pizza Hut) as `"DEBIT"`. Replaced the `IsDebitOrEft` logic to search raw un-normalized transaction descriptions for strict South African banking syntax (`DEBIT ORDER`, `MAGTAPE`, `NAEDO`, `EFT`, etc) rather than relying on Investec's flawed `t.Category` tag.
+- **Removed Unreliable Variance Rules**: Stripped out the ambiguous 90-day coefficient of variance (`CV`) recurring expense detector entirely to prevent coincidentally identical card swipes from being flagged as Fixed Costs. Upcoming commitments are now strictly limited to formal Debit Orders/EFTs or manually registered Fixed Keywords.
+- **Frontend App Warnings**: Removed duplicate CDN references for Vue.js Dev Build and Tailwind.css from `index.html` to eliminate browser console warnings.
+
 ## [2.6.8] - 2026-02-26
 
 ### Fixed

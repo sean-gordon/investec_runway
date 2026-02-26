@@ -191,17 +191,24 @@ public class ActuarialService : IActuarialService
                 var monthCount = g.GroupBy(t => $"{t.TransactionDate.Year}-{t.TransactionDate.Month}").Count();
                 var avgFreq = monthCount > 0 ? (decimal)count / monthCount : 0m;
                 
-                // Track if any transaction in this group was a debit order or EFT
+                // Track if any transaction in this group was a definitive debit order or EFT
+                // Investec uses 'DEBIT' category for all card swipes, so we must check the original Description for SA banking keywords
                 var isDebitOrEft = g.Any(t => 
-                    string.Equals(t.Category, "DEBIT", StringComparison.OrdinalIgnoreCase) || 
+                    (t.Description != null && (
+                        t.Description.Contains("DEBIT ORDER", StringComparison.OrdinalIgnoreCase) ||
+                        t.Description.Contains("MAGTAPE", StringComparison.OrdinalIgnoreCase) ||
+                        t.Description.Contains("MAG TAPE", StringComparison.OrdinalIgnoreCase) ||
+                        t.Description.Contains("NAEDO", StringComparison.OrdinalIgnoreCase) ||
+                        t.Description.Contains("EFT", StringComparison.OrdinalIgnoreCase) ||
+                        t.Description.Contains("STOP ORDER", StringComparison.OrdinalIgnoreCase) ||
+                        t.Description.Contains("PAYMENT", StringComparison.OrdinalIgnoreCase)
+                    )) ||
                     string.Equals(t.Category, "FASTER_PAY", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(t.Category, "TRANSFER", StringComparison.OrdinalIgnoreCase));
 
                 return new { Name = g.Key, MonthCount = monthCount, CV = cv, AvgFreq = avgFreq, Count = count, IsDebitOrEft = isDebitOrEft };
             })
-            .Where(x => IsFixedCost(x.Name, settings) || 
-                        (x.IsDebitOrEft && x.Count > 2) || 
-                        (x.MonthCount >= 2 && x.CV < 0.35m && x.AvgFreq <= 5m))
+            .Where(x => IsFixedCost(x.Name, settings) || (x.IsDebitOrEft && x.Count > 2))
             .Select(x => x.Name)
             .ToHashSet();
 

@@ -37,7 +37,7 @@ public class ChartDataController : ControllerBase
         var sql = @"
             SELECT COALESCE(category, 'Uncategorized') AS Label, SUM(ABS(amount)) AS Value 
             FROM transactions 
-            WHERE user_id = @userId AND amount < 0 AND transaction_date >= NOW() - INTERVAL '1 day' * @days
+            WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '1 day' * @days
             GROUP BY category
             ORDER BY Value DESC";
 
@@ -69,11 +69,24 @@ public class ChartDataController : ControllerBase
 
         foreach (var tx in history)
         {
-            runner -= tx.Amount; // Reverse the transaction to go back in time (Current - Tx = Previous)
             points.Add(new DailyBalancePoint { Date = tx.TransactionDate, Balance = runner });
+            runner -= tx.Amount; // Reverse the transaction to go back in time for the previous state
         }
 
-        return Ok(points.OrderBy(p => p.Date));
+        // Group by Date to provide exactly one point per day (End of Day balance)
+        var dailyPoints = points
+            .GroupBy(p => p.Date.Date)
+            .Select(g => new DailyBalancePoint 
+            { 
+                Date = g.Key, 
+                // The points are recorded backwards in time, so the FIRST point in the group 
+                // is the newest transaction of that day (i.e. the End of Day balance)
+                Balance = g.First().Balance 
+            })
+            .OrderBy(p => p.Date)
+            .ToList();
+
+        return Ok(dailyPoints);
     }
 
     public class DailyBalancePoint

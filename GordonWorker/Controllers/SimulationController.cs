@@ -35,9 +35,12 @@ public class SimulationController : ControllerBase
         }
 
         var settings = await _settingsService.GetSettingsAsync(userId);
+        var historyDays = settings.HistoryDaysBack > 0 ? settings.HistoryDaysBack : 180;
         
         using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-        var history = (await connection.QueryAsync<Transaction>("SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '90 days'", new { userId })).ToList();
+        var history = (await connection.QueryAsync<Transaction>(
+            $"SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '{historyDays} days'", 
+            new { userId })).ToList();
         
         _investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
         var accounts = await _investecClient.GetAccountsAsync();
@@ -54,7 +57,7 @@ public class SimulationController : ControllerBase
                 currentBalance -= adj.Amount;
                 history.Add(new Transaction 
                 { 
-                    Amount = adj.Amount, 
+                    Amount = -adj.Amount, // Expense = Negative
                     TransactionDate = DateTimeOffset.Now, 
                     Description = "SIMULATION: " + adj.Description,
                     Category = "SIMULATION"
@@ -63,6 +66,13 @@ public class SimulationController : ControllerBase
             else if (adj.Type == "OneOffIncome")
             {
                 currentBalance += adj.Amount;
+                history.Add(new Transaction 
+                { 
+                    Amount = adj.Amount, // Income = Positive
+                    TransactionDate = DateTimeOffset.Now, 
+                    Description = "SIMULATION INCOME: " + adj.Description,
+                    Category = "CREDIT"
+                });
             }
             else if (adj.Type == "MonthlyExpense")
             {
@@ -71,10 +81,29 @@ public class SimulationController : ControllerBase
                 {
                     history.Add(new Transaction 
                     { 
-                        Amount = adj.Amount, 
-                        TransactionDate = DateTimeOffset.Now.AddMonths(-i), 
-                        Description = "SIMULATION RECURRING: " + adj.Description,
-                         Category = "SIMULATION"
+                        Amount = -adj.Amount, // Expense = Negative
+                        TransactionDate = DateTimeOffset.Now.AddMonths(-i).AddDays(-1), 
+                        Description = "SIMULATION DEBIT ORDER: " + adj.Description,
+                        Category = "DEBIT"
+                    });
+                }
+            }
+            else if (adj.Type == "MonthlyIncome")
+            {
+                var primaryKeyword = "SIMULATION SALARY";
+                if (!string.IsNullOrWhiteSpace(settings.SalaryKeywords))
+                {
+                    primaryKeyword = settings.SalaryKeywords.Split(',').FirstOrDefault()?.Trim() ?? primaryKeyword;
+                }
+
+                for (int i = 0; i < 3; i++)
+                {
+                    history.Add(new Transaction 
+                    { 
+                        Amount = adj.Amount, // Income = Positive
+                        TransactionDate = DateTimeOffset.Now.AddMonths(-i).AddDays(-1), 
+                        Description = $"{primaryKeyword} SIMULATION: {adj.Description}",
+                        Category = "CREDIT"
                     });
                 }
             }

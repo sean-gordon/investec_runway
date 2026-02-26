@@ -12,8 +12,6 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         tailwind.config = {
@@ -39,6 +37,19 @@
 </head>
 
 <body class="bg-slate-50 text-slate-900 h-screen overflow-hidden flex flex-col">
+
+    <!-- HELP TOOLTIP COMPONENT -->
+    <script type="text/x-template" id="help-tooltip-template">
+        <div class="relative inline-block ml-1 group">
+            <span class="cursor-help text-slate-400 hover:text-brand-600 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            </span>
+            <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 bg-slate-800 text-white text-[10px] p-2 rounded shadow-lg z-50 pointer-events-none text-center">
+                {{ text }}
+                <div class="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800"></div>
+            </div>
+        </div>
+    </script>
 
     <div id="app" v-cloak class="flex-1 flex flex-col h-full overflow-hidden relative">
 
@@ -84,19 +95,6 @@
             </div>
         </div>
 
-        <!-- HELP TOOLTIP COMPONENT -->
-        <script type="text/x-template" id="help-tooltip-template">
-            <div class="relative inline-block ml-1 group">
-                <span class="cursor-help text-slate-400 hover:text-brand-600 transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-                </span>
-                <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 bg-slate-800 text-white text-[10px] p-2 rounded shadow-lg z-50 pointer-events-none text-center">
-                    {{ text }}
-                    <div class="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800"></div>
-                </div>
-            </div>
-        </script>
-
         <!-- MAIN APP -->
         <template v-if="auth.token">
             <header
@@ -139,6 +137,11 @@
                             class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all"
                             :class="activeTab === item.id ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-50'">
                             <span>{{ item.icon }}</span> {{ item.name }}
+                        </button>
+                        <button @click="activeTab = 's-rawdata'"
+                            class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all"
+                            :class="activeTab === 's-rawdata' ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-50'">
+                            <span>raw</span> Raw Data
                         </button>
                     </nav>
                     <div class="p-4 border-t border-slate-100 bg-slate-50/50">
@@ -240,7 +243,8 @@
                                     class="text-[9px] text-amber-500 mt-1 italic truncate"
                                     :title="systemStatus.aiFallbackError">{{ systemStatus.aiFallbackError }}</p>
                                 <p v-else class="text-[10px] text-slate-400 mt-1 truncate">{{
-                                    settings.fallbackOllamaModelName || 'Gemini' }}</p>
+                                    settings.fallbackAiProvider === 'Gemini' ? settings.fallbackGeminiModelName :
+                                    settings.fallbackOllamaModelName }}</p>
                             </div>
 
                             <!-- YoY Seasonality -->
@@ -409,44 +413,7 @@
                             </div>
                         </div>
 
-                        <!-- RECENT ACTIVITY -->
-                        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                            <div
-                                class="px-6 py-4 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
-                                <h3 class="font-bold text-slate-800 text-sm">Recent Ledger Activity</h3>
-                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Last 10
-                                    Entries</span>
-                            </div>
-                            <div class="divide-y divide-slate-50">
-                                <div v-for="tx in recentTransactions" :key="tx.id"
-                                    class="px-6 py-4 hover:bg-slate-50/50 transition-colors">
-                                    <div class="flex justify-between items-start">
-                                        <div class="flex-1 min-w-0">
-                                            <p class="text-sm font-bold text-slate-900 truncate">{{ tx.description }}
-                                            </p>
-                                            <p class="text-[10px] text-slate-400 font-medium">{{
-                                                formatDate(tx.transactionDate) }} • {{ tx.category || 'General' }}</p>
-                                            <!-- TRANSACTION NOTE -->
-                                            <div v-if="tx.notes" class="mt-2 flex items-start gap-1.5">
-                                                <span class="text-xs">💡</span>
-                                                <p class="text-xs italic text-brand-600 font-medium leading-tight">{{
-                                                    tx.notes }}</p>
-                                            </div>
-                                        </div>
-                                        <div class="text-right ml-4">
-                                            <p class="text-sm font-bold"
-                                                :class="tx.amount < 0 ? 'text-red-600' : 'text-green-600'">
-                                                {{ tx.amount < 0 ? '-' : '+' }} {{ formatCurrency(Math.abs(tx.amount))
-                                                    }} </p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div v-if="recentTransactions.length === 0"
-                                    class="p-8 text-center text-slate-400 text-xs font-medium">
-                                    No transactions found. Pull data to get started.
-                                </div>
-                            </div>
-                        </div>
+                        <!-- RECENT ACTIVITY REMOVED AS REQUESTED -->
                     </div>
 
                     <!-- ADMIN: USERS -->
@@ -478,6 +445,62 @@
                                             <button v-if="!u.isSystem" @click="deleteUser(u.id)"
                                                 class="text-red-600 font-bold">Delete</button>
                                         </td>
+                                    </tr>
+                                </tbody>
+                                <!-- End Users -->
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- RAW DATA (for debugging ledger exact values) -->
+                    <div v-if="activeTab === 's-rawdata'" class="space-y-6">
+                        <div class="flex justify-between items-center">
+                            <h2 class="text-xl font-bold">Raw Database Ledger</h2>
+                            <button @click="loadRawData"
+                                class="bg-slate-200 text-slate-800 px-4 py-2 rounded-lg font-bold text-sm hover:bg-slate-300">Refresh</button>
+                        </div>
+                        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-auto max-h-[70vh]">
+                            <table class="w-full text-left text-sm whitespace-nowrap">
+                                <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+                                    <tr>
+                                        <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                            Date
+                                        </th>
+                                        <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                            Amount
+                                        </th>
+                                        <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                            Balance
+                                        </th>
+                                        <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                            Category
+                                        </th>
+                                        <th
+                                            class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider max-w-xs break-all">
+                                            Description</th>
+                                        <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                            Acct ID
+                                        </th>
+                                        <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                            AI?</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    <tr v-for="tx in rawTransactions" :key="tx.id" class="hover:bg-slate-50">
+                                        <td class="px-4 py-3 text-[10px] text-slate-500">{{ tx.transactionDate }}</td>
+                                        <td class="px-4 py-3 font-mono font-bold"
+                                            :class="tx.amount < 0 ? 'text-red-600' : 'text-green-600'">{{ tx.amount }}
+                                        </td>
+                                        <td class="px-4 py-3 font-mono text-slate-500">{{ tx.balance }}</td>
+                                        <td class="px-4 py-3 text-xs">{{ tx.category }}</td>
+                                        <td class="px-4 py-3 text-slate-900 truncate max-w-xs">{{ tx.description }}</td>
+                                        <td class="px-4 py-3 text-[10px]">{{ tx.accountId }}</td>
+                                        <td class="px-4 py-3 text-xs">{{ tx.isAiProcessed ? '✅' : '❌' }}</td>
+                                    </tr>
+                                    <tr v-if="!rawTransactions || rawTransactions.length === 0">
+                                        <td colspan="7" class="px-4 py-8 text-center text-slate-500">No raw data to
+                                            display.
+                                            Pull data from Investec first.</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -696,7 +719,8 @@
                                 <div class="bg-slate-50 px-6 py-3 border-b border-slate-100 flex justify-between">
                                     <h3 class="font-bold text-slate-800 text-sm">WhatsApp (Twilio)</h3><button
                                         @click="testWhatsApp"
-                                        class="text-[10px] font-bold text-brand-600 hover:underline">TEST MSG</button>
+                                        class="text-[10px] font-bold text-brand-600 hover:underline">TEST
+                                        MSG</button>
                                 </div>
                                 <div class="p-6 space-y-4">
                                     <div><label class="text-xs font-bold text-slate-700">Account SID</label><input
@@ -955,6 +979,213 @@
                         </div>
                     </div>
 
+                    <!-- WHAT IF ANALYSIS -->
+                    <div v-if="activeTab === 's-simulation'" class="space-y-6">
+                        <div>
+                            <h2 class="text-2xl font-bold text-slate-900 leading-tight">What-If Analysis</h2>
+                            <p class="text-xs text-slate-500 font-medium">Test hypothetical changes to your finances.
+                            </p>
+                        </div>
+
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            <!-- Input Column -->
+                            <div class="lg:col-span-1 space-y-6">
+                                <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                                    <h3 class="text-lg font-bold text-slate-800 mb-4">Add Adjustment</h3>
+                                    <div class="space-y-4">
+                                        <div>
+                                            <label
+                                                class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Type</label>
+                                            <select v-model="newAdjustment.type"
+                                                class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 transition-all font-medium">
+                                                <option value="MonthlyExpense">Recurring Monthly Expense</option>
+                                                <option value="MonthlyIncome">Recurring Monthly Income</option>
+                                                <option value="OneOffExpense">One-off Expense</option>
+                                                <option value="OneOffIncome">One-off Income</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label
+                                                class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Amount
+                                                (ZAR)</label>
+                                            <input v-model.number="newAdjustment.amount" type="number" step="0.01"
+                                                class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 transition-all font-bold">
+                                        </div>
+                                        <div>
+                                            <label
+                                                class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Description</label>
+                                            <input v-model="newAdjustment.description" type="text"
+                                                placeholder="e.g. New Car Installment"
+                                                class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 transition-all">
+                                        </div>
+                                        <button @click="addAdjustment"
+                                            class="w-full bg-brand-600 text-white font-bold py-3 rounded-xl shadow-lg shadow-brand-500/30 hover:bg-brand-500 active:scale-[0.98] transition-all text-sm">
+                                            + Add to Scenario
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                                    <h3 class="text-lg font-bold text-slate-800 mb-4">Current Scenario</h3>
+
+                                    <div v-if="simulationAdjustments.length === 0"
+                                        class="text-center py-6 border-2 border-dashed border-slate-100 rounded-2xl">
+                                        <div class="text-3xl mb-2 opacity-50">📝</div>
+                                        <p class="text-sm text-slate-500 font-medium">No adjustments added yet.<br>Add
+                                            some to see the impact.</p>
+                                    </div>
+
+                                    <div v-else class="space-y-3 mb-6">
+                                        <div v-for="(adj, idx) in simulationAdjustments" :key="idx"
+                                            class="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                            <div class="truncate mr-2">
+                                                <p class="text-xs font-bold text-slate-800 truncate"
+                                                    :title="adj.description">{{ adj.description }}</p>
+                                                <p class="text-[10px] font-medium text-slate-500">{{
+                                                    adj.type.replace(/([A-Z])/g, ' $1').trim() }}</p>
+                                            </div>
+                                            <div class="flex items-center gap-3 shrink-0">
+                                                <span class="text-sm font-bold"
+                                                    :class="adj.type.includes('Expense') ? 'text-red-600' : 'text-green-600'">
+                                                    {{ adj.type.includes('Expense') ? '-' : '+' }} {{
+                                                    formatCurrency(adj.amount) }}
+                                                </span>
+                                                <button @click="removeAdjustment(idx)"
+                                                    class="text-slate-400 hover:text-red-500 transition-colors">
+                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor"
+                                                        viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                                            stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <button @click="runSimulation" :disabled="simLoading"
+                                        class="w-full bg-slate-900 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-slate-800 active:scale-[0.98] transition-all flex items-center justify-center gap-2">
+                                        <span v-if="simLoading" class="animate-spin">⏳</span>
+                                        <span v-else>🔮</span>
+                                        {{ simLoading ? 'Calculating...' : 'Run Simulation' }}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Output Column -->
+                            <div class="lg:col-span-2 space-y-6">
+                                <div v-if="!simulationResult"
+                                    class="h-full min-h-[400px] flex items-center justify-center bg-white/50 border border-slate-200 border-dashed rounded-3xl p-12 text-center">
+                                    <div>
+                                        <div class="text-6xl mb-4 opacity-50 animate-pulse">🔮</div>
+                                        <h3 class="text-xl font-bold text-slate-800">Ready to simulate</h3>
+                                        <p class="text-slate-500 mt-2 max-w-sm mx-auto text-sm">Add adjustments on the
+                                            left and run the simulation to instantly see how it affects your financial
+                                            runway and endgame balance.</p>
+                                    </div>
+                                </div>
+
+                                <div v-else class="space-y-6 animate-fade-in">
+                                    <div
+                                        class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between">
+                                        <div>
+                                            <h3 class="text-lg font-bold text-slate-800">Simulation Complete</h3>
+                                            <p class="text-xs text-slate-500">Based on your current baseline plus {{
+                                                simulationAdjustments.length }} custom adjustments.</p>
+                                        </div>
+                                        <div class="text-right">
+                                            <p
+                                                class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                                                Survival Prob.</p>
+                                            <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-bold text-sm"
+                                                :class="(simulationResult.runwayProbability || 0) > 80 ? 'bg-green-50 text-green-700' : ((simulationResult.runwayProbability || 0) > 40 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700')">
+                                                {{ (simulationResult.runwayProbability || 0).toFixed(1) }}%
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <!-- Simulated Payday Balance -->
+                                        <div
+                                            class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden group hover:border-brand-200 transition-colors">
+                                            <div
+                                                class="absolute -right-6 -top-6 w-24 h-24 bg-brand-50 rounded-full blur-2xl opacity-50 group-hover:opacity-100 transition-opacity">
+                                            </div>
+                                            <p
+                                                class="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center">
+                                                Simulated Payday Balance
+                                            </p>
+                                            <div class="mt-4 flex items-baseline gap-2">
+                                                <h3 class="text-3xl font-black tracking-tight"
+                                                    :class="simulationResult.projectedBalanceAtNextSalary >= 0 ? 'text-green-600' : 'text-red-500'">
+                                                    {{ formatCurrency(simulationResult.projectedBalanceAtNextSalary) }}
+                                                </h3>
+                                            </div>
+                                            <p class="text-xs font-semibold mt-2 text-slate-500">
+                                                In {{ simulationResult.daysUntilNextSalary }} days
+                                            </p>
+                                        </div>
+
+                                        <!-- Simulated Runway -->
+                                        <div
+                                            class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden group hover:border-brand-200 transition-colors">
+                                            <div
+                                                class="absolute -right-6 -top-6 w-24 h-24 bg-brand-50 rounded-full blur-2xl opacity-50 group-hover:opacity-100 transition-opacity">
+                                            </div>
+                                            <p
+                                                class="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center">
+                                                Simulated Runway
+                                            </p>
+                                            <div class="mt-4 flex items-baseline gap-2">
+                                                <h3 class="text-3xl font-black tracking-tight"
+                                                    :class="(simulationResult.expectedRunwayDays || 0) >= simulationResult.daysUntilNextSalary ? 'text-green-600' : 'text-red-500'">
+                                                    {{ (simulationResult.expectedRunwayDays || 0).toFixed(1) }} <span
+                                                        class="text-lg text-slate-400 font-medium">days</span>
+                                                </h3>
+                                            </div>
+                                            <p class="text-xs font-semibold mt-2 text-slate-500">
+                                                Expected at simulated burn
+                                            </p>
+                                        </div>
+
+                                        <!-- Spend This Period -->
+                                        <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                                            <p
+                                                class="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center">
+                                                Spend This Period
+                                            </p>
+                                            <div class="mt-4 flex items-baseline gap-2">
+                                                <h3 class="text-xl font-black text-slate-800 tracking-tight">
+                                                    {{ formatCurrency(simulationResult.spendThisMonth) }}
+                                                </h3>
+                                            </div>
+                                            <p class="text-xs font-semibold mt-2 text-slate-500">
+                                                vs {{ formatCurrency(simulationResult.spendLastMonth) }} last period
+                                            </p>
+                                        </div>
+
+                                        <!-- Upcoming Committed -->
+                                        <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                                            <p
+                                                class="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center">
+                                                Upcoming Committed
+                                            </p>
+                                            <div class="mt-4 flex items-baseline gap-2">
+                                                <h3 class="text-xl font-black text-orange-600 tracking-tight">
+                                                    {{ formatCurrency(simulationResult.upcomingExpectedPayments) }}
+                                                </h3>
+                                            </div>
+                                            <p class="text-xs font-semibold mt-2 text-slate-500">
+                                                {{ simulationResult.upcomingFixedCosts?.length || 0 }} fixed costs
+                                                pending
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+
                     <!-- LOG TAB -->
                     <div v-if="activeTab === 'logs'" class="h-full flex flex-col space-y-4">
                         <div class="flex flex-col md:flex-row md:items-center justify-between shrink-0 gap-4">
@@ -1167,6 +1398,7 @@
                     isUserModalOpen: false,
                     menuItems: [
                         { id: 'dashboard', name: 'Dashboard', icon: '🏠' },
+                        { id: 's-simulation', name: 'What-If Analysis', icon: '🔮' },
                         { id: 's-identity', name: 'Identity', icon: '👤' },
                         { id: 's-connections', name: 'Connections', icon: '🔗' },
                         { id: 's-ai', name: 'Brain', icon: '🧠' },
@@ -1214,7 +1446,11 @@
                     logFileDate: '',
                     logFileDates: {},
                     logFileContent: '',
-                    logFileLoading: false
+                    logFileLoading: false,
+                    simulationAdjustments: [],
+                    newAdjustment: { type: 'MonthlyExpense', amount: 0, description: '' },
+                    simulationResult: null,
+                    simLoading: false
                 }
             },
             computed: {
@@ -1236,6 +1472,12 @@
                         this.loadLogFiles();
                     } else {
                         this.stopLogPolling();
+                    }
+                    if (newTab === 's-rawdata') {
+                        this.loadRawData();
+                    }
+                    if (newTab === 'admin-users') {
+                        this.loadUsers();
                     }
                 }
             },
@@ -1300,6 +1542,9 @@
                         this.loadModels(false);
                         this.loadModels(true);
                         this.loadModels(false, true);
+                        this.$nextTick(() => {
+                            document.title = `Gordon | ${this.settings.userName || this.auth.username}`;
+                        });
                     }
                     const resSt = await this.api('/api/settings/status');
                     if (resSt.ok) this.systemStatus = await resSt.json();
@@ -1309,7 +1554,26 @@
 
                     const resTx = await this.api('/api/settings/recent-transactions');
                     if (resTx.ok) this.recentTransactions = await resTx.json();
-                }, async loadUsers() {
+
+                    if (this.activeTab === 'dashboard') {
+                        this.loadCharts();
+                    }
+                },
+                async loadRawData() {
+                    try {
+                        const res = await this.api('/api/transactions?limit=100');
+                        if (res.ok) {
+                            this.rawTransactions = await res.json();
+                        } else {
+                            console.error("Failed to load raw transactions", res.statusText);
+                            this.rawTransactions = [];
+                        }
+                    } catch (e) {
+                        console.error("Failed to load raw transactions", e);
+                        this.rawTransactions = [];
+                    }
+                },
+                async loadUsers() {
                     const res = await this.api('/api/users');
                     if (res.ok) this.users = await res.json();
                 },
@@ -1496,6 +1760,40 @@
                         const res = await this.api('/api/settings/send-report-now', 'POST');
                         if (res.ok) this.showToast("Report Sent"); else this.showToast("Failed");
                     } finally { this.sendingReport = false; }
+                },
+                addAdjustment() {
+                    if (!this.newAdjustment.amount || this.newAdjustment.amount <= 0) {
+                        this.showToast("Please enter a valid amount");
+                        return;
+                    }
+                    if (!this.newAdjustment.description.trim()) {
+                        this.showToast("Please enter a description");
+                        return;
+                    }
+                    this.simulationAdjustments.push({ ...this.newAdjustment });
+                    this.newAdjustment.amount = 0;
+                    this.newAdjustment.description = '';
+                },
+                removeAdjustment(idx) {
+                    this.simulationAdjustments.splice(idx, 1);
+                },
+                async runSimulation() {
+                    this.simLoading = true;
+                    try {
+                        const res = await this.api('/api/simulation', 'POST', {
+                            adjustments: this.simulationAdjustments
+                        });
+                        if (res.ok) {
+                            this.simulationResult = await res.json();
+                            this.showToast("Simulation Complete");
+                        } else {
+                            this.showToast("Simulation Failed");
+                        }
+                    } catch (err) {
+                        this.showToast("Network Error");
+                    } finally {
+                        this.simLoading = false;
+                    }
                 },
                 async fetchLogs() {
                     const res = await this.api('/api/logs');

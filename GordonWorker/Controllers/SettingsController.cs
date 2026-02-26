@@ -237,22 +237,30 @@ public class SettingsController : ControllerBase
     [HttpPost("models")]
     public async Task<IActionResult> GetModels([FromBody] AppSettings? settings = null, [FromQuery] bool useFallback = false, [FromQuery] bool useThinking = false)
     {
-        // If settings are provided in the body, use those. Otherwise load from DB.
-        if (settings != null)
+        try
         {
-            var dbSettings = await _settingsService.GetSettingsAsync(UserId);
-            const string mask = "********";
-            if (settings.GeminiApiKey == mask) settings.GeminiApiKey = dbSettings.GeminiApiKey;
-            if (settings.FallbackGeminiApiKey == mask) settings.FallbackGeminiApiKey = dbSettings.FallbackGeminiApiKey;
-            if (settings.ThinkingGeminiApiKey == mask) settings.ThinkingGeminiApiKey = dbSettings.ThinkingGeminiApiKey;
+            // If settings are provided in the body, use those. Otherwise load from DB.
+            if (settings != null)
+            {
+                var dbSettings = await _settingsService.GetSettingsAsync(UserId);
+                const string mask = "********";
+                if (settings.GeminiApiKey == mask) settings.GeminiApiKey = dbSettings?.GeminiApiKey ?? "";
+                if (settings.FallbackGeminiApiKey == mask) settings.FallbackGeminiApiKey = dbSettings?.FallbackGeminiApiKey ?? "";
+                if (settings.ThinkingGeminiApiKey == mask) settings.ThinkingGeminiApiKey = dbSettings?.ThinkingGeminiApiKey ?? "";
 
-            var models = await _aiService.GetAvailableModelsAsync(UserId, useFallback, useThinking, settings);
-            return Ok(models);
+                var models = await _aiService.GetAvailableModelsAsync(UserId, useFallback, useThinking, settings);
+                return Ok(models);
+            }
+            else
+            {
+                var models = await _aiService.GetAvailableModelsAsync(UserId, useFallback, useThinking);
+                return Ok(models);
+            }
         }
-        else
+        catch (Exception ex)
         {
-            var models = await _aiService.GetAvailableModelsAsync(UserId, useFallback, useThinking);
-            return Ok(models);
+            _logger.LogError(ex, "Failed to get models.");
+            return Ok(new List<string> { $"SettingsController Error: {ex.Message}" });
         }
     }
 

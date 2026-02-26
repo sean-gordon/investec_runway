@@ -364,7 +364,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                 if (!modelNames.Any())
                 {
                     _logger.LogWarning("No suitable Gemini models found in API response. Returning defaults.");
-                    return new List<string> { "gemini-3-flash-preview" };
+                    return new List<string> { "Error: No Gemini models found in payload" };
                 }
                 
                 return modelNames.Distinct().OrderByDescending(n => n).ToList();
@@ -372,11 +372,11 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to fetch Gemini models from Google API.");
-                return useThinking ? new List<string> { "gemini-2.0-flash-thinking-exp" } : new List<string> { "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro" };
+                return new List<string> { $"Gemini Fetch Error: {ex.Message}" };
             }
         }
 
-        if (string.IsNullOrWhiteSpace(config.OllamaUrl)) return new List<string>();
+        if (string.IsNullOrWhiteSpace(config.OllamaUrl)) return new List<string> { "Error: Missing Ollama URL" };
 
         try
         {
@@ -389,12 +389,12 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
             
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             var response = await _httpClient.GetAsync(fullUrl, cts.Token);
-            if (!response.IsSuccessStatusCode) return new List<string>();
+            if (!response.IsSuccessStatusCode) return new List<string> { $"Ollama Error HTTP {response.StatusCode}" };
             var responseString = await response.Content.ReadAsStringAsync();
             var tagsResponse = JsonSerializer.Deserialize<OllamaTagsResponse>(responseString);
-            return tagsResponse?.Models?.Select(m => m.Name).Where(n => !string.IsNullOrEmpty(n)).Cast<string>().ToList() ?? new List<string>();
+            return tagsResponse?.Models?.Select(m => m.Name).Where(n => !string.IsNullOrEmpty(n)).Cast<string>().ToList() ?? new List<string> { "Error: Empty models array from Ollama" };
         }
-        catch (Exception ex) { _logger.LogError(ex, "Failed to fetch models from {Provider}.", useFallback ? "Fallback AI" : "Primary AI"); return new List<string>(); }
+        catch (Exception ex) { _logger.LogError(ex, "Failed to fetch models from {Provider}.", useFallback ? "Fallback AI" : "Primary AI"); return new List<string> { $"Ollama Fetch Error: {ex.Message}" }; }
     }
 
     public async Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false, bool useThinking = false)

@@ -35,9 +35,12 @@ public class SimulationController : ControllerBase
         }
 
         var settings = await _settingsService.GetSettingsAsync(userId);
+        var historyDays = settings.HistoryDaysBack > 0 ? settings.HistoryDaysBack : 180;
         
         using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-        var history = (await connection.QueryAsync<Transaction>("SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '90 days'", new { userId })).ToList();
+        var history = (await connection.QueryAsync<Transaction>(
+            $"SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '{historyDays} days'", 
+            new { userId })).ToList();
         
         _investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
         var accounts = await _investecClient.GetAccountsAsync();
@@ -72,9 +75,22 @@ public class SimulationController : ControllerBase
                     history.Add(new Transaction 
                     { 
                         Amount = adj.Amount, 
-                        TransactionDate = DateTimeOffset.Now.AddMonths(-i), 
-                        Description = "SIMULATION RECURRING: " + adj.Description,
-                         Category = "SIMULATION"
+                        TransactionDate = DateTimeOffset.Now.AddMonths(-i).AddDays(-1), 
+                        Description = "SIMULATION DEBIT ORDER: " + adj.Description,
+                        Category = "DEBIT"
+                    });
+                }
+            }
+            else if (adj.Type == "MonthlyIncome")
+            {
+                for (int i = 0; i < 3; i++)
+                {
+                    history.Add(new Transaction 
+                    { 
+                        Amount = -adj.Amount, // Negative is income
+                        TransactionDate = DateTimeOffset.Now.AddMonths(-i).AddDays(-1), 
+                        Description = "SIMULATION SALARY: " + adj.Description,
+                        Category = "TRANSFER"
                     });
                 }
             }

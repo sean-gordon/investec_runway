@@ -25,6 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Ollama AI Health Check Optimization**: `ConnectivityWorker` now only polls the AI providers once every 4 hours instead of every 5 minutes to prevent Ollama from experiencing timeout errors and exhaustion.
 - **Dynamic Gemini Model Discovery Fix**: `SettingsController` now explicitly unmasks `********` placeholder settings sent by the frontend UI, allowing the `AiService` to authenticate with the true API key and fetch the live dynamic model list from Google's endpoint successfully instead of defaulting to hardcoded fallbacks.
 
+## [2.7.0] - 2026-02-26
+
+### Added
+- **What-If Scenario Analysis Tab**: Added a dedicated interactive simulation environment to the frontend.
+  - Allows injecting hypothetical One-off Expenses, One-off Income, Recurring Expenses, and Recurring Income into the current balance baseline.
+  - Instantly recalculates Actuarial Projected Payday Balance, Runway, and Survival Probability based on the strict engine rules.
+  - Injected recurring expenses now automatically adopt the `"DEBIT ORDER"` description format to correctly trigger the strict `ActuarialService.cs` detection engine inside the simulation timeline.
+
 ## [2.6.10] - 2026-02-26
 
 ### Fixed

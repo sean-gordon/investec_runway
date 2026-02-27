@@ -64,6 +64,17 @@ public class SettingsController : ControllerBase
         return Ok(response);
     }
 
+    [HttpGet("thinking-prompt-default")]
+    public async Task<IActionResult> GetThinkingPromptDefault()
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "Resources", "thinking_model_instructions.md");
+        if (!System.IO.File.Exists(path))
+            return Ok("You are a strict quality control reviewer. Output exactly '<APPROVED>' if the response is correct, or provide specific feedback on what is wrong so the AI can correct it.");
+        
+        var content = await System.IO.File.ReadAllTextAsync(path);
+        return Content(content, "text/plain");
+    }
+
     private AppSettings MaskSettings(AppSettings settings)
     {
         // Clone settings to avoid affecting the service-level cache
@@ -71,8 +82,14 @@ public class SettingsController : ControllerBase
         
         const string mask = "********";
         if (!string.IsNullOrEmpty(clone.GeminiApiKey)) clone.GeminiApiKey = mask;
+        if (!string.IsNullOrEmpty(clone.OpenAiApiKey)) clone.OpenAiApiKey = mask;
+        if (!string.IsNullOrEmpty(clone.AnthropicApiKey)) clone.AnthropicApiKey = mask;
         if (!string.IsNullOrEmpty(clone.FallbackGeminiApiKey)) clone.FallbackGeminiApiKey = mask;
+        if (!string.IsNullOrEmpty(clone.FallbackOpenAiApiKey)) clone.FallbackOpenAiApiKey = mask;
+        if (!string.IsNullOrEmpty(clone.FallbackAnthropicApiKey)) clone.FallbackAnthropicApiKey = mask;
         if (!string.IsNullOrEmpty(clone.ThinkingGeminiApiKey)) clone.ThinkingGeminiApiKey = mask;
+        if (!string.IsNullOrEmpty(clone.ThinkingOpenAiApiKey)) clone.ThinkingOpenAiApiKey = mask;
+        if (!string.IsNullOrEmpty(clone.ThinkingAnthropicApiKey)) clone.ThinkingAnthropicApiKey = mask;
         if (!string.IsNullOrEmpty(clone.InvestecSecret)) clone.InvestecSecret = mask;
         if (!string.IsNullOrEmpty(clone.InvestecApiKey)) clone.InvestecApiKey = mask;
         if (!string.IsNullOrEmpty(clone.SmtpPass)) clone.SmtpPass = mask;
@@ -94,8 +111,14 @@ public class SettingsController : ControllerBase
             // SECURITY FIX: Only update sensitive fields if they aren't masked
             const string mask = "********";
             if (requestSettings.GeminiApiKey == mask) requestSettings.GeminiApiKey = existingSettings.GeminiApiKey;
+            if (requestSettings.OpenAiApiKey == mask) requestSettings.OpenAiApiKey = existingSettings.OpenAiApiKey;
+            if (requestSettings.AnthropicApiKey == mask) requestSettings.AnthropicApiKey = existingSettings.AnthropicApiKey;
             if (requestSettings.FallbackGeminiApiKey == mask) requestSettings.FallbackGeminiApiKey = existingSettings.FallbackGeminiApiKey;
+            if (requestSettings.FallbackOpenAiApiKey == mask) requestSettings.FallbackOpenAiApiKey = existingSettings.FallbackOpenAiApiKey;
+            if (requestSettings.FallbackAnthropicApiKey == mask) requestSettings.FallbackAnthropicApiKey = existingSettings.FallbackAnthropicApiKey;
             if (requestSettings.ThinkingGeminiApiKey == mask) requestSettings.ThinkingGeminiApiKey = existingSettings.ThinkingGeminiApiKey;
+            if (requestSettings.ThinkingOpenAiApiKey == mask) requestSettings.ThinkingOpenAiApiKey = existingSettings.ThinkingOpenAiApiKey;
+            if (requestSettings.ThinkingAnthropicApiKey == mask) requestSettings.ThinkingAnthropicApiKey = existingSettings.ThinkingAnthropicApiKey;
             if (requestSettings.InvestecSecret == mask) requestSettings.InvestecSecret = existingSettings.InvestecSecret;
             if (requestSettings.InvestecApiKey == mask) requestSettings.InvestecApiKey = existingSettings.InvestecApiKey;
             if (requestSettings.SmtpPass == mask) requestSettings.SmtpPass = existingSettings.SmtpPass;
@@ -245,8 +268,14 @@ public class SettingsController : ControllerBase
                 var dbSettings = await _settingsService.GetSettingsAsync(UserId);
                 const string mask = "********";
                 if (settings.GeminiApiKey == mask) settings.GeminiApiKey = dbSettings?.GeminiApiKey ?? "";
+                if (settings.OpenAiApiKey == mask) settings.OpenAiApiKey = dbSettings?.OpenAiApiKey ?? "";
+                if (settings.AnthropicApiKey == mask) settings.AnthropicApiKey = dbSettings?.AnthropicApiKey ?? "";
                 if (settings.FallbackGeminiApiKey == mask) settings.FallbackGeminiApiKey = dbSettings?.FallbackGeminiApiKey ?? "";
+                if (settings.FallbackOpenAiApiKey == mask) settings.FallbackOpenAiApiKey = dbSettings?.FallbackOpenAiApiKey ?? "";
+                if (settings.FallbackAnthropicApiKey == mask) settings.FallbackAnthropicApiKey = dbSettings?.FallbackAnthropicApiKey ?? "";
                 if (settings.ThinkingGeminiApiKey == mask) settings.ThinkingGeminiApiKey = dbSettings?.ThinkingGeminiApiKey ?? "";
+                if (settings.ThinkingOpenAiApiKey == mask) settings.ThinkingOpenAiApiKey = dbSettings?.ThinkingOpenAiApiKey ?? "";
+                if (settings.ThinkingAnthropicApiKey == mask) settings.ThinkingAnthropicApiKey = dbSettings?.ThinkingAnthropicApiKey ?? "";
 
                 var models = await _aiService.GetAvailableModelsAsync(UserId, useFallback, useThinking, settings);
                 return Ok(models);

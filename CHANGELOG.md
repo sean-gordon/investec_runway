@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Ollama AI Health Check Optimization**: `ConnectivityWorker` now only polls the AI providers once every 4 hours instead of every 5 minutes to prevent Ollama from experiencing timeout errors and exhaustion.
 - **Dynamic Gemini Model Discovery Fix**: `SettingsController` now explicitly unmasks `********` placeholder settings sent by the frontend UI, allowing the `AiService` to authenticate with the true API key and fetch the live dynamic model list from Google's endpoint successfully instead of defaulting to hardcoded fallbacks.
 
+## [2.7.9] - 2026-02-27
+
+### Fixed
+- **Webhook Dual-Path Bug**: Fixed a bug where registering a webhook from the frontend resulted in Telegram server registering `.../telegram/webhook/webhook/{token}` which caused Telegram messages to silently 404. It now strips any trailing paths and explicitly sets `/telegram/webhook/{token}`.
+
 ## [2.7.8] - 2026-02-27
 
 ### Fixed

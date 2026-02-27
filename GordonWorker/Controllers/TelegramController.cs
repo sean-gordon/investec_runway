@@ -161,8 +161,18 @@ public class TelegramController : ControllerBase
             var settings = await _settingsService.GetSettingsAsync(userId);
             if (string.IsNullOrEmpty(settings.TelegramBotToken)) return BadRequest("Bot token not configured.");
 
+            var cleanUrl = url.TrimEnd('/');
+            if (cleanUrl.EndsWith("/telegram/webhook", StringComparison.OrdinalIgnoreCase))
+            {
+                cleanUrl = cleanUrl.Substring(0, cleanUrl.Length - "/telegram/webhook".Length);
+            }
+            else if (cleanUrl.EndsWith("/webhook", StringComparison.OrdinalIgnoreCase))
+            {
+                cleanUrl = cleanUrl.Substring(0, cleanUrl.Length - "/webhook".Length);
+            }
+
             var secretToken = GenerateSecretToken(settings.TelegramBotToken);
-            var finalUrl = url.TrimEnd('/') + "/webhook/" + secretToken;
+            var finalUrl = cleanUrl + "/telegram/webhook/" + secretToken;
 
             await _telegramService.InstallWebhookAsync(userId, finalUrl);
             return Ok(new { Message = "Webhook registered successfully (with secret token)." });

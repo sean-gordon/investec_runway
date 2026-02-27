@@ -18,6 +18,7 @@ public class TelegramController : ControllerBase
     private readonly ITelegramService _telegramService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<TelegramController> _logger;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> _tokenCache = new();
 
     public TelegramController(
         ITelegramChatService chatService,
@@ -72,31 +73,56 @@ public class TelegramController : ControllerBase
             if (string.IsNullOrWhiteSpace(chatId) || string.IsNullOrWhiteSpace(messageText)) return Ok();
 
             // SECURITY FIX: Find matching user and VERIFY TOKEN
-            using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-            var allUsers = await connection.QueryAsync<int>("SELECT id FROM users");
             int? matchedUserId = null;
+            Models.AppSettings? matchedSettings = null;
 
-            foreach (var uid in allUsers)
+            if (_tokenCache.TryGetValue(token, out var cachedUserId))
             {
-                var s = await _settingsService.GetSettingsAsync(uid);
-                if (string.IsNullOrEmpty(s.TelegramBotToken)) continue;
-
-                // Simple but effective token verification: SHA256 of BotToken
-                var expectedToken = GenerateSecretToken(s.TelegramBotToken);
-                if (token != expectedToken) continue;
-
-                var authorized = (s.TelegramAuthorizedChatIds ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                
-                if (s.TelegramChatId == chatId || authorized.Contains(chatId))
+                var s = await _settingsService.GetSettingsAsync(cachedUserId);
+                var expectedToken = GenerateSecretToken(s.TelegramBotToken ?? "");
+                if (token == expectedToken)
                 {
-                    matchedUserId = uid;
-                    break;
+                    matchedUserId = cachedUserId;
+                    matchedSettings = s;
+                }
+                else
+                {
+                    // Token changed, invalidate cache
+                    _tokenCache.TryRemove(token, out _);
                 }
             }
 
             if (matchedUserId == null)
             {
-                _logger.LogWarning("Unauthorized or mismatched Telegram message from Chat ID {ChatId}", chatId);
+                using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+                var allUsers = await connection.QueryAsync<int>("SELECT id FROM users");
+
+                foreach (var uid in allUsers)
+                {
+                    var s = await _settingsService.GetSettingsAsync(uid);
+                    if (string.IsNullOrEmpty(s.TelegramBotToken)) continue;
+
+                    // Simple but effective token verification: SHA256 of BotToken
+                    var expectedToken = GenerateSecretToken(s.TelegramBotToken);
+                    if (token != expectedToken) continue;
+
+                    matchedUserId = uid;
+                    matchedSettings = s;
+                    _tokenCache[token] = uid; // Save to cache
+                    break;
+                }
+            }
+
+            if (matchedUserId == null || matchedSettings == null)
+            {
+                _logger.LogWarning("Unauthorized or mismatched Telegram message. Token not found for Chat ID {ChatId}", chatId);
+                return Ok();
+            }
+
+            var authorized = (matchedSettings.TelegramAuthorizedChatIds ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (matchedSettings.TelegramChatId != chatId && !authorized.Contains(chatId))
+            {
+                _logger.LogWarning("Unauthorized chat ID {ChatId} for resolved user {UserId}", chatId, matchedUserId);
                 return Ok();
             }
 

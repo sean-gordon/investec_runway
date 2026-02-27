@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Ollama AI Health Check Optimization**: `ConnectivityWorker` now only polls the AI providers once every 4 hours instead of every 5 minutes to prevent Ollama from experiencing timeout errors and exhaustion.
 - **Dynamic Gemini Model Discovery Fix**: `SettingsController` now explicitly unmasks `********` placeholder settings sent by the frontend UI, allowing the `AiService` to authenticate with the true API key and fetch the live dynamic model list from Google's endpoint successfully instead of defaulting to hardcoded fallbacks.
 
+## [2.7.7] - 2026-02-27
+
+### Fixed
+- **Telegram Webhook Bottleneck**: Added an in-memory `_tokenCache` to `TelegramController` to map webhook tokens to user IDs instantly in O(1) time. This prevents the previous O(N) database iteration of all users and decrypting all settings on every single webhook hit, drastically reducing latency and preventing Telegram server timeouts.
+- **Socket Exhaustion (Telegram)**: Introduced `ITelegramBotClientFactory` to cache and reuse `TelegramBotClient` instances using `IHttpClientFactory`. Previously, a new client (and underlying `HttpClient`) was created *every time* a message was sent or received, leading to socket exhaustion under load which eventually manifested as "Telegram send and receive is no longer working" and caused AI connection timeouts.
+
 ## [2.7.0] - 2026-02-26
 
 ### Added

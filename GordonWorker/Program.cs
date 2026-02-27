@@ -104,6 +104,10 @@ builder.Services.AddHttpClient<IAiService, AiService>()
     .SetHandlerLifetime(TimeSpan.FromMinutes(5))
     .ConfigureHttpClient(client => client.Timeout = TimeSpan.FromMinutes(5));
 
+builder.Services.AddHttpClient("TelegramBotClient")
+    .SetHandlerLifetime(TimeSpan.FromMinutes(5));
+
+builder.Services.AddSingleton<ITelegramBotClientFactory, TelegramBotClientFactory>();
 builder.Services.AddSingleton<ISettingsService, SettingsService>();
 builder.Services.AddSingleton<IActuarialService, ActuarialService>();
 builder.Services.AddSingleton<ISystemStatusService, SystemStatusService>();

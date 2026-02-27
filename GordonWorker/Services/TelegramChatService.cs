@@ -65,6 +65,7 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
         var actuarialService = scope.ServiceProvider.GetRequiredService<IActuarialService>();
         var chartService = scope.ServiceProvider.GetRequiredService<IChartService>();
         var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+        var botClientFactory = scope.ServiceProvider.GetRequiredService<ITelegramBotClientFactory>();
 
         int placeholderId = 0;
         CancellationTokenSource? ctsHeartbeat = null;
@@ -74,7 +75,7 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
             _logger.LogInformation("Processing Telegram message for user {UserId}", request.UserId);
 
             var settings = await settingsService.GetSettingsAsync(request.UserId);
-            var botClient = new TelegramBotClient(settings.TelegramBotToken);
+            var botClient = botClientFactory.GetClient(settings.TelegramBotToken);
 
             // Handle Slash Commands
             if (!string.IsNullOrWhiteSpace(request.MessageText) && request.MessageText.StartsWith("/"))

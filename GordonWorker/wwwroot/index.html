@@ -1018,6 +1018,24 @@
                                                 Thinking</button>
                                         </div>
                                     </div>
+                                    <!-- Thinking Model Instructions -->
+                                    <div class="pt-2 border-t border-slate-100">
+                                        <div class="flex justify-between items-center mb-1">
+                                            <label class="text-xs font-bold text-slate-700">Review Instructions
+                                                (Thinking Prompt)</label>
+                                            <button @click="resetThinkingPrompt"
+                                                class="text-[10px] font-bold text-brand-600 hover:underline uppercase tracking-wide">Reset
+                                                to Default</button>
+                                        </div>
+                                        <p class="text-[10px] text-slate-400 italic mb-2">Quality-control rules the
+                                            Thinking Model uses to approve or reject responses. Leave blank to use the
+                                            server's built-in instructions file.</p>
+                                        <textarea v-model="settings.thinkingModelInstructions" rows="12"
+                                            class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono leading-relaxed resize-y"
+                                            placeholder="Leave empty to use the built-in thinking_model_instructions.md from the server..."></textarea>
+                                        <p class="text-[10px] text-slate-400 mt-1 text-right">{{
+                                            (settings.thinkingModelInstructions || '').length }} characters</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1807,6 +1825,10 @@
                         this.showToast("Thinking AI Connected");
                         this.loadData();
                     } else this.showToast("Thinking Failed");
+                },
+                resetThinkingPrompt() {
+                    this.settings.thinkingModelInstructions = '';
+                    this.showToast("Cleared — server default will be used on next save");
                 },
                 async testTelegram() {
                     await this.saveSettings();

@@ -873,13 +873,23 @@ Context Information:
         {
             _logger.LogInformation("Reviewing output with Thinking Model for user {UserId}", userId);
 
-            // Load review instructions from file, falling back to a compact inline prompt.
-            var instructionsPath = Path.Combine(AppContext.BaseDirectory, "Resources", "thinking_model_instructions.md");
-            var reviewSystemPrompt = File.Exists(instructionsPath)
-                ? await File.ReadAllTextAsync(instructionsPath)
-                : @"You are a strict quality control reviewer. Your job is to review the output of another AI to ensure it directly answers the user's prompt truthfully and accurately, following all rules.
+            // Priority: 1) User-configured value in DB, 2) Resources file on disk, 3) Inline fallback.
+            var userSettings = await _settingsService.GetSettingsAsync(userId);
+            string reviewSystemPrompt;
+            if (!string.IsNullOrWhiteSpace(userSettings.ThinkingModelInstructions))
+            {
+                reviewSystemPrompt = userSettings.ThinkingModelInstructions;
+                _logger.LogInformation("Using user-configured Thinking Model instructions for user {UserId}", userId);
+            }
+            else
+            {
+                var instructionsPath = Path.Combine(AppContext.BaseDirectory, "Resources", "thinking_model_instructions.md");
+                reviewSystemPrompt = File.Exists(instructionsPath)
+                    ? await File.ReadAllTextAsync(instructionsPath)
+                    : @"You are a strict quality control reviewer. Your job is to review the output of another AI to ensure it directly answers the user's prompt truthfully and accurately, following all rules.
 IF the response is perfect: Output EXACTLY '<APPROVED>' and nothing else.
 IF the response missed the prompt or contains errors: Provide specific feedback on what is wrong and what must be fixed. Do NOT rewrite the response yourself.";
+            }
             
             var reviewPrompt = $"[ORIGINAL_SYSTEM_PROMPT]\n{system}\n[/ORIGINAL_SYSTEM_PROMPT]\n\n[USER_PROMPT]\n{originalPrompt}\n[/USER_PROMPT]\n\n[AI_PROPOSED_RESPONSE]\n{aiResult}\n[/AI_PROPOSED_RESPONSE]\n\nAnalyze the AI_PROPOSED_RESPONSE. If it is high quality and addresses the USER_PROMPT according to the ORIGINAL_SYSTEM_PROMPT, output strictly <APPROVED>. If it is bad, write down exactly what is wrong so the AI can try again.";
 

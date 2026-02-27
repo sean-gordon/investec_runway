@@ -22,7 +22,7 @@ DefaultTypeMap.MatchNamesWithUnderscores = true;
 
 // JWT Authentication Setup with Security Validation
 var jwtSettings = builder.Configuration.GetSection("Jwt");
-var jwtSecret = jwtSettings["Secret"];
+var jwtSecret = Environment.GetEnvironmentVariable("JWT_SECRET") ?? jwtSettings["Secret"];
 
 // SECURITY FIX: Validate JWT secret at startup
 if (string.IsNullOrWhiteSpace(jwtSecret) || jwtSecret == "PLEASE_CHANGE_THIS_TO_A_VERY_LONG_RANDOM_STRING_IN_PRODUCTION")
@@ -104,6 +104,10 @@ builder.Services.AddHttpClient<IAiService, AiService>()
     .SetHandlerLifetime(TimeSpan.FromMinutes(5))
     .ConfigureHttpClient(client => client.Timeout = TimeSpan.FromMinutes(5));
 
+builder.Services.AddHttpClient("TelegramBotClient")
+    .SetHandlerLifetime(TimeSpan.FromMinutes(5));
+
+builder.Services.AddSingleton<ITelegramBotClientFactory, TelegramBotClientFactory>();
 builder.Services.AddSingleton<ISettingsService, SettingsService>();
 builder.Services.AddSingleton<IActuarialService, ActuarialService>();
 builder.Services.AddSingleton<ISystemStatusService, SystemStatusService>();

@@ -4,6 +4,7 @@ using GordonWorker.Services;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using System.Text.Json;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace GordonWorker.Controllers;
 
@@ -17,6 +18,7 @@ public class WhatsAppController : ControllerBase
     private readonly ISettingsService _settingsService;
     private readonly IInvestecClient _investecClient;
     private readonly IConfiguration _configuration;
+    private readonly IMemoryCache _cache;
     private readonly ILogger<WhatsAppController> _logger;
 
     public WhatsAppController(
@@ -26,6 +28,7 @@ public class WhatsAppController : ControllerBase
         ISettingsService settingsService,
         IInvestecClient investecClient,
         IConfiguration configuration,
+        IMemoryCache cache,
         ILogger<WhatsAppController> logger)
     {
         _aiService = aiService;
@@ -34,6 +37,7 @@ public class WhatsAppController : ControllerBase
         _settingsService = settingsService;
         _investecClient = investecClient;
         _configuration = configuration;
+        _cache = cache;
         _logger = logger;
     }
 
@@ -41,25 +45,13 @@ public class WhatsAppController : ControllerBase
     [Consumes("application/x-www-form-urlencoded")]
     public async Task<IActionResult> Webhook([FromForm] string From, [FromForm] string Body)
     {
-        // 1. Identify User by WhatsApp Number
-        int? matchedUserId = null;
+        // 1. Identify User by WhatsApp Number (O(1) approach via Cache/Service)
+        var matchedUserId = await _settingsService.GetUserIdByWhatsAppNumberAsync(From);
         AppSettings? userSettings = null;
 
-        using (var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection")))
+        if (matchedUserId.HasValue)
         {
-            await connection.OpenAsync();
-            var userIds = await connection.QueryAsync<int>("SELECT id FROM users");
-            
-            foreach (var uid in userIds)
-            {
-                var s = await _settingsService.GetSettingsAsync(uid);
-                if (s.AuthorizedWhatsAppNumber == From)
-                {
-                    matchedUserId = uid;
-                    userSettings = s;
-                    break;
-                }
-            }
+            userSettings = await _settingsService.GetSettingsAsync(matchedUserId.Value);
         }
 
         if (matchedUserId == null || userSettings == null)
@@ -190,10 +182,7 @@ USER QUESTION: {Body}";
             }
             else if (aiResponse.Trim().Equals("NEED_SQL", StringComparison.OrdinalIgnoreCase))
             {
-                // Temporarily disabled SQL generation for multi-tenant safety or ensure it uses userId filter
-                // Ideally: var sql = await _aiService.GenerateSqlAsync(userId, Body);
-                // But safer to just say unavailable for now or implement safe RLS
-                finalAnswer = "I'm sorry, deep database search is temporarily disabled for security upgrades. Please ask about the summary data.";
+                finalAnswer = "Detailed database querying is currently disabled over WhatsApp. Let's discuss your current budget instead.";
             }
             else
             {
@@ -221,11 +210,22 @@ USER QUESTION: {Body}";
             "SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '90 days' ORDER BY transaction_date ASC", 
             new { userId })).ToList();
 
-        var accounts = await _investecClient.GetAccountsAsync();
-        decimal currentBalance = 0;
-        foreach (var acc in accounts)
+        // Fetch / Cache Live Balance
+        if (!_cache.TryGetValue($"wa_investec_balance_{userId}", out decimal currentBalance))
         {
-            currentBalance += await _investecClient.GetAccountBalanceAsync(acc.AccountId);
+            try
+            {
+                var accounts = await _investecClient.GetAccountsAsync();
+                foreach (var acc in accounts)
+                {
+                    currentBalance += await _investecClient.GetAccountBalanceAsync(acc.AccountId);
+                }
+                _cache.Set($"wa_investec_balance_{userId}", currentBalance, TimeSpan.FromMinutes(15));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to fetch Investec balances for user {UserId}", userId);
+            }
         }
 
         return await _actuarialService.AnalyzeHealthAsync(history, currentBalance, settings);

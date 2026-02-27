@@ -890,10 +890,23 @@ Context Information:
 IF the response is perfect: Output EXACTLY '<APPROVED>' and nothing else.
 IF the response missed the prompt or contains errors: Provide specific feedback on what is wrong and what must be fixed. Do NOT rewrite the response yourself.";
             }
-            
-            var reviewPrompt = $"[ORIGINAL_SYSTEM_PROMPT]\n{system}\n[/ORIGINAL_SYSTEM_PROMPT]\n\n[USER_PROMPT]\n{originalPrompt}\n[/USER_PROMPT]\n\n[AI_PROPOSED_RESPONSE]\n{aiResult}\n[/AI_PROPOSED_RESPONSE]\n\nAnalyze the AI_PROPOSED_RESPONSE. If it is high quality and addresses the USER_PROMPT according to the ORIGINAL_SYSTEM_PROMPT, output strictly <APPROVED>. If it is bad, write down exactly what is wrong so the AI can try again.";
 
-            var reviewedResult = await GenerateCompletionAsync(userId, reviewSystemPrompt, reviewPrompt, useFallback: false, ct, useThinking: true);
+            // Wrap instructions in strong enforcement framing — makes every provider treat the rules as non-negotiable
+            var enforcedSystemPrompt =
+                "============================\n" +
+                "CRITICAL MANDATORY INSTRUCTIONS — YOU MUST FOLLOW THESE EXACTLY\n" +
+                "============================\n\n" +
+                reviewSystemPrompt +
+                "\n\n============================\n" +
+                "REMINDER: These instructions are MANDATORY. The ONLY acceptable outputs are:\n" +
+                "  1. Exactly <APPROVED> (and nothing else) if every criterion is met.\n" +
+                "  2. Specific, actionable feedback describing exactly what is wrong.\n" +
+                "Deviating from these rules or producing any other output is a failure.\n" +
+                "============================";
+
+            var reviewPrompt = $"[ORIGINAL_SYSTEM_PROMPT]\n{system}\n[/ORIGINAL_SYSTEM_PROMPT]\n\n[USER_PROMPT]\n{originalPrompt}\n[/USER_PROMPT]\n\n[AI_PROPOSED_RESPONSE]\n{aiResult}\n[/AI_PROPOSED_RESPONSE]\n\nAnalyze the AI_PROPOSED_RESPONSE strictly against the ORIGINAL_SYSTEM_PROMPT and USER_PROMPT. If it fully and accurately answers the question, output ONLY <APPROVED>. If it is incorrect, incomplete, or misleading, output ONLY specific feedback describing what must be corrected. No other output is acceptable.";
+
+            var reviewedResult = await GenerateCompletionAsync(userId, enforcedSystemPrompt, reviewPrompt, useFallback: false, ct, useThinking: true);
 
             if (!string.IsNullOrWhiteSpace(reviewedResult))
             {

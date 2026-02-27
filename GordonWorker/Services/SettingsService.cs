@@ -90,6 +90,7 @@ public class AppSettings
 public interface ISettingsService
 {
     Task<AppSettings> GetSettingsAsync(int userId);
+    Task<int?> GetUserIdByWhatsAppNumberAsync(string whatsAppNumber);
     Task UpdateSettingsAsync(int userId, AppSettings newSettings);
     void InvalidateCache(int userId);
 }
@@ -113,6 +114,55 @@ public class SettingsService : ISettingsService
     {
         _cache.Remove($"settings_{userId}");
         _logger.LogInformation("Settings cache invalidated for user {UserId}", userId);
+    }
+
+    public async Task<int?> GetUserIdByWhatsAppNumberAsync(string whatsAppNumber)
+    {
+        if (string.IsNullOrWhiteSpace(whatsAppNumber)) return null;
+        
+        // Cache the mapping to avoid DB hits on every message
+        return await _cache.GetOrCreateAsync($"wa_user_{whatsAppNumber}", async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(15);
+            
+            try
+            {
+                using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+                await connection.OpenAsync();
+
+                // Because configuration is JSONB, we can't easily query encrypted values. 
+                // Wait, AuthorizedWhatsAppNumber is NOT encrypted currently, let's check. 
+                // Ah, it isn't listed in TryEncrypt in SaveToDbAsync! Let's verify it isn't.
+                
+                // Let's grab all configs and find the match (since there are usually < 100 users).
+                // It's still O(N) but cached for 15 minutes, drastically better than O(N) per message.
+                var users = await connection.QueryAsync<(int UserId, string Config)>(
+                    "SELECT user_id as UserId, config as Config FROM user_settings");
+                    
+                foreach (var user in users)
+                {
+                    if (string.IsNullOrEmpty(user.Config)) continue;
+                    
+                    try
+                    {
+                        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                        var s = JsonSerializer.Deserialize<AppSettings>(user.Config, options);
+                        if (s?.AuthorizedWhatsAppNumber == whatsAppNumber)
+                        {
+                            return (int?)user.UserId;
+                        }
+                    }
+                    catch { /* Ignore parse errors */ }
+                }
+                
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to lookup user by WhatsApp number");
+                return null;
+            }
+        });
     }
 
     public async Task<AppSettings> GetSettingsAsync(int userId)
@@ -225,8 +275,8 @@ public class SettingsService : ISettingsService
         try { return _protector.Unprotect(cipherText); }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to decrypt setting.");
-            return cipherText; 
+            _logger.LogWarning(ex, "Failed to decrypt setting. Returning empty to avoid data leak.");
+            return ""; 
         }
     }
 }

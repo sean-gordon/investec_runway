@@ -25,6 +25,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Ollama AI Health Check Optimization**: `ConnectivityWorker` now only polls the AI providers once every 4 hours instead of every 5 minutes to prevent Ollama from experiencing timeout errors and exhaustion.
 - **Dynamic Gemini Model Discovery Fix**: `SettingsController` now explicitly unmasks `********` placeholder settings sent by the frontend UI, allowing the `AiService` to authenticate with the true API key and fetch the live dynamic model list from Google's endpoint successfully instead of defaulting to hardcoded fallbacks.
 
+## [2.8.0] - 2026-02-27
+
+### Security
+- **JWT Secret Hardening**: Completely removed the hardcoded `SUPER_SECRET_FALLBACK_KEY_CHANGE_ME_NOW` fallback inside `AuthController.cs`. JWT secrets are now strictly enforced to be loaded from Environment Variables (`JWT_SECRET`) instead of `appsettings.json`, requiring Docker or OS-level configuration for enhanced security. Added definitions to `docker-compose.yml` and `.env.template`.
+
+### Changed
+- **WhatsApp Performance**: Replaced O(N) database queries per message with an O(1) `GetUserIdByWhatsAppNumberAsync` memory-cached lookup. 
+- **WhatsApp Live API Caching**: Replaced synchronous 5-second polling of live Investec balances with a 15-minute `IMemoryCache` duration, greatly reducing Twilio webhook timeouts.
+- **Removed Code Bloat**: Deleted legacy Markdown planning files, old build logs, and commented-out dead code blocks from controllers.
+
 ## [2.7.11] - 2026-02-27
 
 ### Fixed

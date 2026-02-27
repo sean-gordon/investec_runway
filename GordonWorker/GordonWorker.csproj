@@ -4,9 +4,9 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>2.8.2</Version>
-    <AssemblyVersion>2.8.2</AssemblyVersion>
-    <FileVersion>2.8.2</FileVersion>
+    <Version>2.9.0</Version>
+    <AssemblyVersion>2.9.0</AssemblyVersion>
+    <FileVersion>2.9.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -23,6 +23,11 @@
     <PackageReference Include="AspNetCore.HealthChecks.NpgSql" Version="8.0.1" />
     <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="8.0.2" />
     <PackageReference Include="System.Threading.Channels" Version="8.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="Resources\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

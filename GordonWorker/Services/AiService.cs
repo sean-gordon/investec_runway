@@ -289,8 +289,16 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
             {
                 Provider = settings.FallbackAiProvider,
                 OllamaUrl = settings.FallbackOllamaBaseUrl,
-                ModelName = settings.FallbackAiProvider == "Gemini" ? settings.FallbackGeminiModelName : settings.FallbackOllamaModelName,
+                ModelName = settings.FallbackAiProvider switch
+                {
+                    "Gemini" => settings.FallbackGeminiModelName,
+                    "OpenAI" => settings.FallbackOpenAiModelName,
+                    "Anthropic" => settings.FallbackAnthropicModelName,
+                    _ => settings.FallbackOllamaModelName
+                },
                 GeminiKey = settings.FallbackGeminiApiKey,
+                OpenAiKey = settings.FallbackOpenAiApiKey,
+                AnthropicKey = settings.FallbackAnthropicApiKey,
                 TimeoutSeconds = settings.AiTimeoutSeconds,
                 RetryAttempts = settings.AiRetryAttempts
             };
@@ -300,8 +308,16 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
         {
             Provider = settings.AiProvider,
             OllamaUrl = settings.OllamaBaseUrl,
-            ModelName = settings.AiProvider == "Gemini" ? settings.GeminiModelName : settings.OllamaModelName,
+            ModelName = settings.AiProvider switch
+            {
+                "Gemini" => settings.GeminiModelName,
+                "OpenAI" => settings.OpenAiModelName,
+                "Anthropic" => settings.AnthropicModelName,
+                _ => settings.OllamaModelName
+            },
             GeminiKey = settings.GeminiApiKey,
+            OpenAiKey = settings.OpenAiApiKey,
+            AnthropicKey = settings.AnthropicApiKey,
             TimeoutSeconds = settings.AiTimeoutSeconds,
             RetryAttempts = settings.AiRetryAttempts
         };
@@ -314,8 +330,16 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
         {
             Provider = settings.ThinkingAiProvider,
             OllamaUrl = settings.ThinkingOllamaBaseUrl,
-            ModelName = settings.ThinkingAiProvider == "Gemini" ? settings.ThinkingGeminiModelName : settings.ThinkingOllamaModelName,
+            ModelName = settings.ThinkingAiProvider switch
+            {
+                "Gemini" => settings.ThinkingGeminiModelName,
+                "OpenAI" => settings.ThinkingOpenAiModelName,
+                "Anthropic" => settings.ThinkingAnthropicModelName,
+                _ => settings.ThinkingOllamaModelName
+            },
             GeminiKey = settings.ThinkingGeminiApiKey,
+            OpenAiKey = settings.ThinkingOpenAiApiKey,
+            AnthropicKey = settings.ThinkingAnthropicApiKey,
             TimeoutSeconds = settings.AiTimeoutSeconds,
             RetryAttempts = settings.AiRetryAttempts
         };
@@ -378,6 +402,55 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                 return new List<string> { $"Gemini Fetch Error: {ex.Message}" };
             }
         }
+
+    if (config.Provider == "OpenAI")
+    {
+        if (string.IsNullOrWhiteSpace(config.OpenAiKey)) return new List<string> { "Error: Missing OpenAI API Key" };
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var req = new HttpRequestMessage(HttpMethod.Get, "https://api.openai.com/v1/models");
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", config.OpenAiKey);
+            var response = await _httpClient.SendAsync(req, cts.Token);
+            if (!response.IsSuccessStatusCode) return new List<string> { "gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "o3-mini", "o4-mini" };
+
+            var responseString = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(responseString);
+            var modelNames = new List<string>();
+
+            if (doc.RootElement.TryGetProperty("data", out var data))
+            {
+                foreach (var m in data.EnumerateArray())
+                {
+                    var id = m.GetProperty("id").GetString() ?? "";
+                    if (id.StartsWith("gpt-") || id.StartsWith("o1") || id.StartsWith("o3") || id.StartsWith("o4"))
+                        modelNames.Add(id);
+                }
+            }
+            
+            return modelNames.Any() 
+                ? modelNames.OrderByDescending(n => n).ToList() 
+                : new List<string> { "gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "o3-mini", "o4-mini" };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to fetch OpenAI models.");
+            return new List<string> { $"OpenAI Fetch Error: {ex.Message}" };
+        }
+    }
+
+    if (config.Provider == "Anthropic")
+    {
+        // Anthropic does not have a public chat-model list endpoint, so return a curated static list
+        return new List<string>
+        {
+            "claude-opus-4-5",
+            "claude-sonnet-4-5",
+            "claude-3-7-sonnet-latest",
+            "claude-3-5-sonnet-latest",
+            "claude-3-5-haiku-latest"
+        };
+    }
 
         if (string.IsNullOrWhiteSpace(config.OllamaUrl)) return new List<string> { "Error: Missing Ollama URL" };
 
@@ -799,10 +872,14 @@ Context Information:
         try
         {
             _logger.LogInformation("Reviewing output with Thinking Model for user {UserId}", userId);
-            
-            var reviewSystemPrompt = @"You are a strict quality control reviewer. Your job is to review the output of another AI to ensure it directly answers the user's prompt truthfully and accurately, following all rules.
+
+            // Load review instructions from file, falling back to a compact inline prompt.
+            var instructionsPath = Path.Combine(AppContext.BaseDirectory, "Resources", "thinking_model_instructions.md");
+            var reviewSystemPrompt = File.Exists(instructionsPath)
+                ? await File.ReadAllTextAsync(instructionsPath)
+                : @"You are a strict quality control reviewer. Your job is to review the output of another AI to ensure it directly answers the user's prompt truthfully and accurately, following all rules.
 IF the response is perfect: Output EXACTLY '<APPROVED>' and nothing else.
-IF the response completely missed the prompt or is missing critical information: Provide specific feedback on what is wrong and what needs to be fixed. Do NOT rewrite the response yourself, just provide the feedback.";
+IF the response missed the prompt or contains errors: Provide specific feedback on what is wrong and what must be fixed. Do NOT rewrite the response yourself.";
             
             var reviewPrompt = $"[ORIGINAL_SYSTEM_PROMPT]\n{system}\n[/ORIGINAL_SYSTEM_PROMPT]\n\n[USER_PROMPT]\n{originalPrompt}\n[/USER_PROMPT]\n\n[AI_PROPOSED_RESPONSE]\n{aiResult}\n[/AI_PROPOSED_RESPONSE]\n\nAnalyze the AI_PROPOSED_RESPONSE. If it is high quality and addresses the USER_PROMPT according to the ORIGINAL_SYSTEM_PROMPT, output strictly <APPROVED>. If it is bad, write down exactly what is wrong so the AI can try again.";
 
@@ -832,6 +909,16 @@ IF the response completely missed the prompt or is missing critical information:
         if (config.Provider == "Gemini")
         {
             return await GenerateGeminiCompletionAsync(userId, system, prompt, config.GeminiKey, config.ModelName, ct, config.TimeoutSeconds);
+        }
+
+        if (config.Provider == "OpenAI")
+        {
+            return await GenerateOpenAiCompletionAsync(userId, system, prompt, config.OpenAiKey, config.ModelName, ct, config.TimeoutSeconds);
+        }
+
+        if (config.Provider == "Anthropic")
+        {
+            return await GenerateAnthropicCompletionAsync(userId, system, prompt, config.AnthropicKey, config.ModelName, ct, config.TimeoutSeconds);
         }
 
         if (string.IsNullOrWhiteSpace(config.ModelName))
@@ -941,12 +1028,108 @@ IF the response completely missed the prompt or is missing critical information:
         throw new InvalidOperationException("Gemini returned no valid candidates or content.");
     }
 
+    private async Task<string> GenerateOpenAiCompletionAsync(int userId, string system, string prompt, string apiKey, string modelName, CancellationToken ct = default, int timeoutSeconds = 90)
+    {
+        if (string.IsNullOrWhiteSpace(apiKey)) throw new InvalidOperationException("OpenAI API Key is not configured.");
+        var model = !string.IsNullOrWhiteSpace(modelName) ? modelName : "gpt-4o-mini";
+
+        var request = new
+        {
+            model,
+            messages = new[]
+            {
+                new { role = "system", content = system },
+                new { role = "user", content = prompt }
+            }
+        };
+
+        var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
+        
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/chat/completions");
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+        req.Content = content;
+
+        _logger.LogInformation("Sending request to OpenAI: Model: {Model}", model);
+        var response = await _httpClient.SendAsync(req, cts.Token);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(cts.Token);
+            _logger.LogWarning("OpenAI API error: {Status} - {Body}", response.StatusCode, errorBody);
+            throw new HttpRequestException($"OpenAI API returned {response.StatusCode}", null, response.StatusCode);
+        }
+
+        var responseString = await response.Content.ReadAsStringAsync(cts.Token);
+        using var doc = JsonDocument.Parse(responseString);
+
+        if (doc.RootElement.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0)
+        {
+            var text = choices[0].GetProperty("message").GetProperty("content").GetString()?.Trim();
+            return text ?? throw new InvalidOperationException("OpenAI returned an empty message.");
+        }
+
+        throw new InvalidOperationException("OpenAI returned no valid choices.");
+    }
+
+    private async Task<string> GenerateAnthropicCompletionAsync(int userId, string system, string prompt, string apiKey, string modelName, CancellationToken ct = default, int timeoutSeconds = 90)
+    {
+        if (string.IsNullOrWhiteSpace(apiKey)) throw new InvalidOperationException("Anthropic API Key is not configured.");
+        var model = !string.IsNullOrWhiteSpace(modelName) ? modelName : "claude-3-5-sonnet-latest";
+
+        var request = new
+        {
+            model,
+            max_tokens = 8192,
+            system,
+            messages = new[]
+            {
+                new { role = "user", content = prompt }
+            }
+        };
+
+        var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.anthropic.com/v1/messages");
+        req.Headers.Add("x-api-key", apiKey);
+        req.Headers.Add("anthropic-version", "2023-06-01");
+        req.Content = content;
+
+        _logger.LogInformation("Sending request to Anthropic: Model: {Model}", model);
+        var response = await _httpClient.SendAsync(req, cts.Token);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(cts.Token);
+            _logger.LogWarning("Anthropic API error: {Status} - {Body}", response.StatusCode, errorBody);
+            throw new HttpRequestException($"Anthropic API returned {response.StatusCode}", null, response.StatusCode);
+        }
+
+        var responseString = await response.Content.ReadAsStringAsync(cts.Token);
+        using var doc = JsonDocument.Parse(responseString);
+
+        if (doc.RootElement.TryGetProperty("content", out var contentArr) && contentArr.GetArrayLength() > 0)
+        {
+            var text = contentArr[0].GetProperty("text").GetString()?.Trim();
+            return text ?? throw new InvalidOperationException("Anthropic returned an empty message.");
+        }
+
+        throw new InvalidOperationException("Anthropic returned no valid content.");
+    }
+
     private class AiProviderConfig
     {
         public string Provider { get; set; } = "Ollama";
         public string OllamaUrl { get; set; } = "";
         public string ModelName { get; set; } = "";
         public string GeminiKey { get; set; } = "";
+        public string OpenAiKey { get; set; } = "";
+        public string AnthropicKey { get; set; } = "";
         public int TimeoutSeconds { get; set; } = 90;
         public int RetryAttempts { get; set; } = 2;
     }

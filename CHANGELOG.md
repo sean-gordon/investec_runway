@@ -25,6 +25,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Ollama AI Health Check Optimization**: `ConnectivityWorker` now only polls the AI providers once every 4 hours instead of every 5 minutes to prevent Ollama from experiencing timeout errors and exhaustion.
 - **Dynamic Gemini Model Discovery Fix**: `SettingsController` now explicitly unmasks `********` placeholder settings sent by the frontend UI, allowing the `AiService` to authenticate with the true API key and fetch the live dynamic model list from Google's endpoint successfully instead of defaulting to hardcoded fallbacks.
 
+## [2.9.0] - 2026-02-27
+
+### Added
+- **OpenAI Provider Support**: `gpt-4o`, `gpt-4.1`, `gpt-4.1-mini`, `o3-mini`, `o4-mini` and more. Dynamically fetches the latest GPT and o-series models from the OpenAI `/v1/models` endpoint. Supports Primary, Fallback, and Thinking Model slots.
+- **Anthropic (Claude) Provider Support**: `claude-3-7-sonnet-latest`, `claude-3-5-sonnet-latest`, `claude-3-5-haiku-latest`, `claude-opus-4-5`, `claude-sonnet-4-5`. Returns a curated static list (Anthropic has no public model list API).
+- **Thinking Model Instructions File**: `GordonWorker/Resources/thinking_model_instructions.md` — a rich, structured set of quality-control rules for the Thinking Model reviewer (accuracy, completeness, SQL validity, tone, safety). Loaded at runtime so it can be tuned without recompile.
+- **Four-Provider UI**: All three AI provider dropdowns (Primary Brain, Fallback, Thinking Model) in Settings now include `OpenAI` and `Anthropic (Claude)` options with conditional credential fields.
+
+### Changed
+- `AiService`: `GetAvailableModelsAsync` now dispatches to provider-specific model fetchers. `GenerateCompletionAsync` routes to `GenerateOpenAiCompletionAsync` or `GenerateAnthropicCompletionAsync` as appropriate.
+- `AiProviderConfig`: Added `OpenAiKey` and `AnthropicKey` fields.
+- `AppSettings`: Added `OpenAiApiKey`, `OpenAiModelName`, `AnthropicApiKey`, `AnthropicModelName` and their `Fallback*` and `Thinking*` counterparts (6 fields each, 12 new per slot = 18 new fields total).
+- `SettingsService`: All 6 new API key fields are encrypted at rest and decrypted on load.
+- `SettingsController`: All 6 new API key fields are masked when served to the frontend, and preserved when the masked placeholder is sent back.
+
 ## [2.8.2] - 2026-02-27
 
 ### Changed

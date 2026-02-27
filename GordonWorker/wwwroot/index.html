@@ -755,6 +755,8 @@
                                             class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
                                             <option value="Ollama">Ollama</option>
                                             <option value="Gemini">Gemini</option>
+                                            <option value="OpenAI">OpenAI</option>
+                                            <option value="Anthropic">Anthropic (Claude)</option>
                                         </select></div>
                                     <div><label class="text-xs font-bold text-slate-700">Persona Name</label><input
                                             v-model="settings.systemPersona" type="text"
@@ -762,13 +764,23 @@
                                     </div>
                                 </div>
                                 <div>
-                                    <label class="text-xs font-bold text-slate-700">{{ settings.aiProvider === 'Ollama'
-                                        ? 'Ollama URL' : 'Gemini Key' }}</label>
+                                    <label class="text-xs font-bold text-slate-700">
+                                        <span v-if="settings.aiProvider === 'Ollama'">Ollama URL</span>
+                                        <span v-else-if="settings.aiProvider === 'Gemini'">Gemini API Key</span>
+                                        <span v-else-if="settings.aiProvider === 'OpenAI'">OpenAI API Key</span>
+                                        <span v-else>Anthropic API Key</span>
+                                    </label>
                                     <div class="flex gap-2 mt-1">
                                         <input v-if="settings.aiProvider === 'Ollama'" v-model="settings.ollamaBaseUrl"
                                             type="text"
                                             class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
-                                        <input v-else v-model="settings.geminiApiKey" type="password"
+                                        <input v-else-if="settings.aiProvider === 'Gemini'"
+                                            v-model="settings.geminiApiKey" type="password"
+                                            class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                        <input v-else-if="settings.aiProvider === 'OpenAI'"
+                                            v-model="settings.openAiApiKey" type="password"
+                                            class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                        <input v-else v-model="settings.anthropicApiKey" type="password"
                                             class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
                                         <button @click="testAi"
                                             class="px-4 py-2 bg-slate-800 text-white rounded-lg text-xs font-bold">Test</button>
@@ -782,10 +794,25 @@
                                             settings.ollamaModelName }}</option>
                                         <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
                                     </select>
-                                    <select v-else v-model="settings.geminiModelName"
+                                    <select v-else-if="settings.aiProvider === 'Gemini'"
+                                        v-model="settings.geminiModelName"
                                         class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
                                         <option v-if="availableModels.length === 0" :value="settings.geminiModelName">{{
                                             settings.geminiModelName }}</option>
+                                        <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
+                                    </select>
+                                    <select v-else-if="settings.aiProvider === 'OpenAI'"
+                                        v-model="settings.openAiModelName"
+                                        class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                        <option v-if="availableModels.length === 0" :value="settings.openAiModelName">{{
+                                            settings.openAiModelName }}</option>
+                                        <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
+                                    </select>
+                                    <select v-else v-model="settings.anthropicModelName"
+                                        class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                        <option v-if="availableModels.length === 0"
+                                            :value="settings.anthropicModelName">{{
+                                            settings.anthropicModelName }}</option>
                                         <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
                                     </select>
                                 </div>
@@ -824,6 +851,8 @@
                                                 class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
                                                 <option value="Ollama">Ollama</option>
                                                 <option value="Gemini">Gemini</option>
+                                                <option value="OpenAI">OpenAI</option>
+                                                <option value="Anthropic">Anthropic (Claude)</option>
                                             </select>
                                         </div>
                                         <div>
@@ -837,7 +866,8 @@
                                                 <option v-for="m in availableFallbackModels" :key="m" :value="m">{{ m }}
                                                 </option>
                                             </select>
-                                            <select v-else v-model="settings.fallbackGeminiModelName"
+                                            <select v-else-if="settings.fallbackAiProvider === 'Gemini'"
+                                                v-model="settings.fallbackGeminiModelName"
                                                 class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
                                                 <option v-if="availableFallbackModels.length === 0"
                                                     :value="settings.fallbackGeminiModelName">{{
@@ -845,16 +875,46 @@
                                                 <option v-for="m in availableFallbackModels" :key="m" :value="m">{{ m }}
                                                 </option>
                                             </select>
+                                            <select v-else-if="settings.fallbackAiProvider === 'OpenAI'"
+                                                v-model="settings.fallbackOpenAiModelName"
+                                                class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                                <option v-if="availableFallbackModels.length === 0"
+                                                    :value="settings.fallbackOpenAiModelName">{{
+                                                    settings.fallbackOpenAiModelName }}</option>
+                                                <option v-for="m in availableFallbackModels" :key="m" :value="m">{{ m }}
+                                                </option>
+                                            </select>
+                                            <select v-else v-model="settings.fallbackAnthropicModelName"
+                                                class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                                <option v-if="availableFallbackModels.length === 0"
+                                                    :value="settings.fallbackAnthropicModelName">{{
+                                                    settings.fallbackAnthropicModelName }}</option>
+                                                <option v-for="m in availableFallbackModels" :key="m" :value="m">{{ m }}
+                                                </option>
+                                            </select>
                                         </div>
                                     </div>
                                     <div>
-                                        <label class="text-xs font-bold text-slate-700">{{ settings.fallbackAiProvider
-                                            === 'Ollama' ? 'Fallback Ollama URL' : 'Fallback Gemini Key' }}</label>
+                                        <label class="text-xs font-bold text-slate-700">
+                                            <span v-if="settings.fallbackAiProvider === 'Ollama'">Fallback Ollama
+                                                URL</span>
+                                            <span v-else-if="settings.fallbackAiProvider === 'Gemini'">Fallback Gemini
+                                                API Key</span>
+                                            <span v-else-if="settings.fallbackAiProvider === 'OpenAI'">Fallback OpenAI
+                                                API Key</span>
+                                            <span v-else>Fallback Anthropic API Key</span>
+                                        </label>
                                         <div class="flex gap-2 mt-1">
                                             <input v-if="settings.fallbackAiProvider === 'Ollama'"
                                                 v-model="settings.fallbackOllamaBaseUrl" type="text"
                                                 class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
-                                            <input v-else v-model="settings.fallbackGeminiApiKey" type="password"
+                                            <input v-else-if="settings.fallbackAiProvider === 'Gemini'"
+                                                v-model="settings.fallbackGeminiApiKey" type="password"
+                                                class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                            <input v-else-if="settings.fallbackAiProvider === 'OpenAI'"
+                                                v-model="settings.fallbackOpenAiApiKey" type="password"
+                                                class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                            <input v-else v-model="settings.fallbackAnthropicApiKey" type="password"
                                                 class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
                                             <button @click="testFallbackAi"
                                                 class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold border border-slate-200">Test
@@ -888,6 +948,8 @@
                                                 class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
                                                 <option value="Ollama">Ollama</option>
                                                 <option value="Gemini">Gemini</option>
+                                                <option value="OpenAI">OpenAI</option>
+                                                <option value="Anthropic">Anthropic (Claude)</option>
                                             </select>
                                         </div>
                                         <div>
@@ -901,7 +963,8 @@
                                                 <option v-for="m in availableThinkingModels" :key="m" :value="m">{{ m }}
                                                 </option>
                                             </select>
-                                            <select v-else v-model="settings.thinkingGeminiModelName"
+                                            <select v-else-if="settings.thinkingAiProvider === 'Gemini'"
+                                                v-model="settings.thinkingGeminiModelName"
                                                 class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
                                                 <option v-if="availableThinkingModels.length === 0"
                                                     :value="settings.thinkingGeminiModelName">{{
@@ -909,16 +972,46 @@
                                                 <option v-for="m in availableThinkingModels" :key="m" :value="m">{{ m }}
                                                 </option>
                                             </select>
+                                            <select v-else-if="settings.thinkingAiProvider === 'OpenAI'"
+                                                v-model="settings.thinkingOpenAiModelName"
+                                                class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                                <option v-if="availableThinkingModels.length === 0"
+                                                    :value="settings.thinkingOpenAiModelName">{{
+                                                    settings.thinkingOpenAiModelName }}</option>
+                                                <option v-for="m in availableThinkingModels" :key="m" :value="m">{{ m }}
+                                                </option>
+                                            </select>
+                                            <select v-else v-model="settings.thinkingAnthropicModelName"
+                                                class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                                <option v-if="availableThinkingModels.length === 0"
+                                                    :value="settings.thinkingAnthropicModelName">{{
+                                                    settings.thinkingAnthropicModelName }}</option>
+                                                <option v-for="m in availableThinkingModels" :key="m" :value="m">{{ m }}
+                                                </option>
+                                            </select>
                                         </div>
                                     </div>
                                     <div>
-                                        <label class="text-xs font-bold text-slate-700">{{ settings.thinkingAiProvider
-                                            === 'Ollama' ? 'Thinking Ollama URL' : 'Thinking Gemini Key' }}</label>
+                                        <label class="text-xs font-bold text-slate-700">
+                                            <span v-if="settings.thinkingAiProvider === 'Ollama'">Thinking Ollama
+                                                URL</span>
+                                            <span v-else-if="settings.thinkingAiProvider === 'Gemini'">Thinking Gemini
+                                                API Key</span>
+                                            <span v-else-if="settings.thinkingAiProvider === 'OpenAI'">Thinking OpenAI
+                                                API Key</span>
+                                            <span v-else>Thinking Anthropic API Key</span>
+                                        </label>
                                         <div class="flex gap-2 mt-1">
                                             <input v-if="settings.thinkingAiProvider === 'Ollama'"
                                                 v-model="settings.thinkingOllamaBaseUrl" type="text"
                                                 class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
-                                            <input v-else v-model="settings.thinkingGeminiApiKey" type="password"
+                                            <input v-else-if="settings.thinkingAiProvider === 'Gemini'"
+                                                v-model="settings.thinkingGeminiApiKey" type="password"
+                                                class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                            <input v-else-if="settings.thinkingAiProvider === 'OpenAI'"
+                                                v-model="settings.thinkingOpenAiApiKey" type="password"
+                                                class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                            <input v-else v-model="settings.thinkingAnthropicApiKey" type="password"
                                                 class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
                                             <button @click="testThinkingAi"
                                                 class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold border border-slate-200">Test

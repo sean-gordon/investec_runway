@@ -66,6 +66,7 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
         var chartService = scope.ServiceProvider.GetRequiredService<IChartService>();
         var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
         var botClientFactory = scope.ServiceProvider.GetRequiredService<ITelegramBotClientFactory>();
+        var memoryCache = scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>();
 
         int placeholderId = 0;
         CancellationTokenSource? ctsHeartbeat = null;
@@ -273,9 +274,15 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
                 "SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '90 days' ORDER BY transaction_date ASC",
                 new { userId = request.UserId })).ToList();
 
-            var accounts = await investecClient.GetAccountsAsync();
-            decimal currentBalance = 0;
-            foreach (var acc in accounts) currentBalance += await investecClient.GetAccountBalanceAsync(acc.AccountId);
+            var cacheKey = $"investec_balance_{request.UserId}";
+            if (!memoryCache.TryGetValue(cacheKey, out decimal currentBalance))
+            {
+                var accounts = await investecClient.GetAccountsAsync();
+                currentBalance = 0;
+                foreach (var acc in accounts) currentBalance += await investecClient.GetAccountBalanceAsync(acc.AccountId);
+                
+                memoryCache.Set(cacheKey, currentBalance, TimeSpan.FromMinutes(15));
+            }
 
             var summary = await actuarialService.AnalyzeHealthAsync(history, currentBalance, settings);
             var summaryJson = JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true });
@@ -379,7 +386,7 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
         {
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(15), ct);
+                await Task.Delay(TimeSpan.FromSeconds(2.5), ct);
 
                 var bar = progressStages[Math.Min(stageIndex, progressStages.Length - 1)];
                 var nextWitty = stageIndex switch

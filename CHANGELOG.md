@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Ollama AI Health Check Optimization**: `ConnectivityWorker` now only polls the AI providers once every 4 hours instead of every 5 minutes to prevent Ollama from experiencing timeout errors and exhaustion.
 - **Dynamic Gemini Model Discovery Fix**: `SettingsController` now explicitly unmasks `********` placeholder settings sent by the frontend UI, allowing the `AiService` to authenticate with the true API key and fetch the live dynamic model list from Google's endpoint successfully instead of defaulting to hardcoded fallbacks.
 
+## [2.7.10] - 2026-02-27
+
+### Changed
+- **Telegram Perception Speed**: Reduced the AI processing heartbeat update delay from 15 seconds to 2.5 seconds. The user will now see "Analytical Engine Working [10%]" much faster instead of a long silent pause.
+- **Telegram Live API Caching**: The application previously spent 3 to 5 seconds synchronously polling live Investec account balances *before* generating a reply to a generic AI message. This is now cached in memory for 15 minutes, making continuous AI chatting feel instant.
+
 ## [2.7.9] - 2026-02-27
 
 ### Fixed

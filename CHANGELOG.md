@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Ollama AI Health Check Optimization**: `ConnectivityWorker` now only polls the AI providers once every 4 hours instead of every 5 minutes to prevent Ollama from experiencing timeout errors and exhaustion.
 - **Dynamic Gemini Model Discovery Fix**: `SettingsController` now explicitly unmasks `********` placeholder settings sent by the frontend UI, allowing the `AiService` to authenticate with the true API key and fetch the live dynamic model list from Google's endpoint successfully instead of defaulting to hardcoded fallbacks.
 
+## [2.7.8] - 2026-02-27
+
+### Fixed
+- **Build Server Compilation Error**: Fixed a compile-time bug in `TelegramController` where `AppSettings` was erroneously prefixed entirely with `Models.`, causing Docker build failures in production.
+
 ## [2.7.7] - 2026-02-27
 
 ### Fixed

@@ -74,7 +74,7 @@ public class TelegramController : ControllerBase
 
             // SECURITY FIX: Find matching user and VERIFY TOKEN
             int? matchedUserId = null;
-            Models.AppSettings? matchedSettings = null;
+            AppSettings? matchedSettings = null;
 
             if (_tokenCache.TryGetValue(token, out var cachedUserId))
             {

@@ -18,11 +18,13 @@ public interface ITelegramService
 public class TelegramService : ITelegramService
 {
     private readonly ISettingsService _settingsService;
+    private readonly ITelegramBotClientFactory _botClientFactory;
     private readonly ILogger<TelegramService> _logger;
 
-    public TelegramService(ISettingsService settingsService, ILogger<TelegramService> logger)
+    public TelegramService(ISettingsService settingsService, ITelegramBotClientFactory botClientFactory, ILogger<TelegramService> logger)
     {
         _settingsService = settingsService;
+        _botClientFactory = botClientFactory;
         _logger = logger;
     }
 
@@ -35,7 +37,7 @@ public class TelegramService : ITelegramService
 
         try
         {
-            var botClient = new TelegramBotClient(settings.TelegramBotToken);
+            var botClient = _botClientFactory.GetClient(settings.TelegramBotToken);
             var keyboard = new Telegram.Bot.Types.ReplyMarkups.InlineKeyboardMarkup(
                 buttons.Select(b => Telegram.Bot.Types.ReplyMarkups.InlineKeyboardButton.WithCallbackData(b.Text, b.CallbackData))
             );
@@ -58,7 +60,7 @@ public class TelegramService : ITelegramService
         var settings = await _settingsService.GetSettingsAsync(userId);
         if (string.IsNullOrWhiteSpace(settings.TelegramBotToken)) return "Token not configured.";
 
-        var botClient = new TelegramBotClient(settings.TelegramBotToken);
+        var botClient = _botClientFactory.GetClient(settings.TelegramBotToken);
         var info = await botClient.GetWebhookInfo();
         return System.Text.Json.JsonSerializer.Serialize(info, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
     }
@@ -71,7 +73,7 @@ public class TelegramService : ITelegramService
             throw new Exception("Telegram Bot Token is not configured.");
         }
 
-        var botClient = new TelegramBotClient(settings.TelegramBotToken);
+        var botClient = _botClientFactory.GetClient(settings.TelegramBotToken);
         await botClient.SetWebhook(webhookUrl);
         _logger.LogInformation("Telegram webhook set to {Url} for user {UserId}", webhookUrl, userId);
     }
@@ -94,7 +96,7 @@ public class TelegramService : ITelegramService
 
         try
         {
-            var botClient = new TelegramBotClient(settings.TelegramBotToken);
+            var botClient = _botClientFactory.GetClient(settings.TelegramBotToken);
             var sentMsg = await botClient.SendMessage(
                 chatId: chatId,
                 text: message,
@@ -108,7 +110,7 @@ public class TelegramService : ITelegramService
             _logger.LogWarning(ex, "Failed to send HTML Telegram message to {ChatId}. Retrying as plain text.", chatId);
             try
             {
-                var botClient = new TelegramBotClient(settings.TelegramBotToken);
+                var botClient = _botClientFactory.GetClient(settings.TelegramBotToken);
                 var sentMsg = await botClient.SendMessage(
                     chatId: chatId,
                     text: message // No parse mode = plain text
@@ -132,7 +134,7 @@ public class TelegramService : ITelegramService
 
         try
         {
-            var botClient = new TelegramBotClient(settings.TelegramBotToken);
+            var botClient = _botClientFactory.GetClient(settings.TelegramBotToken);
             await botClient.EditMessageText(
                 chatId: chatId,
                 messageId: messageId,
@@ -146,7 +148,7 @@ public class TelegramService : ITelegramService
             _logger.LogWarning(ex, "Failed to edit HTML Telegram message {MsgId}. Retrying as plain text.", messageId);
             try
             {
-                var botClient = new TelegramBotClient(settings.TelegramBotToken);
+                var botClient = _botClientFactory.GetClient(settings.TelegramBotToken);
                 await botClient.EditMessageText(
                     chatId: chatId,
                     messageId: messageId,
@@ -169,7 +171,7 @@ public class TelegramService : ITelegramService
 
         try
         {
-            var botClient = new TelegramBotClient(settings.TelegramBotToken);
+            var botClient = _botClientFactory.GetClient(settings.TelegramBotToken);
             using var stream = new MemoryStream(imageData);
             await botClient.SendPhoto(
                 chatId: chatId,

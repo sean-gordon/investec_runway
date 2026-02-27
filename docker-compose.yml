@@ -25,7 +25,7 @@ services:
       - INVESTEC_CLIENT_ID=${INVESTEC_CLIENT_ID}
       - INVESTEC_SECRET=${INVESTEC_SECRET}
       - INVESTEC_API_KEY=${INVESTEC_API_KEY}
-      - JWT_SECRET=${JWT_SECRET}
+      - JWT_SECRET=${JWT_SECRET:-}
       - JWT_ISSUER=${JWT_ISSUER:-GordonFinanceEngine}
       - JWT_AUDIENCE=${JWT_AUDIENCE:-GordonUsers}
       - TZ=${TZ}

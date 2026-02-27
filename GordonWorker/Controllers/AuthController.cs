@@ -82,7 +82,11 @@ public class AuthController : ControllerBase
     private string GenerateJwtToken(User user)
     {
         var jwtSettings = _configuration.GetSection("Jwt");
-        var key = Encoding.ASCII.GetBytes(jwtSettings["Secret"] ?? "SUPER_SECRET_FALLBACK_KEY_CHANGE_ME_NOW");
+        var secret = Environment.GetEnvironmentVariable("JWT_SECRET") 
+                     ?? jwtSettings["Secret"] 
+                     ?? throw new InvalidOperationException("CRITICAL: JWT Secret is not configured in Environment Variables.");
+                     
+        var key = Encoding.ASCII.GetBytes(secret);
 
         var tokenDescriptor = new SecurityTokenDescriptor
         {

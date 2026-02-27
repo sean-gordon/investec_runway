@@ -4,6 +4,7 @@ using Npgsql;
 using System.Text.Json;
 using System.Threading.Channels;
 using Telegram.Bot;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace GordonWorker.Services;
 
@@ -65,6 +66,8 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
         var actuarialService = scope.ServiceProvider.GetRequiredService<IActuarialService>();
         var chartService = scope.ServiceProvider.GetRequiredService<IChartService>();
         var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+        var botClientFactory = scope.ServiceProvider.GetRequiredService<ITelegramBotClientFactory>();
+        var memoryCache = scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>();
 
         int placeholderId = 0;
         CancellationTokenSource? ctsHeartbeat = null;
@@ -74,7 +77,7 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
             _logger.LogInformation("Processing Telegram message for user {UserId}", request.UserId);
 
             var settings = await settingsService.GetSettingsAsync(request.UserId);
-            var botClient = new TelegramBotClient(settings.TelegramBotToken);
+            var botClient = botClientFactory.GetClient(settings.TelegramBotToken);
 
             // Handle Slash Commands
             if (!string.IsNullOrWhiteSpace(request.MessageText) && request.MessageText.StartsWith("/"))
@@ -272,9 +275,15 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
                 "SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '90 days' ORDER BY transaction_date ASC",
                 new { userId = request.UserId })).ToList();
 
-            var accounts = await investecClient.GetAccountsAsync();
-            decimal currentBalance = 0;
-            foreach (var acc in accounts) currentBalance += await investecClient.GetAccountBalanceAsync(acc.AccountId);
+            var cacheKey = $"investec_balance_{request.UserId}";
+            if (!memoryCache.TryGetValue(cacheKey, out decimal currentBalance))
+            {
+                var accounts = await investecClient.GetAccountsAsync();
+                currentBalance = 0;
+                foreach (var acc in accounts) currentBalance += await investecClient.GetAccountBalanceAsync(acc.AccountId);
+                
+                memoryCache.Set(cacheKey, currentBalance, TimeSpan.FromMinutes(15));
+            }
 
             var summary = await actuarialService.AnalyzeHealthAsync(history, currentBalance, settings);
             var summaryJson = JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true });
@@ -378,7 +387,7 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
         {
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(15), ct);
+                await Task.Delay(TimeSpan.FromSeconds(2.5), ct);
 
                 var bar = progressStages[Math.Min(stageIndex, progressStages.Length - 1)];
                 var nextWitty = stageIndex switch

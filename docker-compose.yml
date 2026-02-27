@@ -6,6 +6,7 @@ services:
       - POSTGRES_DB=finance
       - POSTGRES_PASSWORD=${DB_PASSWORD}
       - TZ=${TZ}
+
     volumes:
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
       - timescaledb_data:/var/lib/postgresql/data
@@ -25,7 +26,11 @@ services:
       - INVESTEC_CLIENT_ID=${INVESTEC_CLIENT_ID}
       - INVESTEC_SECRET=${INVESTEC_SECRET}
       - INVESTEC_API_KEY=${INVESTEC_API_KEY}
+      - JWT_SECRET=${JWT_SECRET:-}
+      - JWT_ISSUER=${JWT_ISSUER:-GordonFinanceEngine}
+      - JWT_AUDIENCE=${JWT_AUDIENCE:-GordonUsers}
       - TZ=${TZ}
+      - Security__AllowedDomains__0=*
     volumes:
       - gordon_keys:/app/keys
     networks:
@@ -37,6 +42,7 @@ services:
 
 networks:
   finance-net:
+
 
 volumes:
   timescaledb_data:

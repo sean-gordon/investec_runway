@@ -19,7 +19,11 @@ public class AppSettings
     public string OllamaModelName { get; set; } = "deepseek-coder";
     public string GeminiModelName { get; set; } = "gemini-3-flash-preview";
     public string GeminiApiKey { get; set; } = "";
-    public string AiProvider { get; set; } = "Ollama"; // "Ollama" or "Gemini"
+    public string OpenAiApiKey { get; set; } = "";
+    public string OpenAiModelName { get; set; } = "gpt-4.1-mini";
+    public string AnthropicApiKey { get; set; } = "";
+    public string AnthropicModelName { get; set; } = "claude-3-5-sonnet-latest";
+    public string AiProvider { get; set; } = "Ollama"; // "Ollama", "Gemini", "OpenAI", or "Anthropic"
     public string SystemPersona { get; set; } = "Gordon";
 
     // AI Fallback Settings
@@ -29,6 +33,10 @@ public class AppSettings
     public string FallbackOllamaModelName { get; set; } = "llama3";
     public string FallbackGeminiModelName { get; set; } = "gemini-3-flash-preview";
     public string FallbackGeminiApiKey { get; set; } = "";
+    public string FallbackOpenAiApiKey { get; set; } = "";
+    public string FallbackOpenAiModelName { get; set; } = "gpt-4o-mini";
+    public string FallbackAnthropicApiKey { get; set; } = "";
+    public string FallbackAnthropicModelName { get; set; } = "claude-3-5-haiku-latest";
     public int AiTimeoutSeconds { get; set; } = 90;
     public int AiRetryAttempts { get; set; } = 2;
 
@@ -39,6 +47,11 @@ public class AppSettings
     public string ThinkingOllamaModelName { get; set; } = "deepseek-r1";
     public string ThinkingGeminiModelName { get; set; } = "gemini-2.0-flash-thinking-exp";
     public string ThinkingGeminiApiKey { get; set; } = "";
+    public string ThinkingOpenAiApiKey { get; set; } = "";
+    public string ThinkingOpenAiModelName { get; set; } = "o3-mini";
+    public string ThinkingAnthropicApiKey { get; set; } = "";
+    public string ThinkingAnthropicModelName { get; set; } = "claude-3-7-sonnet-latest";
+    public string ThinkingModelInstructions { get; set; } = ""; // If empty, loads from Resources/thinking_model_instructions.md
     
     // Actuarial Keywords & Thresholds
     public string FixedCostKeywords { get; set; } = "SCHOOL,MORTGAGE,LEVIES,HOME LOAN,INSURANCE,BOND,INVESTMENT,LIFE,MEDICAL,NEDBHL,DISC PREM,WILLOWBROOKE,ADAM,NETFLIX,SPOTIFY,APPLE,GOOGLE,VODACOM,MTN,CELL C,TELKOM,ELECTRICITY,CITY OF,MUNICIPALITY,DISCOVERY,MULTICHOICE,DSTV,VUMATEL,AFRIHOST,MWEB,RAIN,OUTSURANCE,SANTAM,OLD MUTUAL,SANLAM,LIBERTY,ALLAN GRAY,CORONATION,RETIREMENT,PENSION,STALMENT,BOND,FIBRE,GYM,VIRGIN ACTIVE,PLANET FITNESS,AUDIBLE,AMAZON,CHATGPT,OPENAI,RATES,WATER,ESKOM,CITY POWER,TSHWANE,EKURHULENI,COJ,OCTOTEL,OPENSERVE,METROFIBRE,MOMENTUM,NINETY ONE,SYGNIA,10X,SATRIX,EASYEQUITIES,EE,OSIRIS,LUNO,VALR,BINANCE,KRAKEN,COINBASE,PAYPAL,UBER,BOLT,MR D,CHECKERS SIXTY60,WOOLIES DASH,PNP GROCERIES";
@@ -90,6 +103,7 @@ public class AppSettings
 public interface ISettingsService
 {
     Task<AppSettings> GetSettingsAsync(int userId);
+    Task<int?> GetUserIdByWhatsAppNumberAsync(string whatsAppNumber);
     Task UpdateSettingsAsync(int userId, AppSettings newSettings);
     void InvalidateCache(int userId);
 }
@@ -113,6 +127,55 @@ public class SettingsService : ISettingsService
     {
         _cache.Remove($"settings_{userId}");
         _logger.LogInformation("Settings cache invalidated for user {UserId}", userId);
+    }
+
+    public async Task<int?> GetUserIdByWhatsAppNumberAsync(string whatsAppNumber)
+    {
+        if (string.IsNullOrWhiteSpace(whatsAppNumber)) return null;
+        
+        // Cache the mapping to avoid DB hits on every message
+        return await _cache.GetOrCreateAsync($"wa_user_{whatsAppNumber}", async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(15);
+            
+            try
+            {
+                using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+                await connection.OpenAsync();
+
+                // Because configuration is JSONB, we can't easily query encrypted values. 
+                // Wait, AuthorizedWhatsAppNumber is NOT encrypted currently, let's check. 
+                // Ah, it isn't listed in TryEncrypt in SaveToDbAsync! Let's verify it isn't.
+                
+                // Let's grab all configs and find the match (since there are usually < 100 users).
+                // It's still O(N) but cached for 15 minutes, drastically better than O(N) per message.
+                var users = await connection.QueryAsync<(int UserId, string Config)>(
+                    "SELECT user_id as UserId, config as Config FROM user_settings");
+                    
+                foreach (var user in users)
+                {
+                    if (string.IsNullOrEmpty(user.Config)) continue;
+                    
+                    try
+                    {
+                        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                        var s = JsonSerializer.Deserialize<AppSettings>(user.Config, options);
+                        if (s?.AuthorizedWhatsAppNumber == whatsAppNumber)
+                        {
+                            return (int?)user.UserId;
+                        }
+                    }
+                    catch { /* Ignore parse errors */ }
+                }
+                
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to lookup user by WhatsApp number");
+                return null;
+            }
+        });
     }
 
     public async Task<AppSettings> GetSettingsAsync(int userId)
@@ -144,8 +207,14 @@ public class SettingsService : ISettingsService
 
                     // Decrypt sensitive fields
                     settings.GeminiApiKey = TryDecrypt(settings.GeminiApiKey);
+                    settings.OpenAiApiKey = TryDecrypt(settings.OpenAiApiKey);
+                    settings.AnthropicApiKey = TryDecrypt(settings.AnthropicApiKey);
                     settings.FallbackGeminiApiKey = TryDecrypt(settings.FallbackGeminiApiKey);
+                    settings.FallbackOpenAiApiKey = TryDecrypt(settings.FallbackOpenAiApiKey);
+                    settings.FallbackAnthropicApiKey = TryDecrypt(settings.FallbackAnthropicApiKey);
                     settings.ThinkingGeminiApiKey = TryDecrypt(settings.ThinkingGeminiApiKey);
+                    settings.ThinkingOpenAiApiKey = TryDecrypt(settings.ThinkingOpenAiApiKey);
+                    settings.ThinkingAnthropicApiKey = TryDecrypt(settings.ThinkingAnthropicApiKey);
                     settings.InvestecSecret = TryDecrypt(settings.InvestecSecret);
                     settings.InvestecApiKey = TryDecrypt(settings.InvestecApiKey);
                     settings.SmtpPass = TryDecrypt(settings.SmtpPass);
@@ -182,8 +251,14 @@ public class SettingsService : ISettingsService
             var encryptedSettings = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(settings))!;
             
             encryptedSettings.GeminiApiKey = TryEncrypt(settings.GeminiApiKey);
+            encryptedSettings.OpenAiApiKey = TryEncrypt(settings.OpenAiApiKey);
+            encryptedSettings.AnthropicApiKey = TryEncrypt(settings.AnthropicApiKey);
             encryptedSettings.FallbackGeminiApiKey = TryEncrypt(settings.FallbackGeminiApiKey);
+            encryptedSettings.FallbackOpenAiApiKey = TryEncrypt(settings.FallbackOpenAiApiKey);
+            encryptedSettings.FallbackAnthropicApiKey = TryEncrypt(settings.FallbackAnthropicApiKey);
             encryptedSettings.ThinkingGeminiApiKey = TryEncrypt(settings.ThinkingGeminiApiKey);
+            encryptedSettings.ThinkingOpenAiApiKey = TryEncrypt(settings.ThinkingOpenAiApiKey);
+            encryptedSettings.ThinkingAnthropicApiKey = TryEncrypt(settings.ThinkingAnthropicApiKey);
             encryptedSettings.InvestecSecret = TryEncrypt(settings.InvestecSecret);
             encryptedSettings.InvestecApiKey = TryEncrypt(settings.InvestecApiKey);
             encryptedSettings.SmtpPass = TryEncrypt(settings.SmtpPass);
@@ -225,8 +300,8 @@ public class SettingsService : ISettingsService
         try { return _protector.Unprotect(cipherText); }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to decrypt setting.");
-            return cipherText; 
+            _logger.LogWarning(ex, "Failed to decrypt setting. Returning empty to avoid data leak.");
+            return ""; 
         }
     }
 }

@@ -289,8 +289,16 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
             {
                 Provider = settings.FallbackAiProvider,
                 OllamaUrl = settings.FallbackOllamaBaseUrl,
-                ModelName = settings.FallbackAiProvider == "Gemini" ? settings.FallbackGeminiModelName : settings.FallbackOllamaModelName,
+                ModelName = settings.FallbackAiProvider switch
+                {
+                    "Gemini" => settings.FallbackGeminiModelName,
+                    "OpenAI" => settings.FallbackOpenAiModelName,
+                    "Anthropic" => settings.FallbackAnthropicModelName,
+                    _ => settings.FallbackOllamaModelName
+                },
                 GeminiKey = settings.FallbackGeminiApiKey,
+                OpenAiKey = settings.FallbackOpenAiApiKey,
+                AnthropicKey = settings.FallbackAnthropicApiKey,
                 TimeoutSeconds = settings.AiTimeoutSeconds,
                 RetryAttempts = settings.AiRetryAttempts
             };
@@ -300,8 +308,16 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
         {
             Provider = settings.AiProvider,
             OllamaUrl = settings.OllamaBaseUrl,
-            ModelName = settings.AiProvider == "Gemini" ? settings.GeminiModelName : settings.OllamaModelName,
+            ModelName = settings.AiProvider switch
+            {
+                "Gemini" => settings.GeminiModelName,
+                "OpenAI" => settings.OpenAiModelName,
+                "Anthropic" => settings.AnthropicModelName,
+                _ => settings.OllamaModelName
+            },
             GeminiKey = settings.GeminiApiKey,
+            OpenAiKey = settings.OpenAiApiKey,
+            AnthropicKey = settings.AnthropicApiKey,
             TimeoutSeconds = settings.AiTimeoutSeconds,
             RetryAttempts = settings.AiRetryAttempts
         };
@@ -314,8 +330,16 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
         {
             Provider = settings.ThinkingAiProvider,
             OllamaUrl = settings.ThinkingOllamaBaseUrl,
-            ModelName = settings.ThinkingAiProvider == "Gemini" ? settings.ThinkingGeminiModelName : settings.ThinkingOllamaModelName,
+            ModelName = settings.ThinkingAiProvider switch
+            {
+                "Gemini" => settings.ThinkingGeminiModelName,
+                "OpenAI" => settings.ThinkingOpenAiModelName,
+                "Anthropic" => settings.ThinkingAnthropicModelName,
+                _ => settings.ThinkingOllamaModelName
+            },
             GeminiKey = settings.ThinkingGeminiApiKey,
+            OpenAiKey = settings.ThinkingOpenAiApiKey,
+            AnthropicKey = settings.ThinkingAnthropicApiKey,
             TimeoutSeconds = settings.AiTimeoutSeconds,
             RetryAttempts = settings.AiRetryAttempts
         };
@@ -378,6 +402,55 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                 return new List<string> { $"Gemini Fetch Error: {ex.Message}" };
             }
         }
+
+    if (config.Provider == "OpenAI")
+    {
+        if (string.IsNullOrWhiteSpace(config.OpenAiKey)) return new List<string> { "Error: Missing OpenAI API Key" };
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var req = new HttpRequestMessage(HttpMethod.Get, "https://api.openai.com/v1/models");
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", config.OpenAiKey);
+            var response = await _httpClient.SendAsync(req, cts.Token);
+            if (!response.IsSuccessStatusCode) return new List<string> { "gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "o3-mini", "o4-mini" };
+
+            var responseString = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(responseString);
+            var modelNames = new List<string>();
+
+            if (doc.RootElement.TryGetProperty("data", out var data))
+            {
+                foreach (var m in data.EnumerateArray())
+                {
+                    var id = m.GetProperty("id").GetString() ?? "";
+                    if (id.StartsWith("gpt-") || id.StartsWith("o1") || id.StartsWith("o3") || id.StartsWith("o4"))
+                        modelNames.Add(id);
+                }
+            }
+            
+            return modelNames.Any() 
+                ? modelNames.OrderByDescending(n => n).ToList() 
+                : new List<string> { "gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "o3-mini", "o4-mini" };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to fetch OpenAI models.");
+            return new List<string> { $"OpenAI Fetch Error: {ex.Message}" };
+        }
+    }
+
+    if (config.Provider == "Anthropic")
+    {
+        // Anthropic does not have a public chat-model list endpoint, so return a curated static list
+        return new List<string>
+        {
+            "claude-opus-4-5",
+            "claude-sonnet-4-5",
+            "claude-3-7-sonnet-latest",
+            "claude-3-5-sonnet-latest",
+            "claude-3-5-haiku-latest"
+        };
+    }
 
         if (string.IsNullOrWhiteSpace(config.OllamaUrl)) return new List<string> { "Error: Missing Ollama URL" };
 
@@ -652,42 +725,64 @@ Context Information:
             }
         }
 
-        var maxAttempts = settings.AiRetryAttempts;
+        var maxNetworkAttempts = settings.AiRetryAttempts;
+        var maxReflectionLoops = 3;
 
         // Step 1: Give your primary AI a go...
-        for (int attempt = 1; attempt <= maxAttempts; attempt++)
+        for (int reflectionLoop = 1; reflectionLoop <= maxReflectionLoops; reflectionLoop++)
         {
-            try
+            string? result = null;
+            for (int attempt = 1; attempt <= maxNetworkAttempts; attempt++)
             {
-                _logger.LogInformation("Trying to reach your primary AI (attempt {Attempt}/{Max}) for user {UserId}", attempt, maxAttempts, userId);
-                var result = await GenerateCompletionAsync(userId, system, finalPrompt, useFallback: false, ct);
-
-                if (!string.IsNullOrWhiteSpace(result))
+                try
                 {
-                    _logger.LogInformation("Success! Primary AI responded on attempt {Attempt}", attempt);
-                    var review = await ReviewOutputWithThinkingModelAsync(userId, system, prompt, result, settings, ct);
-                    if (review.IsApproved) return result;
+                    _logger.LogInformation("Trying to reach your primary AI (network attempt {Attempt}/{Max}) on reflection loop {Loop}", attempt, maxNetworkAttempts, reflectionLoop);
+                    result = await GenerateCompletionAsync(userId, system, finalPrompt, useFallback: false, ct);
+
+                    if (!string.IsNullOrWhiteSpace(result))
+                    {
+                        break;
+                    }
+                    _logger.LogWarning("The primary AI gave us an empty response on network attempt {Attempt}", attempt);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Primary AI network request failed on attempt {Attempt}/{Max}", attempt, maxNetworkAttempts);
+                    if (attempt == maxNetworkAttempts) break;
                     
-                    _logger.LogWarning("Thinking model rejected primary AI output. Sending feedback for rewrite.");
-                    finalPrompt = $"[PREVIOUS_RESPONSE_REJECTED]\n{result}\n[/PREVIOUS_RESPONSE_REJECTED]\n\n[REVIEW_FEEDBACK]\n{review.Feedback}\n[/REVIEW_FEEDBACK]\n\n[ORIGINAL_QUERY]\n{prompt}\n[/ORIGINAL_QUERY]\n\nPlease try again and fix the issues mentioned in the feedback.";
-                    continue; // Loop again!
+                    var delaySeconds = 2 * attempt;
+                    if (ex is HttpRequestException httpEx && httpEx.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                    {
+                        delaySeconds = 38; // Give Gemini time to cool down based on 'Retry-After: 36s' bounds
+                    }
+                    await Task.Delay(TimeSpan.FromSeconds(delaySeconds), ct); 
                 }
-
-                _logger.LogWarning("The primary AI gave us an empty response on attempt {Attempt}", attempt);
             }
-            catch (Exception ex)
+
+            if (!string.IsNullOrWhiteSpace(result))
             {
-                _logger.LogWarning(ex, "Primary AI request failed on attempt {Attempt}/{Max}", attempt, maxAttempts);
-                if (attempt == maxAttempts) break;
+                _logger.LogInformation("Primary AI responded! Reviewing with Thinking Model (Loop {Loop}/{Max}).", reflectionLoop, maxReflectionLoops);
+                var review = await ReviewOutputWithThinkingModelAsync(userId, system, prompt, result, settings, ct);
                 
-                var delaySeconds = 2 * attempt;
-                if (ex is HttpRequestException httpEx && httpEx.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                if (review.IsApproved) 
                 {
-                    delaySeconds = 38; // Give Gemini time to cool down based on 'Retry-After: 36s' bounds
+                    _logger.LogInformation("Thinking model APPROVED primary AI output.");
+                    return result;
                 }
                 
-                // Wait a bit longer each time before we try again (exponential backoff)
-                await Task.Delay(TimeSpan.FromSeconds(delaySeconds), ct); 
+                if (reflectionLoop == maxReflectionLoops)
+                {
+                    _logger.LogWarning("Thinking model rejected primary AI output on final loop. Returning as-is to avoid infinite loop.");
+                    return result;
+                }
+                
+                _logger.LogWarning("Thinking model REJECTED primary AI output. Sending feedback for rewrite (Tennis Match: {Loop}).", reflectionLoop);
+                finalPrompt = $"[PREVIOUS_RESPONSE_REJECTED]\n{result}\n[/PREVIOUS_RESPONSE_REJECTED]\n\n[REVIEW_FEEDBACK]\n{review.Feedback}\n[/REVIEW_FEEDBACK]\n\n[ORIGINAL_QUERY]\n{prompt}\n[/ORIGINAL_QUERY]\n\nPlease try again and meticulously fix the issues mentioned in the feedback.";
+            }
+            else
+            {
+                _logger.LogWarning("Primary AI suffered total network failure. Breaking out of reflection loops.");
+                break; // Break out of reflection loop to try backup
             }
         }
 
@@ -695,39 +790,64 @@ Context Information:
         if (settings.EnableAiFallback)
         {
             _logger.LogWarning("Primary AI is currently unavailable. Switching to your backup provider now.");
+            // We should reset finalPrompt to the original prompt (or thinking prompt) since the rejection feedback was for the primary AI's response
+            // To be safe, let's just use the current finalPrompt, as it might have original thinking instructions, 
+            // but if it failed mid-reflection, it has the reject message. It's safer to just proceed with what we have.
 
-            for (int attempt = 1; attempt <= maxAttempts; attempt++)
+            for (int reflectionLoop = 1; reflectionLoop <= maxReflectionLoops; reflectionLoop++)
             {
-                try
+                string? result = null;
+                for (int attempt = 1; attempt <= maxNetworkAttempts; attempt++)
                 {
-                    _logger.LogInformation("Trying to reach your BACKUP AI (attempt {Attempt}/{Max}) for user {UserId}", attempt, maxAttempts, userId);
-                    var result = await GenerateCompletionAsync(userId, system, finalPrompt, useFallback: true, ct);
-
-                    if (!string.IsNullOrWhiteSpace(result))
+                    try
                     {
-                        _logger.LogInformation("Success! Backup AI saved the day on attempt {Attempt}", attempt);
-                        var review = await ReviewOutputWithThinkingModelAsync(userId, system, prompt, result, settings, ct);
-                        if (review.IsApproved) return result;
+                        _logger.LogInformation("Trying to reach your BACKUP AI (network attempt {Attempt}/{Max}) on reflection loop {Loop}", attempt, maxNetworkAttempts, reflectionLoop);
+                        result = await GenerateCompletionAsync(userId, system, finalPrompt, useFallback: true, ct);
 
-                        _logger.LogWarning("Thinking model rejected backup AI output. Sending feedback for rewrite.");
-                        finalPrompt = $"[PREVIOUS_RESPONSE_REJECTED]\n{result}\n[/PREVIOUS_RESPONSE_REJECTED]\n\n[REVIEW_FEEDBACK]\n{review.Feedback}\n[/REVIEW_FEEDBACK]\n\n[ORIGINAL_QUERY]\n{prompt}\n[/ORIGINAL_QUERY]\n\nPlease try again and fix the issues mentioned in the feedback.";
-                        continue;
+                        if (!string.IsNullOrWhiteSpace(result))
+                        {
+                            break;
+                        }
+                        _logger.LogWarning("The backup AI gave us an empty response on attempt {Attempt}", attempt);
                     }
-
-                    _logger.LogWarning("The backup AI also gave us an empty response on attempt {Attempt}", attempt);
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Backup AI network request failed on attempt {Attempt}/{Max}", attempt, maxNetworkAttempts);
+                        if (attempt == maxNetworkAttempts) break;
+                        
+                        var delaySeconds = 2 * attempt;
+                        if (ex is HttpRequestException httpEx && httpEx.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                        {
+                            delaySeconds = 38;
+                        }
+                        await Task.Delay(TimeSpan.FromSeconds(delaySeconds), ct);
+                    }
                 }
-                catch (Exception ex)
+
+                if (!string.IsNullOrWhiteSpace(result))
                 {
-                    _logger.LogWarning(ex, "Backup AI request failed on attempt {Attempt}/{Max}", attempt, maxAttempts);
-                    if (attempt == maxAttempts) break;
+                    _logger.LogInformation("Backup AI responded! Reviewing with Thinking Model (Loop {Loop}/{Max}).", reflectionLoop, maxReflectionLoops);
+                    var review = await ReviewOutputWithThinkingModelAsync(userId, system, prompt, result, settings, ct);
                     
-                    var delaySeconds = 2 * attempt;
-                    if (ex is HttpRequestException httpEx && httpEx.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                    if (review.IsApproved) 
                     {
-                        delaySeconds = 38;
+                        _logger.LogInformation("Thinking model APPROVED backup AI output.");
+                        return result;
                     }
-                    
-                    await Task.Delay(TimeSpan.FromSeconds(delaySeconds), ct);
+
+                    if (reflectionLoop == maxReflectionLoops)
+                    {
+                        _logger.LogWarning("Thinking model rejected backup AI output on final loop. Returning as-is.");
+                        return result;
+                    }
+
+                    _logger.LogWarning("Thinking model REJECTED backup AI output. Sending feedback for rewrite (Tennis Match: {Loop}).", reflectionLoop);
+                    finalPrompt = $"[PREVIOUS_RESPONSE_REJECTED]\n{result}\n[/PREVIOUS_RESPONSE_REJECTED]\n\n[REVIEW_FEEDBACK]\n{review.Feedback}\n[/REVIEW_FEEDBACK]\n\n[ORIGINAL_QUERY]\n{prompt}\n[/ORIGINAL_QUERY]\n\nPlease try again and meticulously fix the issues mentioned in the feedback.";
+                }
+                else
+                {
+                    _logger.LogWarning("Backup AI suffered total network failure.");
+                    break;
                 }
             }
         }
@@ -752,14 +872,41 @@ Context Information:
         try
         {
             _logger.LogInformation("Reviewing output with Thinking Model for user {UserId}", userId);
-            
-            var reviewSystemPrompt = @"You are a strict quality control reviewer. Your job is to review the output of another AI to ensure it directly answers the user's prompt truthfully and accurately, following all rules.
-IF the response is perfect: Output EXACTLY '<APPROVED>' and nothing else.
-IF the response completely missed the prompt or is missing critical information: Provide specific feedback on what is wrong and what needs to be fixed. Do NOT rewrite the response yourself, just provide the feedback.";
-            
-            var reviewPrompt = $"[ORIGINAL_SYSTEM_PROMPT]\n{system}\n[/ORIGINAL_SYSTEM_PROMPT]\n\n[USER_PROMPT]\n{originalPrompt}\n[/USER_PROMPT]\n\n[AI_PROPOSED_RESPONSE]\n{aiResult}\n[/AI_PROPOSED_RESPONSE]\n\nAnalyze the AI_PROPOSED_RESPONSE. If it is high quality and addresses the USER_PROMPT according to the ORIGINAL_SYSTEM_PROMPT, output strictly <APPROVED>. If it is bad, write down exactly what is wrong so the AI can try again.";
 
-            var reviewedResult = await GenerateCompletionAsync(userId, reviewSystemPrompt, reviewPrompt, useFallback: false, ct, useThinking: true);
+            // Priority: 1) User-configured value in DB, 2) Resources file on disk, 3) Inline fallback.
+            var userSettings = await _settingsService.GetSettingsAsync(userId);
+            string reviewSystemPrompt;
+            if (!string.IsNullOrWhiteSpace(userSettings.ThinkingModelInstructions))
+            {
+                reviewSystemPrompt = userSettings.ThinkingModelInstructions;
+                _logger.LogInformation("Using user-configured Thinking Model instructions for user {UserId}", userId);
+            }
+            else
+            {
+                var instructionsPath = Path.Combine(AppContext.BaseDirectory, "Resources", "thinking_model_instructions.md");
+                reviewSystemPrompt = File.Exists(instructionsPath)
+                    ? await File.ReadAllTextAsync(instructionsPath)
+                    : @"You are a strict quality control reviewer. Your job is to review the output of another AI to ensure it directly answers the user's prompt truthfully and accurately, following all rules.
+IF the response is perfect: Output EXACTLY '<APPROVED>' and nothing else.
+IF the response missed the prompt or contains errors: Provide specific feedback on what is wrong and what must be fixed. Do NOT rewrite the response yourself.";
+            }
+
+            // Wrap instructions in strong enforcement framing — makes every provider treat the rules as non-negotiable
+            var enforcedSystemPrompt =
+                "============================\n" +
+                "CRITICAL MANDATORY INSTRUCTIONS — YOU MUST FOLLOW THESE EXACTLY\n" +
+                "============================\n\n" +
+                reviewSystemPrompt +
+                "\n\n============================\n" +
+                "REMINDER: These instructions are MANDATORY. The ONLY acceptable outputs are:\n" +
+                "  1. Exactly <APPROVED> (and nothing else) if every criterion is met.\n" +
+                "  2. Specific, actionable feedback describing exactly what is wrong.\n" +
+                "Deviating from these rules or producing any other output is a failure.\n" +
+                "============================";
+
+            var reviewPrompt = $"[ORIGINAL_SYSTEM_PROMPT]\n{system}\n[/ORIGINAL_SYSTEM_PROMPT]\n\n[USER_PROMPT]\n{originalPrompt}\n[/USER_PROMPT]\n\n[AI_PROPOSED_RESPONSE]\n{aiResult}\n[/AI_PROPOSED_RESPONSE]\n\nAnalyze the AI_PROPOSED_RESPONSE strictly against the ORIGINAL_SYSTEM_PROMPT and USER_PROMPT. If it fully and accurately answers the question, output ONLY <APPROVED>. If it is incorrect, incomplete, or misleading, output ONLY specific feedback describing what must be corrected. No other output is acceptable.";
+
+            var reviewedResult = await GenerateCompletionAsync(userId, enforcedSystemPrompt, reviewPrompt, useFallback: false, ct, useThinking: true);
 
             if (!string.IsNullOrWhiteSpace(reviewedResult))
             {
@@ -785,6 +932,16 @@ IF the response completely missed the prompt or is missing critical information:
         if (config.Provider == "Gemini")
         {
             return await GenerateGeminiCompletionAsync(userId, system, prompt, config.GeminiKey, config.ModelName, ct, config.TimeoutSeconds);
+        }
+
+        if (config.Provider == "OpenAI")
+        {
+            return await GenerateOpenAiCompletionAsync(userId, system, prompt, config.OpenAiKey, config.ModelName, ct, config.TimeoutSeconds);
+        }
+
+        if (config.Provider == "Anthropic")
+        {
+            return await GenerateAnthropicCompletionAsync(userId, system, prompt, config.AnthropicKey, config.ModelName, ct, config.TimeoutSeconds);
         }
 
         if (string.IsNullOrWhiteSpace(config.ModelName))
@@ -894,12 +1051,108 @@ IF the response completely missed the prompt or is missing critical information:
         throw new InvalidOperationException("Gemini returned no valid candidates or content.");
     }
 
+    private async Task<string> GenerateOpenAiCompletionAsync(int userId, string system, string prompt, string apiKey, string modelName, CancellationToken ct = default, int timeoutSeconds = 90)
+    {
+        if (string.IsNullOrWhiteSpace(apiKey)) throw new InvalidOperationException("OpenAI API Key is not configured.");
+        var model = !string.IsNullOrWhiteSpace(modelName) ? modelName : "gpt-4o-mini";
+
+        var request = new
+        {
+            model,
+            messages = new[]
+            {
+                new { role = "system", content = system },
+                new { role = "user", content = prompt }
+            }
+        };
+
+        var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
+        
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/chat/completions");
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+        req.Content = content;
+
+        _logger.LogInformation("Sending request to OpenAI: Model: {Model}", model);
+        var response = await _httpClient.SendAsync(req, cts.Token);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(cts.Token);
+            _logger.LogWarning("OpenAI API error: {Status} - {Body}", response.StatusCode, errorBody);
+            throw new HttpRequestException($"OpenAI API returned {response.StatusCode}", null, response.StatusCode);
+        }
+
+        var responseString = await response.Content.ReadAsStringAsync(cts.Token);
+        using var doc = JsonDocument.Parse(responseString);
+
+        if (doc.RootElement.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0)
+        {
+            var text = choices[0].GetProperty("message").GetProperty("content").GetString()?.Trim();
+            return text ?? throw new InvalidOperationException("OpenAI returned an empty message.");
+        }
+
+        throw new InvalidOperationException("OpenAI returned no valid choices.");
+    }
+
+    private async Task<string> GenerateAnthropicCompletionAsync(int userId, string system, string prompt, string apiKey, string modelName, CancellationToken ct = default, int timeoutSeconds = 90)
+    {
+        if (string.IsNullOrWhiteSpace(apiKey)) throw new InvalidOperationException("Anthropic API Key is not configured.");
+        var model = !string.IsNullOrWhiteSpace(modelName) ? modelName : "claude-3-5-sonnet-latest";
+
+        var request = new
+        {
+            model,
+            max_tokens = 8192,
+            system,
+            messages = new[]
+            {
+                new { role = "user", content = prompt }
+            }
+        };
+
+        var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.anthropic.com/v1/messages");
+        req.Headers.Add("x-api-key", apiKey);
+        req.Headers.Add("anthropic-version", "2023-06-01");
+        req.Content = content;
+
+        _logger.LogInformation("Sending request to Anthropic: Model: {Model}", model);
+        var response = await _httpClient.SendAsync(req, cts.Token);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(cts.Token);
+            _logger.LogWarning("Anthropic API error: {Status} - {Body}", response.StatusCode, errorBody);
+            throw new HttpRequestException($"Anthropic API returned {response.StatusCode}", null, response.StatusCode);
+        }
+
+        var responseString = await response.Content.ReadAsStringAsync(cts.Token);
+        using var doc = JsonDocument.Parse(responseString);
+
+        if (doc.RootElement.TryGetProperty("content", out var contentArr) && contentArr.GetArrayLength() > 0)
+        {
+            var text = contentArr[0].GetProperty("text").GetString()?.Trim();
+            return text ?? throw new InvalidOperationException("Anthropic returned an empty message.");
+        }
+
+        throw new InvalidOperationException("Anthropic returned no valid content.");
+    }
+
     private class AiProviderConfig
     {
         public string Provider { get; set; } = "Ollama";
         public string OllamaUrl { get; set; } = "";
         public string ModelName { get; set; } = "";
         public string GeminiKey { get; set; } = "";
+        public string OpenAiKey { get; set; } = "";
+        public string AnthropicKey { get; set; } = "";
         public int TimeoutSeconds { get; set; } = 90;
         public int RetryAttempts { get; set; } = 2;
     }

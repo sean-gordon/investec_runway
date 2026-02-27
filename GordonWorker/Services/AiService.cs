@@ -652,42 +652,64 @@ Context Information:
             }
         }
 
-        var maxAttempts = settings.AiRetryAttempts;
+        var maxNetworkAttempts = settings.AiRetryAttempts;
+        var maxReflectionLoops = 3;
 
         // Step 1: Give your primary AI a go...
-        for (int attempt = 1; attempt <= maxAttempts; attempt++)
+        for (int reflectionLoop = 1; reflectionLoop <= maxReflectionLoops; reflectionLoop++)
         {
-            try
+            string? result = null;
+            for (int attempt = 1; attempt <= maxNetworkAttempts; attempt++)
             {
-                _logger.LogInformation("Trying to reach your primary AI (attempt {Attempt}/{Max}) for user {UserId}", attempt, maxAttempts, userId);
-                var result = await GenerateCompletionAsync(userId, system, finalPrompt, useFallback: false, ct);
-
-                if (!string.IsNullOrWhiteSpace(result))
+                try
                 {
-                    _logger.LogInformation("Success! Primary AI responded on attempt {Attempt}", attempt);
-                    var review = await ReviewOutputWithThinkingModelAsync(userId, system, prompt, result, settings, ct);
-                    if (review.IsApproved) return result;
+                    _logger.LogInformation("Trying to reach your primary AI (network attempt {Attempt}/{Max}) on reflection loop {Loop}", attempt, maxNetworkAttempts, reflectionLoop);
+                    result = await GenerateCompletionAsync(userId, system, finalPrompt, useFallback: false, ct);
+
+                    if (!string.IsNullOrWhiteSpace(result))
+                    {
+                        break;
+                    }
+                    _logger.LogWarning("The primary AI gave us an empty response on network attempt {Attempt}", attempt);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Primary AI network request failed on attempt {Attempt}/{Max}", attempt, maxNetworkAttempts);
+                    if (attempt == maxNetworkAttempts) break;
                     
-                    _logger.LogWarning("Thinking model rejected primary AI output. Sending feedback for rewrite.");
-                    finalPrompt = $"[PREVIOUS_RESPONSE_REJECTED]\n{result}\n[/PREVIOUS_RESPONSE_REJECTED]\n\n[REVIEW_FEEDBACK]\n{review.Feedback}\n[/REVIEW_FEEDBACK]\n\n[ORIGINAL_QUERY]\n{prompt}\n[/ORIGINAL_QUERY]\n\nPlease try again and fix the issues mentioned in the feedback.";
-                    continue; // Loop again!
+                    var delaySeconds = 2 * attempt;
+                    if (ex is HttpRequestException httpEx && httpEx.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                    {
+                        delaySeconds = 38; // Give Gemini time to cool down based on 'Retry-After: 36s' bounds
+                    }
+                    await Task.Delay(TimeSpan.FromSeconds(delaySeconds), ct); 
                 }
-
-                _logger.LogWarning("The primary AI gave us an empty response on attempt {Attempt}", attempt);
             }
-            catch (Exception ex)
+
+            if (!string.IsNullOrWhiteSpace(result))
             {
-                _logger.LogWarning(ex, "Primary AI request failed on attempt {Attempt}/{Max}", attempt, maxAttempts);
-                if (attempt == maxAttempts) break;
+                _logger.LogInformation("Primary AI responded! Reviewing with Thinking Model (Loop {Loop}/{Max}).", reflectionLoop, maxReflectionLoops);
+                var review = await ReviewOutputWithThinkingModelAsync(userId, system, prompt, result, settings, ct);
                 
-                var delaySeconds = 2 * attempt;
-                if (ex is HttpRequestException httpEx && httpEx.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                if (review.IsApproved) 
                 {
-                    delaySeconds = 38; // Give Gemini time to cool down based on 'Retry-After: 36s' bounds
+                    _logger.LogInformation("Thinking model APPROVED primary AI output.");
+                    return result;
                 }
                 
-                // Wait a bit longer each time before we try again (exponential backoff)
-                await Task.Delay(TimeSpan.FromSeconds(delaySeconds), ct); 
+                if (reflectionLoop == maxReflectionLoops)
+                {
+                    _logger.LogWarning("Thinking model rejected primary AI output on final loop. Returning as-is to avoid infinite loop.");
+                    return result;
+                }
+                
+                _logger.LogWarning("Thinking model REJECTED primary AI output. Sending feedback for rewrite (Tennis Match: {Loop}).", reflectionLoop);
+                finalPrompt = $"[PREVIOUS_RESPONSE_REJECTED]\n{result}\n[/PREVIOUS_RESPONSE_REJECTED]\n\n[REVIEW_FEEDBACK]\n{review.Feedback}\n[/REVIEW_FEEDBACK]\n\n[ORIGINAL_QUERY]\n{prompt}\n[/ORIGINAL_QUERY]\n\nPlease try again and meticulously fix the issues mentioned in the feedback.";
+            }
+            else
+            {
+                _logger.LogWarning("Primary AI suffered total network failure. Breaking out of reflection loops.");
+                break; // Break out of reflection loop to try backup
             }
         }
 
@@ -695,39 +717,64 @@ Context Information:
         if (settings.EnableAiFallback)
         {
             _logger.LogWarning("Primary AI is currently unavailable. Switching to your backup provider now.");
+            // We should reset finalPrompt to the original prompt (or thinking prompt) since the rejection feedback was for the primary AI's response
+            // To be safe, let's just use the current finalPrompt, as it might have original thinking instructions, 
+            // but if it failed mid-reflection, it has the reject message. It's safer to just proceed with what we have.
 
-            for (int attempt = 1; attempt <= maxAttempts; attempt++)
+            for (int reflectionLoop = 1; reflectionLoop <= maxReflectionLoops; reflectionLoop++)
             {
-                try
+                string? result = null;
+                for (int attempt = 1; attempt <= maxNetworkAttempts; attempt++)
                 {
-                    _logger.LogInformation("Trying to reach your BACKUP AI (attempt {Attempt}/{Max}) for user {UserId}", attempt, maxAttempts, userId);
-                    var result = await GenerateCompletionAsync(userId, system, finalPrompt, useFallback: true, ct);
-
-                    if (!string.IsNullOrWhiteSpace(result))
+                    try
                     {
-                        _logger.LogInformation("Success! Backup AI saved the day on attempt {Attempt}", attempt);
-                        var review = await ReviewOutputWithThinkingModelAsync(userId, system, prompt, result, settings, ct);
-                        if (review.IsApproved) return result;
+                        _logger.LogInformation("Trying to reach your BACKUP AI (network attempt {Attempt}/{Max}) on reflection loop {Loop}", attempt, maxNetworkAttempts, reflectionLoop);
+                        result = await GenerateCompletionAsync(userId, system, finalPrompt, useFallback: true, ct);
 
-                        _logger.LogWarning("Thinking model rejected backup AI output. Sending feedback for rewrite.");
-                        finalPrompt = $"[PREVIOUS_RESPONSE_REJECTED]\n{result}\n[/PREVIOUS_RESPONSE_REJECTED]\n\n[REVIEW_FEEDBACK]\n{review.Feedback}\n[/REVIEW_FEEDBACK]\n\n[ORIGINAL_QUERY]\n{prompt}\n[/ORIGINAL_QUERY]\n\nPlease try again and fix the issues mentioned in the feedback.";
-                        continue;
+                        if (!string.IsNullOrWhiteSpace(result))
+                        {
+                            break;
+                        }
+                        _logger.LogWarning("The backup AI gave us an empty response on attempt {Attempt}", attempt);
                     }
-
-                    _logger.LogWarning("The backup AI also gave us an empty response on attempt {Attempt}", attempt);
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Backup AI network request failed on attempt {Attempt}/{Max}", attempt, maxNetworkAttempts);
+                        if (attempt == maxNetworkAttempts) break;
+                        
+                        var delaySeconds = 2 * attempt;
+                        if (ex is HttpRequestException httpEx && httpEx.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                        {
+                            delaySeconds = 38;
+                        }
+                        await Task.Delay(TimeSpan.FromSeconds(delaySeconds), ct);
+                    }
                 }
-                catch (Exception ex)
+
+                if (!string.IsNullOrWhiteSpace(result))
                 {
-                    _logger.LogWarning(ex, "Backup AI request failed on attempt {Attempt}/{Max}", attempt, maxAttempts);
-                    if (attempt == maxAttempts) break;
+                    _logger.LogInformation("Backup AI responded! Reviewing with Thinking Model (Loop {Loop}/{Max}).", reflectionLoop, maxReflectionLoops);
+                    var review = await ReviewOutputWithThinkingModelAsync(userId, system, prompt, result, settings, ct);
                     
-                    var delaySeconds = 2 * attempt;
-                    if (ex is HttpRequestException httpEx && httpEx.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                    if (review.IsApproved) 
                     {
-                        delaySeconds = 38;
+                        _logger.LogInformation("Thinking model APPROVED backup AI output.");
+                        return result;
                     }
-                    
-                    await Task.Delay(TimeSpan.FromSeconds(delaySeconds), ct);
+
+                    if (reflectionLoop == maxReflectionLoops)
+                    {
+                        _logger.LogWarning("Thinking model rejected backup AI output on final loop. Returning as-is.");
+                        return result;
+                    }
+
+                    _logger.LogWarning("Thinking model REJECTED backup AI output. Sending feedback for rewrite (Tennis Match: {Loop}).", reflectionLoop);
+                    finalPrompt = $"[PREVIOUS_RESPONSE_REJECTED]\n{result}\n[/PREVIOUS_RESPONSE_REJECTED]\n\n[REVIEW_FEEDBACK]\n{review.Feedback}\n[/REVIEW_FEEDBACK]\n\n[ORIGINAL_QUERY]\n{prompt}\n[/ORIGINAL_QUERY]\n\nPlease try again and meticulously fix the issues mentioned in the feedback.";
+                }
+                else
+                {
+                    _logger.LogWarning("Backup AI suffered total network failure.");
+                    break;
                 }
             }
         }

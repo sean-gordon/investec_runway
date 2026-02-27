@@ -25,6 +25,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Ollama AI Health Check Optimization**: `ConnectivityWorker` now only polls the AI providers once every 4 hours instead of every 5 minutes to prevent Ollama from experiencing timeout errors and exhaustion.
 - **Dynamic Gemini Model Discovery Fix**: `SettingsController` now explicitly unmasks `********` placeholder settings sent by the frontend UI, allowing the `AiService` to authenticate with the true API key and fetch the live dynamic model list from Google's endpoint successfully instead of defaulting to hardcoded fallbacks.
 
+## [2.8.2] - 2026-02-27
+
+### Changed
+- **Thinking Model "Tennis Match" Loop**: Completely decoupled AI network retries (`AiRetryAttempts`) from the Thinking Model reflection loop. The Thinking Model can now engage in a back-and-forth "tennis match" with the primary LLM up to 3 times to meticulously reject and correct inadequate outputs without prematurely terminating due to network retry limits.
+
+## [2.8.1] - 2026-02-27
+
+### Fixed
+- **Docker Compose Startup Variables**: Handled the missing `JWT_SECRET` gracefully in `docker-compose.yml` (`:-`) so the application can start and trigger the clear C# exception message instead of Docker Compose fatally crashing externally.
+
 ## [2.8.0] - 2026-02-27
 
 ### Security

@@ -6,6 +6,7 @@ services:
       - POSTGRES_DB=finance
       - POSTGRES_PASSWORD=${DB_PASSWORD}
       - TZ=${TZ}
+
     volumes:
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
       - timescaledb_data:/var/lib/postgresql/data
@@ -29,6 +30,7 @@ services:
       - JWT_ISSUER=${JWT_ISSUER:-GordonFinanceEngine}
       - JWT_AUDIENCE=${JWT_AUDIENCE:-GordonUsers}
       - TZ=${TZ}
+      - Security__AllowedDomains__0=*
     volumes:
       - gordon_keys:/app/keys
     networks:

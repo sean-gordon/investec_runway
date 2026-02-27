@@ -1650,6 +1650,11 @@
                     const resS = await this.api('/api/settings');
                     if (resS.ok) {
                         this.settings = await resS.json();
+                        // Pre-fill thinking prompt textarea with default if user has nothing saved
+                        if (!this.settings.thinkingModelInstructions) {
+                            const defRes = await this.api('/api/settings/thinking-prompt-default');
+                            if (defRes.ok) this.settings.thinkingModelInstructions = await defRes.text();
+                        }
                         this.loadModels(false);
                         this.loadModels(true);
                         this.loadModels(false, true);
@@ -1826,9 +1831,15 @@
                         this.loadData();
                     } else this.showToast("Thinking Failed");
                 },
-                resetThinkingPrompt() {
-                    this.settings.thinkingModelInstructions = '';
-                    this.showToast("Cleared — server default will be used on next save");
+                async resetThinkingPrompt() {
+                    const defRes = await this.api('/api/settings/thinking-prompt-default');
+                    if (defRes.ok) {
+                        this.settings.thinkingModelInstructions = await defRes.text();
+                        this.showToast("Reset to default instructions");
+                    } else {
+                        this.settings.thinkingModelInstructions = '';
+                        this.showToast("Could not load default — cleared instead");
+                    }
                 },
                 async testTelegram() {
                     await this.saveSettings();

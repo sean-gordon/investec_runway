@@ -64,6 +64,17 @@ public class SettingsController : ControllerBase
         return Ok(response);
     }
 
+    [HttpGet("thinking-prompt-default")]
+    public async Task<IActionResult> GetThinkingPromptDefault()
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "Resources", "thinking_model_instructions.md");
+        if (!System.IO.File.Exists(path))
+            return Ok("You are a strict quality control reviewer. Output exactly '<APPROVED>' if the response is correct, or provide specific feedback on what is wrong so the AI can correct it.");
+        
+        var content = await System.IO.File.ReadAllTextAsync(path);
+        return Content(content, "text/plain");
+    }
+
     private AppSettings MaskSettings(AppSettings settings)
     {
         // Clone settings to avoid affecting the service-level cache

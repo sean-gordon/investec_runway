@@ -9,7 +9,7 @@ namespace GordonWorker.Services;
 
 public interface IInvestecClient
 {
-    void Configure(string clientId, string secret, string apiKey, string baseUrl = "https://openapi.investec.com/", string environment = "Sandbox");
+    void Configure(string clientId, string secret, string apiKey, string baseUrl = "https://openapi.investec.com/", string environment = "Production");
     Task<string> AuthenticateAsync();
     Task<List<InvestecAccount>> GetAccountsAsync();
     Task<List<Transaction>> GetTransactionsAsync(string accountId, DateTimeOffset fromDate);
@@ -57,7 +57,7 @@ public class InvestecClient : IInvestecClient
         _logger = logger;
     }
 
-    public void Configure(string clientId, string secret, string apiKey, string baseUrl = "https://openapi.investec.com/", string environment = "Sandbox")
+    public void Configure(string clientId, string secret, string apiKey, string baseUrl = "https://openapi.investec.com/", string environment = "Production")
     {
         _clientId = clientId;
         _secret = secret;

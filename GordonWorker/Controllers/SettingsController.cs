@@ -308,7 +308,7 @@ public class SettingsController : ControllerBase
         var isInvestecOnline = false;
         if (!string.IsNullOrEmpty(settings.InvestecClientId))
         {
-            _investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
+            _investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey, settings.InvestecBaseUrl, "Production");
             var (success, _) = await _investecClient.TestConnectivityAsync();
             isInvestecOnline = success;
         }

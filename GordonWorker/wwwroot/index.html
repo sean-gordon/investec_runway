@@ -8,25 +8,24 @@
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📈</text></svg>">
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js?v=3.5"></script>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'], outfit: ['Outfit', 'sans-serif'] },
+                    colors: {
+                        brand: { 50: '#f0f9ff', 100: '#e0f2fe', 500: '#0ea5e9', 600: '#0284c7', 900: '#0c4a6e' }
+                    }
+                }
+            }
+        }
+    </script>
     <style>
-        /* Custom Tailwind extensions not available in CDN build */
-        .font-sans { font-family: 'Inter', sans-serif; }
-        .text-brand-600 { color: #0284c7; }
-        .text-brand-500 { color: #0ea5e9; }
-        .bg-brand-500 { background-color: #0ea5e9; }
-        .bg-brand-600 { background-color: #0284c7; }
-        .border-brand-500 { border-color: #0ea5e9; }
-        .ring-brand-500\/20 { --tw-ring-color: rgb(14 165 233 / 0.2); }
-        .focus\:ring-brand-500\/20:focus { --tw-ring-color: rgb(14 165 233 / 0.2); }
-        .focus\:border-brand-500:focus { border-color: #0ea5e9; }
-        .hover\:text-brand-600:hover { color: #0284c7; }
-        .hover\:bg-brand-500:hover { background-color: #0ea5e9; }
-        .hover\:bg-brand-600:hover { background-color: #0284c7; }
         body {
             -webkit-tap-highlight-color: transparent;
         }
@@ -172,7 +171,20 @@
                                     Sync</button>
                             </div>
                         </div>
-                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+                            <!-- Current Balance -->
+                            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm relative group">
+                                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Current Balance</p>
+                                <div class="mt-1 flex items-center justify-between">
+                                    <span class="text-xl font-black tracking-tight" :class="parseFloat(healthStats?.CurrentBalance) < 0 ? 'text-red-500' : 'text-slate-900'">
+                                        {{ formatCurrency(parseFloat(healthStats?.CurrentBalance || 0)) }}
+                                    </span>
+                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-lg bg-brand-50 text-brand-600">
+                                        💰</div>
+                                </div>
+                                <p class="text-[10px] text-slate-400 mt-1">Live from Investec</p>
+                            </div>
+
                             <!-- Investec -->
                             <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
                                 <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Investec API

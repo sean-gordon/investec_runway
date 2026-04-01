@@ -20,7 +20,8 @@ public class TransactionSyncService : ITransactionSyncService
     private readonly IFinancialReportService _reportService;
     private readonly ISubscriptionService _subscriptionService;
     private readonly ITelegramService _telegramService;
-    private readonly IAiService _aiService;
+    private readonly ITransactionRepository _repository;
+    private readonly ITransactionClassifierService _classifier;
 
     public TransactionSyncService(
         IInvestecClient client, 
@@ -31,7 +32,8 @@ public class TransactionSyncService : ITransactionSyncService
         IFinancialReportService reportService,
         ISubscriptionService subscriptionService,
         ITelegramService telegramService,
-        IAiService aiService)
+        ITransactionRepository repository,
+        ITransactionClassifierService classifier)
     {
         _client = client;
         _configuration = configuration;
@@ -41,7 +43,8 @@ public class TransactionSyncService : ITransactionSyncService
         _reportService = reportService;
         _subscriptionService = subscriptionService;
         _telegramService = telegramService;
-        _aiService = aiService;
+        _repository = repository;
+        _classifier = classifier;
     }
 
     public async Task SyncTransactionsAsync(int userId, bool silent = false, bool forceCategorizeAll = false, CancellationToken token = default)
@@ -58,8 +61,7 @@ public class TransactionSyncService : ITransactionSyncService
         if (accounts.Count == 0) return;
 
         // Check if DB is empty for this user
-        var countSql = "SELECT COUNT(*) FROM transactions WHERE user_id = @userId";
-        var transactionCount = await connection.ExecuteScalarAsync<int>(countSql, new { userId });
+        var transactionCount = await _repository.GetTransactionCountAsync(userId);
         
         // Initial sync or force repull should always be silent to prevent notification storms
         if (transactionCount == 0) silent = true;
@@ -79,9 +81,7 @@ public class TransactionSyncService : ITransactionSyncService
             _logger.LogInformation("User {UserId}: Fetched {Count} transactions for account {AccountId} from {FromDate}", userId, txs.Count, account.AccountId, fromDate);
 
             // Filter out transactions already in DB to avoid unnecessary AI calls
-            var existingIds = (await connection.QueryAsync<Guid>(
-                "SELECT id FROM transactions WHERE user_id = @userId AND account_id = @accountId AND transaction_date >= @fromDate",
-                new { userId, accountId = account.AccountId, fromDate })).ToHashSet();
+            var existingIds = await _repository.GetExistingTransactionIdsAsync(userId, account.AccountId, fromDate);
 
             var newTxs = txs.Where(t => !existingIds.Contains(t.Id)).ToList();
             
@@ -92,7 +92,7 @@ public class TransactionSyncService : ITransactionSyncService
                     try
                     {
                         _logger.LogInformation("User {UserId}: Categorizing {Count} new transactions with AI...", userId, newTxs.Count);
-                        await _aiService.CategorizeTransactionsAsync(userId, newTxs);
+                        await _classifier.CategorizeTransactionsAsync(userId, newTxs);
                     }
                     catch (Exception ex)
                     {
@@ -107,25 +107,7 @@ public class TransactionSyncService : ITransactionSyncService
 
             foreach (var tx in newTxs)
             {
-                var insertSql = @"
-                    INSERT INTO transactions (id, user_id, account_id, transaction_date, description, amount, balance, category, is_ai_processed, notes)
-                    VALUES (@Id, @UserId, @AccountId, @TransactionDate, @Description, @Amount, @Balance, @Category, @IsAiProcessed, NULL)
-                    ON CONFLICT (id, transaction_date, user_id) DO NOTHING";
-
-                var parameters = new
-                {
-                    tx.Id,
-                    UserId = userId,
-                    tx.AccountId,
-                    TransactionDate = tx.TransactionDate.UtcDateTime,
-                    tx.Description,
-                    tx.Amount,
-                    tx.Balance,
-                    tx.Category,
-                    tx.IsAiProcessed
-                };
-
-                var rowsAffected = await connection.ExecuteAsync(insertSql, parameters);
+                var rowsAffected = await _repository.InsertTransactionAsync(tx, userId);
                 if (rowsAffected > 0)
                 {
                     totalNew++;
@@ -187,20 +169,13 @@ public class TransactionSyncService : ITransactionSyncService
         // Slowly chip away at the unprocessed backlog (or transactions that have "General" or no category)
         if (!forceCategorizeAll)
         {
-            var sql = "SELECT * FROM transactions WHERE user_id = @UserId AND (is_ai_processed = FALSE OR category IS NULL OR category = 'General' OR category = 'Undetermined') LIMIT 50";
-            var uncategorized = (await connection.QueryAsync<Transaction>(sql, new { UserId = userId })).ToList();
+            var uncategorized = await _repository.GetUnprocessedTransactionsAsync(userId, 50);
             if (uncategorized.Any())
             {
                 try
                 {
                     _logger.LogInformation("User {UserId}: Processing background backlog of {Count} uncategorized/undetermined transactions.", userId, uncategorized.Count);
-                    var categorized = await _aiService.CategorizeTransactionsAsync(userId, uncategorized);
-                    foreach (var tx in categorized)
-                    {
-                        await connection.ExecuteAsync(
-                            "UPDATE transactions SET category = @Category, is_ai_processed = TRUE WHERE id = @Id AND user_id = @UserId",
-                            new { tx.Category, tx.Id, UserId = userId });
-                    }
+                    await _classifier.CategorizeTransactionsAsync(userId, uncategorized);
                     _logger.LogInformation("User {UserId}: Background categorization step complete.", userId);
                 }
                 catch (Exception ex)
@@ -213,9 +188,7 @@ public class TransactionSyncService : ITransactionSyncService
 
     public async Task ForceRepullAsync(int userId)
     {
-        using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-        await connection.OpenAsync();
-        await connection.ExecuteAsync("DELETE FROM transactions WHERE user_id = @userId", new { userId });
+        await _repository.DeleteTransactionsByUserAsync(userId);
         await SyncTransactionsAsync(userId, silent: true, forceCategorizeAll: true);
     }
 }

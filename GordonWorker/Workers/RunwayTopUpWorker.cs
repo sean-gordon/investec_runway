@@ -1,7 +1,4 @@
-using Dapper;
-using GordonWorker.Models;
-using GordonWorker.Services;
-using Npgsql;
+using GordonWorker.Repositories;
 
 namespace GordonWorker.Workers;
 
@@ -11,11 +8,10 @@ public class RunwayTopUpWorker : BackgroundService
     private readonly ILogger<RunwayTopUpWorker> _logger;
     private readonly TelegramChatService _telegramChatService;
 
-    public RunwayTopUpWorker(IServiceProvider serviceProvider, ILogger<RunwayTopUpWorker> logger, TelegramChatService telegramChatService)
+    public RunwayTopUpWorker(IServiceProvider serviceProvider, ILogger<RunwayTopUpWorker> logger)
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
-        _telegramChatService = telegramChatService;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -44,22 +40,22 @@ public class RunwayTopUpWorker : BackgroundService
     private async Task CheckAndTopUpAsync(CancellationToken token)
     {
         IEnumerable<int> users;
-        using (var scope = _serviceProvider.CreateScope())
+        await using (var scope = _serviceProvider.CreateAsyncScope())
         {
-            var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
-            using var connection = new NpgsqlConnection(config.GetConnectionString("DefaultConnection"));
-            users = await connection.QueryAsync<int>("SELECT id FROM users");
+            var repo = scope.ServiceProvider.GetRequiredService<ITransactionRepository>();
+            users = await repo.GetAllUserIdsAsync();
         }
 
         foreach (var userId in users)
         {
             if (token.IsCancellationRequested) break;
 
-            using var userScope = _serviceProvider.CreateScope();
+            await using var userScope = _serviceProvider.CreateAsyncScope();
             var settingsService = userScope.ServiceProvider.GetRequiredService<ISettingsService>();
             var actuarial = userScope.ServiceProvider.GetRequiredService<IActuarialService>();
             var investecClient = userScope.ServiceProvider.GetRequiredService<IInvestecClient>();
-            var config = userScope.ServiceProvider.GetRequiredService<IConfiguration>();
+            var repo = userScope.ServiceProvider.GetRequiredService<ITransactionRepository>();
+            var telegramChatService = userScope.ServiceProvider.GetRequiredService<ITelegramChatService>();
 
             var settings = await settingsService.GetSettingsAsync(userId);
             
@@ -71,15 +67,11 @@ public class RunwayTopUpWorker : BackgroundService
             try
             {
                 // Fetch existing transactions from DB to calculate runway
-                List<Transaction> history;
+                var history = await repo.GetTransactionsByUserAsync(userId);
                 decimal currentBalance = 0;
                 
-                using (var connection = new NpgsqlConnection(config.GetConnectionString("DefaultConnection")))
+                if (history.Any())
                 {
-                    history = (await connection.QueryAsync<Transaction>(
-                        "SELECT * FROM transactions WHERE user_id = @UserId ORDER BY transaction_date DESC",
-                        new { UserId = userId })).ToList();
-                        
                     // Get latest balance of the spending account
                     var latestTx = history.FirstOrDefault(t => t.AccountId == settings.SpendingAccountId);
                     if (latestTx != null)
@@ -138,7 +130,7 @@ public class RunwayTopUpWorker : BackgroundService
                     // Send Telegram notification if configured
                     if (!string.IsNullOrEmpty(settings.TelegramChatId))
                     {
-                        await _telegramChatService.EnqueueMessageAsync(userId, settings.TelegramChatId, message);
+                        await telegramChatService.EnqueueMessageAsync(userId, settings.TelegramChatId, message);
                     }
                 }
             }

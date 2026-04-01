@@ -107,6 +107,7 @@ public class AppSettings
     public decimal TopUpAmount { get; set; } = 5000m;
     public bool IsDryRunEnabled { get; set; } = true;
     public string InvestecEnvironment { get; set; } = "Sandbox"; // "Live" or "Sandbox"
+    public List<string> IgnoredFixedCosts { get; set; } = new List<string>();
 
     // Monetisation Angle
     public bool IsPremiumUser { get; set; } = false;

@@ -98,6 +98,19 @@ public class AppSettings
     public string TelegramBotToken { get; set; } = "";
     public string TelegramChatId { get; set; } = "";
     public string TelegramAuthorizedChatIds { get; set; } = "";
+
+    // Programmable Banking Features
+    public bool AutoTopUpEnabled { get; set; } = false;
+    public int RunwayThresholdDays { get; set; } = 30;
+    public string SavingsAccountId { get; set; } = "";
+    public string SpendingAccountId { get; set; } = "";
+    public decimal TopUpAmount { get; set; } = 5000m;
+    public bool IsDryRunEnabled { get; set; } = true;
+    public string InvestecEnvironment { get; set; } = "Sandbox"; // "Live" or "Sandbox"
+
+    // Monetisation Angle
+    public bool IsPremiumUser { get; set; } = false;
+    public string StripeSubscriptionId { get; set; } = "";
 }
 
 public interface ISettingsService

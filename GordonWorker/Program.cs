@@ -125,6 +125,7 @@ builder.Services.AddHostedService<TransactionsBackgroundService>();
 builder.Services.AddHostedService<WeeklyReportWorker>();
 builder.Services.AddHostedService<DailyBriefingWorker>();
 builder.Services.AddHostedService<ConnectivityWorker>();
+builder.Services.AddHostedService<RunwayTopUpWorker>();
 
 // ENHANCEMENT: Add TelegramChatService as hosted service and injectable service
 builder.Services.AddSingleton<TelegramChatService>();

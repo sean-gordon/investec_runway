@@ -16,7 +16,7 @@ public interface IAiService
     Task<(bool IsChartRequest, string? ChartType, string? Sql, string? Title)> AnalyzeChartRequestAsync(int userId, string userMessage);
     Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false, bool useThinking = false, bool forceRefresh = false);
     Task<List<string>> GetAvailableModelsAsync(int userId, bool useFallback = false, bool useThinking = false, AppSettings? overriddenSettings = null);
-    Task<string> GenerateCompletionAsync(int userId, string system, string prompt);
+    Task<string> GenerateCompletionAsync(int userId, string system, string prompt, bool useFallback = false, CancellationToken ct = default, bool useThinking = false);
 }
 
 /// <summary>
@@ -494,7 +494,7 @@ public class AiService : IAiService
     /// If that fails, we'll try again (giving it a bit more time each time).
     /// If it still doesn't respond, we'll switch over to your backup "fallback" AI.
     /// </summary>
-    public async Task<string> GenerateCompletionAsync(int userId, string system, string prompt, CancellationToken ct = default)
+    public async Task<string> GenerateCompletionAsync(int userId, string system, string prompt, bool useFallback = false, CancellationToken ct = default, bool useThinking = false)
     {
         var settings = await _settingsService.GetSettingsAsync(userId);
         var finalPrompt = prompt;

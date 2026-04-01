@@ -1,4 +1,5 @@
 using GordonWorker.Repositories;
+using GordonWorker.Services;
 
 namespace GordonWorker.Workers;
 
@@ -6,12 +7,13 @@ public class RunwayTopUpWorker : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<RunwayTopUpWorker> _logger;
-    private readonly TelegramChatService _telegramChatService;
+    private readonly ITelegramChatService _telegramChatService;
 
-    public RunwayTopUpWorker(IServiceProvider serviceProvider, ILogger<RunwayTopUpWorker> logger)
+    public RunwayTopUpWorker(IServiceProvider serviceProvider, ILogger<RunwayTopUpWorker> logger, ITelegramChatService telegramChatService)
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
+        _telegramChatService = telegramChatService;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

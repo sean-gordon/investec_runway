@@ -1,5 +1,6 @@
 using Dapper;
 using GordonWorker.Models;
+using GordonWorker.Repositories;
 using Npgsql;
 
 namespace GordonWorker.Services;

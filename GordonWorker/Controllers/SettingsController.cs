@@ -1,4 +1,5 @@
 using GordonWorker.Models;
+using GordonWorker.Repositories;
 using GordonWorker.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;

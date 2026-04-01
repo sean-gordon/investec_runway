@@ -22,6 +22,7 @@ He connects directly to **Investec Programmable Banking**, stores history in a r
 *   **Burn Rate Analysis:** Distinguishes between fixed costs and discretionary spending to give you a true "cost of living."
 *   **Simulation Engine:** Runs "what-if" scenarios to see how big purchases impact your long-term financial health.
 *   **AI Auto-Categorisation:** Uses advanced machine learning to semantically classify transactions (e.g., "Groceries", "Bills") automatically.
+*   **Programmable Banking Automation:** Safely auto-transfers money from savings to spending when your actuarial runway drops below a critical threshold (with built-in dry-run mode).
 
 ### 🤖 Robust AI Integration
 *   **Multi-Provider Support:** Seamlessly switches between local AI (Ollama) and cloud AI (Google Gemini) for maximum reliability.

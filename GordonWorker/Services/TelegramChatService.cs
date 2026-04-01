@@ -1,6 +1,8 @@
 using GordonWorker.Models;
 using GordonWorker.Repositories;
 using System.Threading.Channels;
+using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Telegram.Bot;
 using Microsoft.Extensions.Caching.Memory;
 
@@ -141,7 +143,7 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
             }
 
             // Check for transaction explanation
-            var (explainedTxId, explanationNote) = await aiService.AnalyzeExpenseExplanationAsync(request.UserId, request.MessageText ?? "", history);
+            (Guid? explainedTxId, string? explanationNote) = await aiService.AnalyzeExpenseExplanationAsync(request.UserId, request.MessageText ?? "", history);
 
             if (explainedTxId != null)
             {
@@ -151,7 +153,7 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
             }
 
             // Check for affordability question
-            var (isAffordability, affordAmount, affordDesc) = await aiService.AnalyzeAffordabilityAsync(request.UserId, request.MessageText ?? "");
+            (bool isAffordability, decimal? affordAmount, string? affordDesc) = await aiService.AnalyzeAffordabilityAsync(request.UserId, request.MessageText ?? "");
 
             if (isAffordability && affordAmount > 0)
             {

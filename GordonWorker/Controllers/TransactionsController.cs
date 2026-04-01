@@ -3,6 +3,7 @@ using GordonWorker.Repositories;
 using GordonWorker.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using System.Security.Claims;
 
 namespace GordonWorker.Controllers;

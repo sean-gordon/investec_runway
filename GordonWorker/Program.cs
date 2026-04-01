@@ -2,6 +2,7 @@ using GordonWorker.Services;
 using GordonWorker.Workers;
 using GordonWorker.Middleware;
 using GordonWorker.Infrastructure;
+using GordonWorker.Repositories;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;

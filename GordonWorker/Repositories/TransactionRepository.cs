@@ -28,12 +28,31 @@ public class TransactionRepository : ITransactionRepository
             new { UserId = userId })).ToList();
     }
 
+    public async Task<List<Transaction>> GetTransactionsByUserAsync(int userId, int limit)
+    {
+        await using var connection = new NpgsqlConnection(_connectionString);
+        return (await connection.QueryAsync<Transaction>(
+            "SELECT * FROM transactions WHERE user_id = @UserId ORDER BY transaction_date DESC LIMIT @Limit",
+            new { UserId = userId, Limit = limit })).ToList();
+    }
+
     public async Task UpdateTransactionCategoryAsync(Guid transactionId, string category)
     {
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.ExecuteAsync(
             "UPDATE transactions SET category = @Category, is_ai_processed = TRUE WHERE id = @Id",
             new { Category = category, Id = transactionId });
+    }
+
+    public async Task UpdateTransactionsAsync(IEnumerable<Transaction> transactions)
+    {
+        await using var connection = new NpgsqlConnection(_connectionString);
+        foreach (var tx in transactions)
+        {
+            await connection.ExecuteAsync(
+                "UPDATE transactions SET category = @Category, is_ai_processed = @IsAiProcessed WHERE id = @Id",
+                new { tx.Category, tx.IsAiProcessed, tx.Id });
+        }
     }
 
     public async Task<int> GetTransactionCountAsync(int userId)
@@ -80,6 +99,13 @@ public class TransactionRepository : ITransactionRepository
         return (await connection.QueryAsync<Transaction>(sql, new { UserId = userId, Limit = limit })).ToList();
     }
 
+    public async Task<List<Transaction>> GetTransactionsForCategorizationAsync(int userId)
+    {
+        await using var connection = new NpgsqlConnection(_connectionString);
+        var sql = "SELECT * FROM transactions WHERE user_id = @UserId AND (is_ai_processed = FALSE OR category IS NULL OR category = 'General') LIMIT 100";
+        return (await connection.QueryAsync<Transaction>(sql, new { UserId = userId })).ToList();
+    }
+
     public async Task DeleteTransactionsByUserAsync(int userId)
     {
         await using var connection = new NpgsqlConnection(_connectionString);
@@ -94,11 +120,11 @@ public class TransactionRepository : ITransactionRepository
             new { UserId = userId });
     }
 
-    public async Task<int> AddChatHistoryAsync(int userId, string messageText, bool isUser)
+    public async Task<int> InsertChatHistoryAsync(int userId, string messageText, bool isUser)
     {
         await using var connection = new NpgsqlConnection(_connectionString);
         return await connection.ExecuteAsync(
-            "INSERT INTO chat_history (user_id, message_text, is_user) VALUES (@UserId, @MessageText, @IsUser) RETURNING id",
+            "INSERT INTO chat_history (user_id, message_text, is_user) VALUES (@UserId, @MessageText, @IsUser)",
             new { UserId = userId, MessageText = messageText, IsUser = isUser });
     }
 
@@ -110,5 +136,30 @@ public class TransactionRepository : ITransactionRepository
             new { UserId = userId, Limit = limit });
             
         return res.Select(r => ((string)r.MessageText, (bool)r.IsUser));
+    }
+
+    public async Task<List<Transaction>> GetHistoryForAnalysisAsync(int userId, int days)
+    {
+        await using var connection = new NpgsqlConnection(_connectionString);
+        var cutoff = DateTime.UtcNow.AddDays(-days);
+        return (await connection.QueryAsync<Transaction>(
+            "SELECT * FROM transactions WHERE user_id = @UserId AND transaction_date >= @Cutoff ORDER BY transaction_date DESC",
+            new { UserId = userId, Cutoff = cutoff })).ToList();
+    }
+
+    public async Task<IEnumerable<dynamic>> GetChartDataAsync(int userId, string sql)
+    {
+        await using var connection = new NpgsqlConnection(_connectionString);
+        // SECURITY NOTE: This is a restricted endpoint using AI-generated SQL that is validated
+        // For production, consider using a more constrained approach or a dedicated reporting DB
+        return await connection.QueryAsync<dynamic>(sql, new { userId });
+    }
+
+    public async Task UpdateTransactionNoteAsync(Guid transactionId, string note)
+    {
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.ExecuteAsync(
+            "UPDATE transactions SET notes = @Note WHERE id = @Id",
+            new { Note = note, Id = transactionId });
     }
 }

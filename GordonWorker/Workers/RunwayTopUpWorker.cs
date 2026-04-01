@@ -138,7 +138,7 @@ public class RunwayTopUpWorker : BackgroundService
                     // Send Telegram notification if configured
                     if (!string.IsNullOrEmpty(settings.TelegramChatId))
                     {
-                        _telegramChatService.EnqueueMessage(userId, message, "markdown");
+                        await _telegramChatService.EnqueueMessageAsync(userId, settings.TelegramChatId, message);
                     }
                 }
             }

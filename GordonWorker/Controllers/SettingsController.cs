@@ -1,4 +1,5 @@
 using GordonWorker.Models;
+using GordonWorker.Repositories;
 using GordonWorker.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -23,6 +24,8 @@ public class SettingsController : ControllerBase
     private readonly IInvestecClient _investecClient;
     private readonly ITwilioService _twilioService;
     private readonly ITelegramService _telegramService;
+    private readonly ITransactionRepository _transactionRepository;
+    private readonly ITransactionClassifierService _classifierService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<SettingsController> _logger;
 
@@ -36,6 +39,8 @@ public class SettingsController : ControllerBase
         IInvestecClient investecClient,
         ITwilioService twilioService,
         ITelegramService telegramService,
+        ITransactionRepository transactionRepository,
+        ITransactionClassifierService classifierService,
         IConfiguration configuration,
         ILogger<SettingsController> logger)
     {
@@ -48,6 +53,8 @@ public class SettingsController : ControllerBase
         _investecClient = investecClient;
         _twilioService = twilioService;
         _telegramService = telegramService;
+        _transactionRepository = transactionRepository;
+        _classifierService = classifierService;
         _configuration = configuration;
         _logger = logger;
     }
@@ -301,7 +308,7 @@ public class SettingsController : ControllerBase
         var isInvestecOnline = false;
         if (!string.IsNullOrEmpty(settings.InvestecClientId))
         {
-            _investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
+            _investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey, settings.InvestecBaseUrl, "Production");
             var (success, _) = await _investecClient.TestConnectivityAsync();
             isInvestecOnline = success;
         }
@@ -398,22 +405,12 @@ public class SettingsController : ControllerBase
     {
         try
         {
-            using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-            await connection.OpenAsync();
-
-            var sql = "SELECT * FROM transactions WHERE user_id = @UserId AND is_ai_processed = FALSE LIMIT 50";
-            var txs = (await connection.QueryAsync<Transaction>(sql, new { UserId })).ToList();
+            var txs = (await _transactionRepository.GetTransactionsForCategorizationAsync(UserId)).Take(50).ToList();
 
             if (!txs.Any()) return Ok("No unprocessed transactions found.");
 
-            var categorized = await _aiService.CategorizeTransactionsAsync(UserId, txs);
-
-            foreach (var tx in categorized)
-            {
-                await connection.ExecuteAsync(
-                    "UPDATE transactions SET category = @Category, is_ai_processed = TRUE WHERE id = @Id AND user_id = @UserId",
-                    new { tx.Category, tx.Id, UserId });
-            }
+            var categorized = await _classifierService.CategorizeTransactionsAsync(UserId, txs);
+            await _transactionRepository.UpdateTransactionsAsync(categorized);
 
             return Ok($"Categorized {txs.Count} transactions.");
         }
@@ -426,10 +423,16 @@ public class SettingsController : ControllerBase
     [HttpGet("recent-transactions")]
     public async Task<IActionResult> GetRecentTransactions()
     {
-        using var connection = new Npgsql.NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-        var sql = "SELECT * FROM transactions WHERE user_id = @UserId ORDER BY transaction_date DESC LIMIT 10";
-        var txs = await connection.QueryAsync<Transaction>(sql, new { UserId });
-        return Ok(txs);
+        try
+        {
+            var txs = await _transactionRepository.GetTransactionsByUserAsync(UserId, 10);
+            return Ok(txs);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get recent transactions for user {UserId}", UserId);
+            return StatusCode(500, new { Error = ex.Message });
+        }
     }
 
     [HttpGet("stats")]

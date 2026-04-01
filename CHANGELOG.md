@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **API Side Hustle Bounty**: Integrated monetisation hooks (`IsPremiumUser`, `StripeSubscriptionId`) into settings and drafted `MONETISATION.md` strategy.
+- **Active Programmable Banking**: Implemented automated runway top-ups via `RunwayTopUpWorker`. Auto-transfers money from Savings to Spending when actuarial runway drops below the threshold.
+- **Transfers API**: Added `ExecuteTransferAsync` to `InvestecClient` leveraging `/za/pb/v1/accounts/transfermultiple` with native dry-run support.
+- **Environment Targeting**: Added `InvestecEnvironment` to settings to toggle smoothly between `Sandbox` and `Live` APIs.
+
+
 ### Planned
 - Advanced ML categorisation for transaction categorisation
 - Multi-cycle seasonality analysis (YoY comparisons)

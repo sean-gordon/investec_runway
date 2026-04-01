@@ -1,8 +1,8 @@
-using Dapper;
 using GordonWorker.Models;
-using Npgsql;
-using System.Text.Json;
+using GordonWorker.Repositories;
 using System.Threading.Channels;
+using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Telegram.Bot;
 using Microsoft.Extensions.Caching.Memory;
 
@@ -78,179 +78,14 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
 
             var settings = await settingsService.GetSettingsAsync(request.UserId);
             var botClient = botClientFactory.GetClient(settings.TelegramBotToken);
+            var repo = scope.ServiceProvider.GetRequiredService<ITransactionRepository>();
+            var commandRouter = scope.ServiceProvider.GetRequiredService<ITelegramCommandRouter>();
 
-            // Handle Slash Commands
-            if (!string.IsNullOrWhiteSpace(request.MessageText) && request.MessageText.StartsWith("/"))
+            // Handle Slash Commands via Router
+            var commandResult = await commandRouter.RouteCommandAsync(request.UserId, request.MessageText, settings, ct);
+            if (commandResult != null)
             {
-                var cmd = request.MessageText.Split(' ')[0].ToLower();
-                
-                // Log the command for debugging
-                _logger.LogDebug("Processing command '{Cmd}' for user {UserId}", cmd, request.UserId);
-                
-                if (cmd == "/clear")
-                {
-                    await telegramService.SendMessageWithButtonsAsync(request.UserId, 
-                        "⚠️ <b>Warning: Clear History</b>\n\nThis will permanently delete your entire conversation history with the AI. This action cannot be undone.\n\nAre you sure?",
-                        new List<(string Text, string CallbackData)> { ("Yes, Clear It", "/clear_confirmed"), ("No, Cancel", "/cancel") }, 
-                        request.ChatId);
-                    return;
-                }
-                if (cmd == "/clear_confirmed")
-                {
-                    try
-                    {
-                        using var dbConfirm = new NpgsqlConnection(config.GetConnectionString("DefaultConnection"));
-                        await dbConfirm.ExecuteAsync("DELETE FROM chat_history WHERE user_id = @UserId", new { UserId = request.UserId });
-                        await telegramService.SendMessageAsync(request.UserId, "✅ <b>Success:</b> Your conversation history has been cleared.", request.ChatId);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Failed to clear chat history for user {UserId}", request.UserId);
-                        await telegramService.SendMessageAsync(request.UserId, "❌ <b>Error:</b> Failed to clear history. Please try again.", request.ChatId);
-                    }
-                    return;
-                }
-                if (cmd == "/cancel")
-                {
-                    await telegramService.SendMessageAsync(request.UserId, "Action cancelled.", request.ChatId);
-                    return;
-                }
-                if (cmd == "/model")
-                {
-                    await telegramService.SendMessageWithButtonsAsync(request.UserId, 
-                        "⚙️ <b>AI Model Configuration</b>\n\nWhich provider would you like to configure?",
-                        new List<(string Text, string CallbackData)> { ("Primary AI", "/model_provider_primary"), ("Backup AI", "/model_provider_backup") }, 
-                        request.ChatId);
-                    return;
-                }
-                if (cmd == "/model_provider_primary" || cmd == "/model_provider_backup")
-                {
-                    try
-                    {
-                        bool isPrimary = cmd.EndsWith("primary");
-                        var provider = isPrimary ? settings.AiProvider : settings.FallbackAiProvider;
-                        await telegramService.SendMessageWithButtonsAsync(request.UserId, 
-                            $"⚙️ <b>Select Provider for {(isPrimary ? "Primary" : "Backup")}</b>\n\nCurrent: <i>{provider}</i>",
-                            new List<(string Text, string CallbackData)> { 
-                                ("Ollama", $"/model_select_{ (isPrimary ? "p" : "b") }_ollama"), 
-                                ("Gemini", $"/model_select_{ (isPrimary ? "p" : "b") }_gemini") 
-                            }, 
-                            request.ChatId);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Failed to show provider selection for user {UserId}", request.UserId);
-                        await telegramService.SendMessageAsync(request.UserId, "❌ <b>Error:</b> Failed to load provider selection.", request.ChatId);
-                    }
-                    return;
-                }
-                if (cmd.StartsWith("/model_select_")) // e.g. /model_select_p_ollama
-                {
-                    try
-                    {
-                        var parts = cmd.Split('_');
-                        // Validate we have enough parts: ["", "model", "select", "p", "ollama"] = 5 parts minimum
-                        if (parts.Length < 5)
-                        {
-                            _logger.LogWarning("Invalid model_select command format: {Cmd}", cmd);
-                            await telegramService.SendMessageAsync(request.UserId, "❌ <b>Error:</b> Invalid command format.", request.ChatId);
-                            return;
-                        }
-                        
-                        bool isPrimary = parts[3] == "p";
-                        var providerName = parts[4]; // "ollama" or "gemini"
-                        
-                        // Validate provider name
-                        if (providerName != "ollama" && providerName != "gemini")
-                        {
-                            _logger.LogWarning("Invalid provider in model_select command: {Provider}", providerName);
-                            await telegramService.SendMessageAsync(request.UserId, "❌ <b>Error:</b> Invalid provider.", request.ChatId);
-                            return;
-                        }
-                        
-                        string currentModel;
-                        if (isPrimary)
-                            currentModel = settings.AiProvider == "Gemini" ? settings.GeminiModelName : settings.OllamaModelName;
-                        else
-                            currentModel = settings.FallbackAiProvider == "Gemini" ? settings.FallbackGeminiModelName : settings.FallbackOllamaModelName;
-                        
-                        // Create temporary settings to fetch models for the SELECTED provider
-                        var tempSettings = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(settings))!;
-                        if (isPrimary) tempSettings.AiProvider = providerName == "ollama" ? "Ollama" : "Gemini";
-                        else tempSettings.FallbackAiProvider = providerName == "ollama" ? "Ollama" : "Gemini";
-
-                        var models = await aiService.GetAvailableModelsAsync(request.UserId, !isPrimary, false, tempSettings);
-                        var buttons = models.Take(8).Select(m => (m, $"/model_set_{ (isPrimary ? "p" : "b") }_{providerName}_{m}")).ToList();
-                        buttons.Add(("Cancel", "/cancel"));
-
-                        await telegramService.SendMessageWithButtonsAsync(request.UserId, 
-                            $"⚙️ <b>Select Model ({(isPrimary ? "Primary" : "Backup")})</b>\n\nProvider: {providerName.ToUpper()}\nCurrent: {currentModel}",
-                            buttons, 
-                            request.ChatId);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Failed to show model selection for user {UserId}", request.UserId);
-                        await telegramService.SendMessageAsync(request.UserId, "❌ <b>Error:</b> Failed to load model selection.", request.ChatId);
-                    }
-                    return;
-                }
-                if (cmd.StartsWith("/model_set_")) // e.g. /model_set_p_ollama_llama3
-                {
-                    try
-                    {
-                        var parts = cmd.Split('_');
-                        // Validate we have enough parts: ["", "model", "set", "p", "ollama", "modelname"] = 6 parts minimum
-                        if (parts.Length < 6)
-                        {
-                            _logger.LogWarning("Invalid model_set command format: {Cmd}", cmd);
-                            await telegramService.SendMessageAsync(request.UserId, "❌ <b>Error:</b> Invalid command format.", request.ChatId);
-                            return;
-                        }
-                        
-                        bool isPrimary = parts[3] == "p";
-                        var provider = parts[4];
-                        
-                        // Validate provider
-                        if (provider != "ollama" && provider != "gemini")
-                        {
-                            _logger.LogWarning("Invalid provider in model_set command: {Provider}", provider);
-                            await telegramService.SendMessageAsync(request.UserId, "❌ <b>Error:</b> Invalid provider.", request.ChatId);
-                            return;
-                        }
-                        
-                        // Model name is everything after the 5th part (index 4), joined back with underscores
-                        // This handles model names that contain underscores like "gemini-1.5-pro"
-                        var modelName = string.Join("_", parts.Skip(5));
-                        
-                        if (string.IsNullOrWhiteSpace(modelName))
-                        {
-                            _logger.LogWarning("Empty model name in model_set command");
-                            await telegramService.SendMessageAsync(request.UserId, "❌ <b>Error:</b> Model name is required.", request.ChatId);
-                            return;
-                        }
-
-                        var current = await settingsService.GetSettingsAsync(request.UserId);
-                        if (isPrimary) {
-                            current.AiProvider = provider == "ollama" ? "Ollama" : "Gemini";
-                            if (provider == "ollama") current.OllamaModelName = modelName;
-                            else current.GeminiModelName = modelName;
-                        } else {
-                            current.FallbackAiProvider = provider == "ollama" ? "Ollama" : "Gemini";
-                            if (provider == "ollama") current.FallbackOllamaModelName = modelName;
-                            else current.FallbackGeminiModelName = modelName;
-                        }
-
-                        await settingsService.UpdateSettingsAsync(request.UserId, current);
-                        await telegramService.SendMessageAsync(request.UserId, $"✅ <b>Success:</b> {(isPrimary ? "Primary" : "Backup")} AI updated to <b>{modelName}</b> ({provider.ToUpper()}).", request.ChatId);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Failed to set model for user {UserId}", request.UserId);
-                        await telegramService.SendMessageAsync(request.UserId, "❌ <b>Error:</b> Failed to update model settings.", request.ChatId);
-                    }
-                    return;
-                }
+                return;
             }
 
             // Send typing indicator
@@ -270,10 +105,7 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
             investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
 
             // Fetch data
-            using var db = new NpgsqlConnection(config.GetConnectionString("DefaultConnection"));
-            var history = (await db.QueryAsync<Transaction>(
-                "SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '90 days' ORDER BY transaction_date ASC",
-                new { userId = request.UserId })).ToList();
+            var history = (await repo.GetHistoryForAnalysisAsync(request.UserId, 90)).ToList();
 
             var cacheKey = $"investec_balance_{request.UserId}";
             if (!memoryCache.TryGetValue(cacheKey, out decimal currentBalance))
@@ -294,7 +126,7 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
             if (isChart && !string.IsNullOrWhiteSpace(chartSql))
             {
                 await HandleChartRequestAsync(request.UserId, chartSql!, chartType ?? "bar", chartTitle!, request.ChatId,
-                    db, aiService, chartService, telegramService, placeholderId, ctsHeartbeat);
+                   repo, aiService, chartService, telegramService, placeholderId, ctsHeartbeat);
                 return;
             }
 
@@ -311,17 +143,22 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
             }
 
             // Check for transaction explanation
-            var (explainedTxId, explanationNote) = await aiService.AnalyzeExpenseExplanationAsync(request.UserId, request.MessageText ?? "", history);
+            var explanationResult = await aiService.AnalyzeExpenseExplanationAsync(request.UserId, request.MessageText ?? "", history);
+            Guid? explainedTxId = explanationResult.TransactionId;
+            string? explanationNote = explanationResult.Note;
 
             if (explainedTxId != null)
             {
                 await HandleTransactionExplanationAsync(request.UserId, explainedTxId.Value, explanationNote!, request.MessageText ?? "",
-                    request.ChatId, db, history, telegramService, placeholderId, ctsHeartbeat);
+                    request.ChatId, repo, history, telegramService, placeholderId, ctsHeartbeat);
                 return;
             }
 
             // Check for affordability question
-            var (isAffordability, affordAmount, affordDesc) = await aiService.AnalyzeAffordabilityAsync(request.UserId, request.MessageText ?? "");
+            var affordabilityResult = await aiService.AnalyzeAffordabilityAsync(request.UserId, request.MessageText ?? "");
+            bool isAffordability = affordabilityResult.IsAffordabilityCheck;
+            decimal? affordAmount = affordabilityResult.Amount;
+            string? affordDesc = affordabilityResult.Description;
 
             if (isAffordability && affordAmount > 0)
             {
@@ -332,7 +169,7 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
 
             // Standard financial query
             await HandleStandardQueryAsync(request.UserId, request.MessageText ?? "", request.ChatId, currentBalance, summary,
-                summaryJson, db, aiService, telegramService, placeholderId, ctsHeartbeat);
+                summaryJson, repo, aiService, telegramService, placeholderId, ctsHeartbeat);
         }
         catch (OperationCanceledException)
         {
@@ -415,22 +252,28 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
     }
 
     private async Task HandleChartRequestAsync(int userId, string chartSql, string chartType, string chartTitle, string chatId,
-        NpgsqlConnection db, IAiService aiService, IChartService chartService, ITelegramService telegramService,
+        ITransactionRepository repo, IAiService aiService, IChartService chartService, ITelegramService telegramService,
         int placeholderId, CancellationTokenSource ctsHeartbeat)
     {
         try
         {
-            var chartDataRaw = await db.QueryAsync<dynamic>(chartSql, new { userId });
-            var chartData = chartDataRaw.Select(d =>
-            {
-                var dict = (IDictionary<string, object>)d;
-                return (Label: dict["label"]?.ToString() ?? "", Value: Convert.ToDouble(dict["value"] ?? 0.0));
-            }).ToList();
+            var rawChartData = (await repo.GetChartDataAsync(userId, chartSql)).ToList();
 
-            if (chartData.Any())
+            if (rawChartData.Any())
             {
+                // Map dynamic results to typed tuples expected by the chart service
+                var chartData = rawChartData
+                    .Select(r => {
+                        var dict = (IDictionary<string, object>)r;
+                        var label = dict.Values.ElementAtOrDefault(0)?.ToString() ?? "";
+                        var rawVal = dict.Values.ElementAtOrDefault(1);
+                        var value = rawVal != null ? Convert.ToDouble(rawVal) : 0.0;
+                        return (Label: label, Value: value);
+                    })
+                    .ToList();
+
                 var chartBytes = chartService.GenerateGenericChart(chartTitle, chartType, chartData);
-                var dataJson = JsonSerializer.Serialize(chartData);
+                var dataJson = JsonSerializer.Serialize(rawChartData);
                 var commentaryPrompt = $@"You are the user's Personal CFO.
 The user requested a chart: '{chartTitle}'.
 DATA RETRIEVED: {dataJson}
@@ -454,18 +297,15 @@ INSTRUCTIONS:
     }
 
     private async Task HandleTransactionExplanationAsync(int userId, Guid txId, string note, string messageText, string chatId,
-        NpgsqlConnection db, List<Transaction> history, ITelegramService telegramService, int placeholderId, CancellationTokenSource ctsHeartbeat)
+        ITransactionRepository repo, List<Transaction> history, ITelegramService telegramService, int placeholderId, CancellationTokenSource ctsHeartbeat)
     {
-        await db.ExecuteAsync("UPDATE transactions SET notes = @Note WHERE id = @Id AND user_id = @UserId",
-            new { Note = note, Id = txId, UserId = userId });
+        await repo.UpdateTransactionNoteAsync(txId, note);
 
         var tx = history.FirstOrDefault(t => t.Id == txId);
         var confirmation = $"✅ <b>Noted.</b> I've updated the ledger:\n<i>{TelegramService.EscapeHtml(tx?.Description ?? "Transaction")}</i>: {TelegramService.EscapeHtml(note)}";
 
-        await db.ExecuteAsync("INSERT INTO chat_history (user_id, message_text, is_user) VALUES (@UserId, @Text, TRUE)",
-            new { UserId = userId, Text = messageText });
-        await db.ExecuteAsync("INSERT INTO chat_history (user_id, message_text, is_user) VALUES (@UserId, @Text, FALSE)",
-            new { UserId = userId, Text = confirmation });
+        await repo.InsertChatHistoryAsync(userId, messageText, true);
+        await repo.InsertChatHistoryAsync(userId, confirmation, false);
 
         ctsHeartbeat.Cancel();
         if (placeholderId > 0) await telegramService.EditMessageAsync(userId, placeholderId, confirmation, chatId);
@@ -505,7 +345,7 @@ INSTRUCTIONS:
     }
 
     private async Task HandleStandardQueryAsync(int userId, string messageText, string chatId, decimal currentBalance,
-        FinancialHealthReport summary, string summaryJson, NpgsqlConnection db, IAiService aiService,
+        FinancialHealthReport summary, string summaryJson, ITransactionRepository repo, IAiService aiService,
         ITelegramService telegramService, int placeholderId, CancellationTokenSource ctsHeartbeat)
     {
         var culture = (System.Globalization.CultureInfo)System.Globalization.CultureInfo.InvariantCulture.Clone();
@@ -518,11 +358,9 @@ INSTRUCTIONS:
                          $"<b>Burn Trend:</b> {TelegramService.EscapeHtml(summary.TrendDirection)}\n" +
                          $"---------------------------\n\n";
 
-        var recentHistory = (await db.QueryAsync<(string Text, bool IsUser)>(
-            "SELECT message_text, is_user FROM chat_history WHERE user_id = @userId ORDER BY timestamp DESC LIMIT 10",
-            new { userId })).Reverse().ToList();
+        var recentHistory = (await repo.GetRecentChatHistoryAsync(userId, 10)).Reverse().ToList();
 
-        var historyContext = string.Join("\n", recentHistory.Select(h => h.IsUser ? $"User: {h.Text}" : $"CFO: {h.Text}"));
+        var historyContext = string.Join("\n", recentHistory.Select(h => h.IsUser ? $"User: {h.MessageText}" : $"CFO: {h.MessageText}"));
 
         var promptForSummary = $@"You are acting as the user's Personal CFO.
 
@@ -551,10 +389,8 @@ Demonstrate that you understand their financial reality better than they do, and
 
         var finalAnswer = statsBlock + aiResponse;
 
-        await db.ExecuteAsync("INSERT INTO chat_history (user_id, message_text, is_user) VALUES (@UserId, @Text, TRUE)",
-            new { UserId = userId, Text = messageText });
-        await db.ExecuteAsync("INSERT INTO chat_history (user_id, message_text, is_user) VALUES (@UserId, @Text, FALSE)",
-            new { UserId = userId, Text = aiResponse });
+        await repo.InsertChatHistoryAsync(userId, messageText, true);
+        await repo.InsertChatHistoryAsync(userId, aiResponse, false);
 
         ctsHeartbeat.Cancel();
 

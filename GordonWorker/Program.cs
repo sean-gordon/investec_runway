@@ -2,6 +2,7 @@ using GordonWorker.Services;
 using GordonWorker.Workers;
 using GordonWorker.Middleware;
 using GordonWorker.Infrastructure;
+using GordonWorker.Repositories;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -118,6 +119,10 @@ builder.Services.AddTransient<IEmailService, EmailService>();
 builder.Services.AddScoped<IFinancialReportService, FinancialReportService>();
 builder.Services.AddScoped<ITransactionSyncService, TransactionSyncService>();
 builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
+builder.Services.AddSingleton<ITransactionRepository, TransactionRepository>();
+builder.Services.AddSingleton<IUserRepository, UserRepository>();
+builder.Services.AddSingleton<ITransactionClassifierService, TransactionClassifierService>();
+builder.Services.AddSingleton<ITelegramCommandRouter, TelegramCommandRouter>();
 builder.Services.AddTransient<DatabaseInitializer>();
 
 // Background Services
@@ -125,6 +130,7 @@ builder.Services.AddHostedService<TransactionsBackgroundService>();
 builder.Services.AddHostedService<WeeklyReportWorker>();
 builder.Services.AddHostedService<DailyBriefingWorker>();
 builder.Services.AddHostedService<ConnectivityWorker>();
+builder.Services.AddHostedService<RunwayTopUpWorker>();
 
 // ENHANCEMENT: Add TelegramChatService as hosted service and injectable service
 builder.Services.AddSingleton<TelegramChatService>();

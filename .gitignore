@@ -33,3 +33,4 @@ app_data/
 
 .gemini/
 gha-creds-*.json
+node_modules/

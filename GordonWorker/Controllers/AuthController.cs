@@ -1,9 +1,7 @@
-using BCrypt.Net;
-using Dapper;
 using GordonWorker.Models;
+using GordonWorker.Repositories;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
-using Npgsql;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -14,11 +12,13 @@ namespace GordonWorker.Controllers;
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
+    private readonly IUserRepository _userRepository;
     private readonly IConfiguration _configuration;
     private readonly ILogger<AuthController> _logger;
 
-    public AuthController(IConfiguration configuration, ILogger<AuthController> logger)
+    public AuthController(IUserRepository userRepository, IConfiguration configuration, ILogger<AuthController> logger)
     {
+        _userRepository = userRepository;
         _configuration = configuration;
         _logger = logger;
     }
@@ -31,20 +31,12 @@ public class AuthController : ControllerBase
 
         try
         {
-            using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-            await connection.OpenAsync();
-
-            var existingUser = await connection.QuerySingleOrDefaultAsync<int?>(
-                "SELECT id FROM users WHERE username = @Username", new { model.Username });
-
+            var existingUser = await _userRepository.GetByUsernameAsync(model.Username);
             if (existingUser != null)
                 return BadRequest("Username already exists.");
 
             var passwordHash = BCrypt.Net.BCrypt.HashPassword(model.Password);
-
-            var userId = await connection.QuerySingleAsync<int>(
-                "INSERT INTO users (username, password_hash) VALUES (@Username, @PasswordHash) RETURNING id",
-                new { model.Username, PasswordHash = passwordHash });
+            await _userRepository.CreateUserAsync(model.Username, passwordHash);
 
             return Ok(new { Message = "Registration successful." });
         }
@@ -60,11 +52,7 @@ public class AuthController : ControllerBase
     {
         try
         {
-            using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-            await connection.OpenAsync();
-
-            var user = await connection.QuerySingleOrDefaultAsync<User>(
-                "SELECT * FROM users WHERE username = @Username", new { model.Username });
+            var user = await _userRepository.GetByUsernameAsync(model.Username);
 
             if (user == null || !BCrypt.Net.BCrypt.Verify(model.Password, user.PasswordHash))
                 return Unauthorized("Invalid username or password.");

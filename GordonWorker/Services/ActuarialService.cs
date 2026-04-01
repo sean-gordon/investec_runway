@@ -62,6 +62,9 @@ public class ActuarialService : IActuarialService
 
     public bool IsFixedCost(string categoryName, AppSettings settings)
     {
+        if (settings.IgnoredFixedCosts != null && settings.IgnoredFixedCosts.Any(i => categoryName.Contains(i, StringComparison.OrdinalIgnoreCase)))
+            return false;
+
         var keywords = settings.FixedCostKeywords.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         return keywords.Any(k => categoryName.Contains(k, StringComparison.OrdinalIgnoreCase));
     }

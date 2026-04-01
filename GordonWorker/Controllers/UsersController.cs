@@ -115,4 +115,3 @@ public class UsersController : ControllerBase
         public string Role { get; set; } = "User";
     }
 }
-}

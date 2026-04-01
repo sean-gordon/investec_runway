@@ -67,6 +67,9 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
         var botClientFactory = scope.ServiceProvider.GetRequiredService<ITelegramBotClientFactory>();
         var memoryCache = scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>();
 
+        int placeholderId = 0;
+        CancellationTokenSource? ctsHeartbeat = null;
+
         try
         {
             _logger.LogInformation("Processing Telegram message for user {UserId}", request.UserId);
@@ -81,14 +84,6 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
             if (commandResult != null)
             {
                 return;
-            }
-                
-                // Log the command for debugging
-                _logger.LogDebug("Processing command '{Cmd}' for user {UserId}", cmd, request.UserId);
-                
-            int placeholderId = 0;
-            CancellationTokenSource? ctsHeartbeat = null;            return;
-                }
             }
 
             // Send typing indicator

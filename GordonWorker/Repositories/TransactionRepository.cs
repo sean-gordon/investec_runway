@@ -1,6 +1,11 @@
 using Dapper;
 using GordonWorker.Models;
 using Npgsql;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
 
 namespace GordonWorker.Repositories;
 
@@ -150,8 +155,6 @@ public class TransactionRepository : ITransactionRepository
     public async Task<IEnumerable<dynamic>> GetChartDataAsync(int userId, string sql)
     {
         await using var connection = new NpgsqlConnection(_connectionString);
-        // SECURITY NOTE: This is a restricted endpoint using AI-generated SQL that is validated
-        // For production, consider using a more constrained approach or a dedicated reporting DB
         return await connection.QueryAsync<dynamic>(sql, new { userId });
     }
 

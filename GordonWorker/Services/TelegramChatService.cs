@@ -143,7 +143,9 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
             }
 
             // Check for transaction explanation
-            (Guid? explainedTxId, string? explanationNote) = await aiService.AnalyzeExpenseExplanationAsync(request.UserId, request.MessageText ?? "", history);
+            var explanationResult = await aiService.AnalyzeExpenseExplanationAsync(request.UserId, request.MessageText ?? "", history);
+            Guid? explainedTxId = explanationResult.TransactionId;
+            string? explanationNote = explanationResult.Note;
 
             if (explainedTxId != null)
             {
@@ -153,7 +155,10 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
             }
 
             // Check for affordability question
-            (bool isAffordability, decimal? affordAmount, string? affordDesc) = await aiService.AnalyzeAffordabilityAsync(request.UserId, request.MessageText ?? "");
+            var affordabilityResult = await aiService.AnalyzeAffordabilityAsync(request.UserId, request.MessageText ?? "");
+            bool isAffordability = affordabilityResult.IsAffordabilityCheck;
+            decimal? affordAmount = affordabilityResult.Amount;
+            string? affordDesc = affordabilityResult.Description;
 
             if (isAffordability && affordAmount > 0)
             {
@@ -252,12 +257,23 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
     {
         try
         {
-            var chartData = (await repo.GetChartDataAsync(chartSql, userId)).ToList();
+            var rawChartData = (await repo.GetChartDataAsync(userId, chartSql)).ToList();
 
-            if (chartData.Any())
+            if (rawChartData.Any())
             {
+                // Map dynamic results to typed tuples expected by the chart service
+                var chartData = rawChartData
+                    .Select(r => {
+                        var dict = (IDictionary<string, object>)r;
+                        var label = dict.Values.ElementAtOrDefault(0)?.ToString() ?? "";
+                        var rawVal = dict.Values.ElementAtOrDefault(1);
+                        var value = rawVal != null ? Convert.ToDouble(rawVal) : 0.0;
+                        return (Label: label, Value: value);
+                    })
+                    .ToList();
+
                 var chartBytes = chartService.GenerateGenericChart(chartTitle, chartType, chartData);
-                var dataJson = JsonSerializer.Serialize(chartData);
+                var dataJson = JsonSerializer.Serialize(rawChartData);
                 var commentaryPrompt = $@"You are the user's Personal CFO.
 The user requested a chart: '{chartTitle}'.
 DATA RETRIEVED: {dataJson}
@@ -283,7 +299,7 @@ INSTRUCTIONS:
     private async Task HandleTransactionExplanationAsync(int userId, Guid txId, string note, string messageText, string chatId,
         ITransactionRepository repo, List<Transaction> history, ITelegramService telegramService, int placeholderId, CancellationTokenSource ctsHeartbeat)
     {
-        await repo.UpdateTransactionNoteAsync(txId, userId, note);
+        await repo.UpdateTransactionNoteAsync(txId, note);
 
         var tx = history.FirstOrDefault(t => t.Id == txId);
         var confirmation = $"✅ <b>Noted.</b> I've updated the ledger:\n<i>{TelegramService.EscapeHtml(tx?.Description ?? "Transaction")}</i>: {TelegramService.EscapeHtml(note)}";

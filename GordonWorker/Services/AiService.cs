@@ -228,9 +228,11 @@ public class AiService : IAiService
             if (string.IsNullOrWhiteSpace(config.GeminiKey)) return new List<string>();
             try
             {
-                var url = $"https://generativelanguage.googleapis.com/v1beta/models?key={config.GeminiKey}";
+                var url = "https://generativelanguage.googleapis.com/v1beta/models";
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                var response = await _httpClient.GetAsync(url, cts.Token);
+                using var modelsReq = new HttpRequestMessage(HttpMethod.Get, url);
+                modelsReq.Headers.Add("x-goog-api-key", config.GeminiKey);
+                var response = await _httpClient.SendAsync(modelsReq, cts.Token);
                 if (!response.IsSuccessStatusCode) return useThinking ? new List<string> { "gemini-2.0-flash-thinking-exp" } : new List<string> { "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro" };
 
                 var responseString = await response.Content.ReadAsStringAsync();
@@ -317,8 +319,11 @@ public class AiService : IAiService
         // Anthropic does not have a public chat-model list endpoint, so return a curated static list
         return new List<string>
         {
+            "claude-opus-4-6",
+            "claude-sonnet-4-6",
             "claude-opus-4-5",
             "claude-sonnet-4-5",
+            "claude-haiku-4-5",
             "claude-3-7-sonnet-latest",
             "claude-3-5-sonnet-latest",
             "claude-3-5-haiku-latest"
@@ -799,8 +804,8 @@ IF the response missed the prompt or contains errors: Provide specific feedback 
         // We ensure we don't have double 'models/' in the path.
         if (model.StartsWith("models/")) model = model.Replace("models/", "");
         
-        var url = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={apiKey}";
-        
+        var url = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent";
+
         var request = new
         {
             contents = new[] { new { role = "user", parts = new[] { new { text = system + "\n\n" + prompt } } } },
@@ -817,7 +822,10 @@ IF the response missed the prompt or contains errors: Provide specific feedback 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
 
-        var response = await _httpClient.PostAsync(url, content, cts.Token);
+        using var httpReq = new HttpRequestMessage(HttpMethod.Post, url);
+        httpReq.Headers.Add("x-goog-api-key", apiKey);
+        httpReq.Content = content;
+        var response = await _httpClient.SendAsync(httpReq, cts.Token);
         if (!response.IsSuccessStatusCode)
         {
             var errorBody = await response.Content.ReadAsStringAsync(cts.Token);

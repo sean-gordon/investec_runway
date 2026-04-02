@@ -42,7 +42,8 @@ public class InvestecClient : IInvestecClient
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<InvestecClient> _logger;
-    
+    private readonly SemaphoreSlim _authLock = new(1, 1);
+
     private string? _clientId;
     private string? _secret;
     private string? _apiKey;
@@ -59,18 +60,26 @@ public class InvestecClient : IInvestecClient
 
     public void Configure(string clientId, string secret, string apiKey, string baseUrl = "https://openapi.investec.com/", string environment = "Production")
     {
-        _clientId = clientId;
-        _secret = secret;
-        _apiKey = apiKey;
-        var effectiveUrl = string.IsNullOrWhiteSpace(baseUrl) ? "https://openapi.investec.com/" : baseUrl;
-        effectiveUrl = effectiveUrl.TrimEnd('/') + "/";
-        if (environment.Equals("Sandbox", StringComparison.OrdinalIgnoreCase) && !effectiveUrl.Contains("sandbox", StringComparison.OrdinalIgnoreCase))
+        _authLock.Wait();
+        try
         {
-            effectiveUrl += "sandbox/";
+            _clientId = clientId;
+            _secret = secret;
+            _apiKey = apiKey;
+            var effectiveUrl = string.IsNullOrWhiteSpace(baseUrl) ? "https://openapi.investec.com/" : baseUrl;
+            effectiveUrl = effectiveUrl.TrimEnd('/') + "/";
+            if (environment.Equals("Sandbox", StringComparison.OrdinalIgnoreCase) && !effectiveUrl.Contains("sandbox", StringComparison.OrdinalIgnoreCase))
+            {
+                effectiveUrl += "sandbox/";
+            }
+            _baseUrl = effectiveUrl;
+            _accessToken = null;
+            _cachedAccounts.Clear();
         }
-        _baseUrl = effectiveUrl;
-        _accessToken = null; // Reset token on reconfig
-        _cachedAccounts.Clear();
+        finally
+        {
+            _authLock.Release();
+        }
     }
 
     private Uri GetUri(string path) => new Uri(new Uri(_baseUrl), path);
@@ -113,20 +122,32 @@ public class InvestecClient : IInvestecClient
     public async Task<string> AuthenticateAsync()
     {
         if (string.IsNullOrEmpty(_clientId) || string.IsNullOrEmpty(_secret)) return string.Empty;
-        
-        var request = new HttpRequestMessage(HttpMethod.Post, GetUri("identity/v2/oauth2/token"));
-        var authString = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_clientId}:{_secret}"));
-        request.Headers.Authorization = new AuthenticationHeaderValue("Basic", authString);
-        request.Headers.Add("x-api-key", _apiKey);
-        request.Content = new FormUrlEncodedContent(new[] { new KeyValuePair<string, string>("grant_type", "client_credentials") });
-        var response = await _httpClient.SendAsync(request);
-        if (!response.IsSuccessStatusCode) return string.Empty;
-        var content = await response.Content.ReadAsStringAsync();
-        var tokenResponse = JsonSerializer.Deserialize<JsonElement>(content);
-        _accessToken = tokenResponse.GetProperty("access_token").GetString();
-        var expiresIn = tokenResponse.GetProperty("expires_in").GetInt32();
-        _tokenExpiry = DateTime.UtcNow.AddSeconds(expiresIn - 60);
-        return _accessToken ?? string.Empty;
+
+        await _authLock.WaitAsync();
+        try
+        {
+            // Double-check after acquiring lock — another thread may have refreshed
+            if (!string.IsNullOrEmpty(_accessToken) && DateTime.UtcNow <= _tokenExpiry)
+                return _accessToken;
+
+            var request = new HttpRequestMessage(HttpMethod.Post, GetUri("identity/v2/oauth2/token"));
+            var authString = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_clientId}:{_secret}"));
+            request.Headers.Authorization = new AuthenticationHeaderValue("Basic", authString);
+            request.Headers.Add("x-api-key", _apiKey);
+            request.Content = new FormUrlEncodedContent(new[] { new KeyValuePair<string, string>("grant_type", "client_credentials") });
+            var response = await _httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode) return string.Empty;
+            var content = await response.Content.ReadAsStringAsync();
+            var tokenResponse = JsonSerializer.Deserialize<JsonElement>(content);
+            _accessToken = tokenResponse.GetProperty("access_token").GetString();
+            var expiresIn = tokenResponse.GetProperty("expires_in").GetInt32();
+            _tokenExpiry = DateTime.UtcNow.AddSeconds(expiresIn - 60);
+            return _accessToken ?? string.Empty;
+        }
+        finally
+        {
+            _authLock.Release();
+        }
     }
 
     public async Task<List<InvestecAccount>> GetAccountsAsync()

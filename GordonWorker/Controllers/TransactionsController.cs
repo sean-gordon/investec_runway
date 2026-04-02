@@ -60,6 +60,7 @@ public class TransactionsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetTransactions([FromQuery] int limit = 500)
     {
+        limit = Math.Clamp(limit, 1, 5000);
         try
         {
             var transactions = await _transactionRepository.GetTransactionsByUserAsync(UserId, limit);

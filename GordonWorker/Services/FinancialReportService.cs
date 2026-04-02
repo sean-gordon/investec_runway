@@ -172,11 +172,18 @@ public class FinancialReportService : IFinancialReportService
                 </tr>";
         }
 
-        // Sanitize AI Output
-        var safeAiExplanation = aiExplanation
-            .Replace("<script", "&lt;script", StringComparison.OrdinalIgnoreCase)
-            .Replace("javascript:", "javascript_:", StringComparison.OrdinalIgnoreCase)
-            .Replace("onclick", "on_click", StringComparison.OrdinalIgnoreCase);
+        // Sanitize AI Output: encode everything, then restore only safe formatting tags
+        var safeAiExplanation = System.Net.WebUtility.HtmlEncode(aiExplanation);
+        // Restore allowed HTML formatting tags that the AI is instructed to use
+        safeAiExplanation = safeAiExplanation
+            .Replace("&lt;p&gt;", "<p>").Replace("&lt;/p&gt;", "</p>")
+            .Replace("&lt;b&gt;", "<b>").Replace("&lt;/b&gt;", "</b>")
+            .Replace("&lt;i&gt;", "<i>").Replace("&lt;/i&gt;", "</i>")
+            .Replace("&lt;ul&gt;", "<ul>").Replace("&lt;/ul&gt;", "</ul>")
+            .Replace("&lt;li&gt;", "<li>").Replace("&lt;/li&gt;", "</li>")
+            .Replace("&lt;br&gt;", "<br>").Replace("&lt;br/&gt;", "<br>")
+            .Replace("&lt;strong&gt;", "<strong>").Replace("&lt;/strong&gt;", "</strong>")
+            .Replace("&lt;em&gt;", "<em>").Replace("&lt;/em&gt;", "</em>");
 
         var body = $@"
 <!DOCTYPE html>
@@ -277,7 +284,7 @@ public class FinancialReportService : IFinancialReportService
                                 <div style='width: 48px; height: 48px; background-color: #0f172a; border-radius: 12px; color: #ffffff; font-size: 24px; font-weight: bold; line-height: 48px; text-align: center;'>G</div>
                             </td>
                             <td style='vertical-align: top;'>
-                                <div style='font-size: 16px; font-weight: 700; color: #1e293b; margin-bottom: 4px;'>{personaName}</div>
+                                <div style='font-size: 16px; font-weight: 700; color: #1e293b; margin-bottom: 4px;'>{System.Net.WebUtility.HtmlEncode(personaName)}</div>
                                 <div style='font-size: 12px; color: #0ea5e9; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;'>Personal Financial Actuary</div>
                                 <div style='font-size: 12px; color: #64748b;'>Powered by <strong>Gordon Finance Engine</strong></div>
                             </td>

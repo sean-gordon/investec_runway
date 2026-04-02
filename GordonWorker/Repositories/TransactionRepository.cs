@@ -154,8 +154,27 @@ public class TransactionRepository : ITransactionRepository
 
     public async Task<IEnumerable<dynamic>> GetChartDataAsync(int userId, string sql)
     {
+        // Validate AI-generated SQL: must be a single SELECT statement, no DML/DDL
+        var trimmed = sql.Trim().TrimEnd(';').Trim();
+        if (!trimmed.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Only SELECT queries are permitted.");
+
+        var upperSql = trimmed.ToUpperInvariant();
+        string[] forbidden = { "INSERT ", "UPDATE ", "DELETE ", "DROP ", "ALTER ", "TRUNCATE ", "CREATE ", "GRANT ", "REVOKE ", "EXEC ", "EXECUTE ", "INTO " };
+        foreach (var keyword in forbidden)
+        {
+            if (upperSql.Contains(keyword))
+                throw new InvalidOperationException($"Forbidden SQL keyword detected: {keyword.Trim()}");
+        }
+
         await using var connection = new NpgsqlConnection(_connectionString);
-        return await connection.QueryAsync<dynamic>(sql, new { userId });
+        // Execute in a read-only transaction for defence in depth
+        await connection.OpenAsync();
+        await using var txn = await connection.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
+        await connection.ExecuteAsync("SET TRANSACTION READ ONLY", transaction: txn);
+        var result = await connection.QueryAsync<dynamic>(sql, new { userId }, transaction: txn);
+        await txn.CommitAsync();
+        return result;
     }
 
     public async Task UpdateTransactionNoteAsync(Guid transactionId, string note)

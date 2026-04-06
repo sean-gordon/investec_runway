@@ -159,11 +159,11 @@ public class SettingsController : ControllerBase
     }
 
     [HttpPost("test-ai")]
-    public async Task<IActionResult> TestAi()
+    public async Task<IActionResult> TestAi([FromBody] AppSettings? requestSettings = null)
     {
         try
         {
-            var result = await _aiService.TestConnectionAsync(UserId, useFallback: false, forceRefresh: true);
+            var result = await _aiService.TestConnectionAsync(UserId, useFallback: false, forceRefresh: true, overriddenSettings: requestSettings);
             _statusService.IsAiPrimaryOnline = result.Success;
             _statusService.PrimaryAiError = result.Success ? string.Empty : result.Error;
             
@@ -186,11 +186,11 @@ public class SettingsController : ControllerBase
     }
 
     [HttpPost("test-fallback-ai")]
-    public async Task<IActionResult> TestFallbackAi()
+    public async Task<IActionResult> TestFallbackAi([FromBody] AppSettings? requestSettings = null)
     {
         try
         {
-            var result = await _aiService.TestConnectionAsync(UserId, useFallback: true, forceRefresh: true);
+            var result = await _aiService.TestConnectionAsync(UserId, useFallback: true, forceRefresh: true, overriddenSettings: requestSettings);
             _statusService.IsAiFallbackOnline = result.Success;
             _statusService.FallbackAiError = result.Success ? string.Empty : result.Error;
 
@@ -213,11 +213,11 @@ public class SettingsController : ControllerBase
     }
 
     [HttpPost("test-thinking-ai")]
-    public async Task<IActionResult> TestThinkingAi()
+    public async Task<IActionResult> TestThinkingAi([FromBody] AppSettings? requestSettings = null)
     {
         try
         {
-            var result = await _aiService.TestConnectionAsync(UserId, useFallback: false, useThinking: true, forceRefresh: true);
+            var result = await _aiService.TestConnectionAsync(UserId, useFallback: false, useThinking: true, forceRefresh: true, overriddenSettings: requestSettings);
             if (result.Success)
             {
                 return Ok(new { Message = "Connected to Thinking AI successfully." });

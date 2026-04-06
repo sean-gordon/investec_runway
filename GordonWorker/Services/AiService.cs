@@ -14,7 +14,7 @@ public interface IAiService
     Task<(Guid? TransactionId, string? Note)> AnalyzeExpenseExplanationAsync(int userId, string userMessage, List<Transaction> recentTransactions);
     Task<(bool IsAffordabilityCheck, decimal? Amount, string? Description)> AnalyzeAffordabilityAsync(int userId, string userMessage);
     Task<(bool IsChartRequest, string? ChartType, string? Sql, string? Title)> AnalyzeChartRequestAsync(int userId, string userMessage);
-    Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false, bool useThinking = false, bool forceRefresh = false);
+    Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false, bool useThinking = false, bool forceRefresh = false, AppSettings? overriddenSettings = null);
     Task<List<string>> GetAvailableModelsAsync(int userId, bool useFallback = false, bool useThinking = false, AppSettings? overriddenSettings = null);
     Task<string> GenerateCompletionAsync(int userId, string system, string prompt, bool useFallback = false, CancellationToken ct = default, bool useThinking = false);
 }
@@ -316,7 +316,46 @@ public class AiService : IAiService
 
     if (config.Provider == "Anthropic")
     {
-        // Anthropic does not have a public chat-model list endpoint, so return a curated static list
+        if (string.IsNullOrWhiteSpace(config.AnthropicKey)) return new List<string> { "Error: Missing Anthropic API Key" };
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var req = new HttpRequestMessage(HttpMethod.Get, "https://api.anthropic.com/v1/models?limit=100");
+            req.Headers.Add("x-api-key", config.AnthropicKey);
+            req.Headers.Add("anthropic-version", "2023-06-01");
+            var response = await _httpClient.SendAsync(req, cts.Token);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var responseString = await response.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(responseString);
+                var modelNames = new List<string>();
+                
+                if (doc.RootElement.TryGetProperty("data", out var data))
+                {
+                    foreach (var m in data.EnumerateArray())
+                    {
+                        var id = m.GetProperty("id").GetString() ?? "";
+                        if (!string.IsNullOrEmpty(id) && id.Contains("claude"))
+                            modelNames.Add(id);
+                    }
+                }
+
+                if (modelNames.Any())
+                    return modelNames.Distinct().OrderByDescending(n => n).ToList();
+            }
+            else
+            {
+                var errorBody = await response.Content.ReadAsStringAsync();
+                _logger.LogWarning("Anthropic Models API returned {Status}: {Body}. Falling back to static list.", response.StatusCode, errorBody);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to fetch models from Anthropic API. Falling back to static list.");
+        }
+
+        // Fallback: curated static list
         return new List<string>
         {
             "claude-opus-4-6",
@@ -351,7 +390,7 @@ public class AiService : IAiService
         catch (Exception ex) { _logger.LogError(ex, "Failed to fetch models from {Provider}.", useFallback ? "Fallback AI" : "Primary AI"); return new List<string> { $"Ollama Fetch Error: {ex.Message}" }; }
     }
 
-    public async Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false, bool useThinking = false, bool forceRefresh = false)
+    public async Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false, bool useThinking = false, bool forceRefresh = false, AppSettings? overriddenSettings = null)
     {
         var cacheKey = $"{userId}_{useFallback}_{useThinking}";
         if (!forceRefresh && _testCache.TryGetValue(cacheKey, out var cached) && (DateTime.UtcNow - cached.Timestamp).TotalMinutes < 15)
@@ -360,8 +399,8 @@ public class AiService : IAiService
         }
 
         var config = useThinking 
-            ? await GetThinkingProviderConfigAsync(userId)
-            : await GetProviderConfigAsync(userId, useFallback);
+            ? await GetThinkingProviderConfigAsync(userId, overriddenSettings)
+            : await GetProviderConfigAsync(userId, useFallback, overriddenSettings);
 
         var testTimeout = TimeSpan.FromSeconds(config.TimeoutSeconds > 0 ? config.TimeoutSeconds : 15); 
         var maxAttempts = config.RetryAttempts > 0 ? config.RetryAttempts : 1; 
@@ -386,6 +425,52 @@ public class AiService : IAiService
                         _logger.LogWarning("Gemini Rate Limit hit during test.");
                         if (attempt < maxAttempts) continue;
                         return (false, "Rate Limited - Gemini is cooling down. Please wait a few minutes.");
+                    }
+                }
+
+                if (config.Provider == "OpenAI")
+                {
+                    if (string.IsNullOrWhiteSpace(config.OpenAiKey)) return (false, "OpenAI API Key is missing.");
+                    
+                    try
+                    {
+                        var result = await GenerateOpenAiCompletionAsync(userId, "System", "Say 'OK'", config.OpenAiKey, config.ModelName, timeoutSeconds: (int)testTimeout.TotalSeconds);
+                        var finalResult = (Success: !string.IsNullOrWhiteSpace(result) && !result.Contains("Error:"), Error: result ?? "Empty response.");
+                        _testCache[cacheKey] = (finalResult.Success, finalResult.Error, DateTime.UtcNow);
+                        return finalResult;
+                    }
+                    catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                    {
+                        _logger.LogWarning("OpenAI Rate Limit hit during test.");
+                        if (attempt < maxAttempts) continue;
+                        return (false, "Rate Limited - OpenAI is cooling down. Please wait a few minutes.");
+                    }
+                    catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                    {
+                        return (false, "OpenAI API Key is invalid or expired.");
+                    }
+                }
+
+                if (config.Provider == "Anthropic")
+                {
+                    if (string.IsNullOrWhiteSpace(config.AnthropicKey)) return (false, "Anthropic API Key is missing.");
+                    
+                    try
+                    {
+                        var result = await GenerateAnthropicCompletionAsync(userId, "System", "Say 'OK'", config.AnthropicKey, config.ModelName, timeoutSeconds: (int)testTimeout.TotalSeconds);
+                        var finalResult = (Success: !string.IsNullOrWhiteSpace(result) && !result.Contains("Error:"), Error: result ?? "Empty response.");
+                        _testCache[cacheKey] = (finalResult.Success, finalResult.Error, DateTime.UtcNow);
+                        return finalResult;
+                    }
+                    catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                    {
+                        _logger.LogWarning("Anthropic Rate Limit hit during test.");
+                        if (attempt < maxAttempts) continue;
+                        return (false, "Rate Limited - Anthropic is cooling down. Please wait a few minutes.");
+                    }
+                    catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                    {
+                        return (false, "Anthropic API Key is invalid or expired.");
                     }
                 }
 
@@ -536,7 +621,7 @@ public class AiService : IAiService
             }
         }
 
-        var maxNetworkAttempts = settings.AiRetryAttempts;
+        var maxNetworkAttempts = Math.Max(1, settings.AiRetryAttempts);
         var maxReflectionLoops = 3;
 
         // Step 1: Give your primary AI a go...
@@ -548,7 +633,7 @@ public class AiService : IAiService
                 try
                 {
                     _logger.LogInformation("Trying to reach your primary AI (network attempt {Attempt}/{Max}) on reflection loop {Loop}", attempt, maxNetworkAttempts, reflectionLoop);
-                    result = await SendRawCompletionAsync(userId, system, finalPrompt, useFallback: false, ct);
+                    result = await SendRawCompletionAsync(userId, system, finalPrompt, useFallback: false, ct, useThinking: useThinking);
 
                     if (!string.IsNullOrWhiteSpace(result))
                     {

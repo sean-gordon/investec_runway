@@ -302,8 +302,7 @@ public class FinancialReportService : IFinancialReportService
 
         await _emailService.SendEmailAsync(userId, subject, body);
         
-        // Telegram report disabled for email generation flow as requested
-        /*
+        // Telegram report restored
         var telegramSummary = $"📊 *Weekly Financial Report*\n\n{aiExplanation}\n\n" +
                               $"💰 *Current Balance:* {currentBalance.ToString("C", culture)}\n" +
                               $"📅 *Next Salary In:* {healthReport.DaysUntilNextSalary} Days\n" +
@@ -311,6 +310,5 @@ public class FinancialReportService : IFinancialReportService
                               $"📈 *Trend:* {healthReport.TrendDirection}";
         
         await _telegramService.SendMessageAsync(userId, telegramSummary);
-        */
     }
 }

@@ -154,18 +154,35 @@ public class TransactionRepository : ITransactionRepository
 
     public async Task<IEnumerable<dynamic>> GetChartDataAsync(int userId, string sql)
     {
-        // Validate AI-generated SQL: must be a single SELECT statement, no DML/DDL
+        // Validate AI-generated SQL: must be a single SELECT statement, no DML/DDL,
+        // and must scope results to the calling user via the @userId parameter.
         var trimmed = sql.Trim().TrimEnd(';').Trim();
         if (!trimmed.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Only SELECT queries are permitted.");
 
-        var upperSql = trimmed.ToUpperInvariant();
-        string[] forbidden = { "INSERT ", "UPDATE ", "DELETE ", "DROP ", "ALTER ", "TRUNCATE ", "CREATE ", "GRANT ", "REVOKE ", "EXEC ", "EXECUTE ", "INTO " };
+        // Reject multi-statement payloads — a stray semicolon mid-query would survive the TrimEnd above.
+        if (trimmed.Contains(';'))
+            throw new InvalidOperationException("Multiple SQL statements are not permitted.");
+
+        // Strip SQL comments before keyword scanning so attackers can't hide INSERT/**/INTO etc.
+        var stripped = StripSqlComments(trimmed);
+        var upperSql = stripped.ToUpperInvariant();
+
+        string[] forbidden = { "INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "TRUNCATE", "CREATE", "GRANT", "REVOKE", "EXEC", "EXECUTE", "INTO", "MERGE", "COPY", "CALL", "VACUUM", "ANALYZE", "LISTEN", "NOTIFY", "PG_SLEEP" };
         foreach (var keyword in forbidden)
         {
-            if (upperSql.Contains(keyword))
-                throw new InvalidOperationException($"Forbidden SQL keyword detected: {keyword.Trim()}");
+            // Word-boundary match so column names like "created_at" don't trip on CREATE.
+            if (System.Text.RegularExpressions.Regex.IsMatch(upperSql, $@"\b{keyword}\b"))
+                throw new InvalidOperationException($"Forbidden SQL keyword detected: {keyword}");
         }
+
+        // Defence in depth: the query MUST reference both the user_id column and the @userId
+        // parameter so that results are constrained to the calling user. Without this an AI-
+        // generated query could leak data across tenants.
+        if (!upperSql.Contains("USER_ID"))
+            throw new InvalidOperationException("Query must filter on the user_id column.");
+        if (!System.Text.RegularExpressions.Regex.IsMatch(stripped, @"@userId\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            throw new InvalidOperationException("Query must reference the @userId parameter.");
 
         await using var connection = new NpgsqlConnection(_connectionString);
         // Execute in a read-only transaction for defence in depth
@@ -175,6 +192,14 @@ public class TransactionRepository : ITransactionRepository
         var result = await connection.QueryAsync<dynamic>(sql, new { userId }, transaction: txn);
         await txn.CommitAsync();
         return result;
+    }
+
+    private static string StripSqlComments(string sql)
+    {
+        // Remove /* ... */ block comments (non-greedy) and -- line comments.
+        var noBlock = System.Text.RegularExpressions.Regex.Replace(sql, @"/\*[\s\S]*?\*/", " ");
+        var noLine = System.Text.RegularExpressions.Regex.Replace(noBlock, @"--[^\r\n]*", " ");
+        return noLine;
     }
 
     public async Task UpdateTransactionNoteAsync(Guid transactionId, string note)

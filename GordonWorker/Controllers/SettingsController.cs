@@ -26,6 +26,7 @@ public class SettingsController : ControllerBase
     private readonly ITelegramService _telegramService;
     private readonly ITransactionRepository _transactionRepository;
     private readonly ITransactionClassifierService _classifierService;
+    private readonly ClaudeCliService _claudeCliService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<SettingsController> _logger;
 
@@ -41,6 +42,7 @@ public class SettingsController : ControllerBase
         ITelegramService telegramService,
         ITransactionRepository transactionRepository,
         ITransactionClassifierService classifierService,
+        ClaudeCliService claudeCliService,
         IConfiguration configuration,
         ILogger<SettingsController> logger)
     {
@@ -55,6 +57,7 @@ public class SettingsController : ControllerBase
         _telegramService = telegramService;
         _transactionRepository = transactionRepository;
         _classifierService = classifierService;
+        _claudeCliService = claudeCliService;
         _configuration = configuration;
         _logger = logger;
     }
@@ -91,12 +94,15 @@ public class SettingsController : ControllerBase
         if (!string.IsNullOrEmpty(clone.GeminiApiKey)) clone.GeminiApiKey = mask;
         if (!string.IsNullOrEmpty(clone.OpenAiApiKey)) clone.OpenAiApiKey = mask;
         if (!string.IsNullOrEmpty(clone.AnthropicApiKey)) clone.AnthropicApiKey = mask;
+        if (!string.IsNullOrEmpty(clone.ClaudeCliOAuthToken)) clone.ClaudeCliOAuthToken = mask;
         if (!string.IsNullOrEmpty(clone.FallbackGeminiApiKey)) clone.FallbackGeminiApiKey = mask;
         if (!string.IsNullOrEmpty(clone.FallbackOpenAiApiKey)) clone.FallbackOpenAiApiKey = mask;
         if (!string.IsNullOrEmpty(clone.FallbackAnthropicApiKey)) clone.FallbackAnthropicApiKey = mask;
+        if (!string.IsNullOrEmpty(clone.FallbackClaudeCliOAuthToken)) clone.FallbackClaudeCliOAuthToken = mask;
         if (!string.IsNullOrEmpty(clone.ThinkingGeminiApiKey)) clone.ThinkingGeminiApiKey = mask;
         if (!string.IsNullOrEmpty(clone.ThinkingOpenAiApiKey)) clone.ThinkingOpenAiApiKey = mask;
         if (!string.IsNullOrEmpty(clone.ThinkingAnthropicApiKey)) clone.ThinkingAnthropicApiKey = mask;
+        if (!string.IsNullOrEmpty(clone.ThinkingClaudeCliOAuthToken)) clone.ThinkingClaudeCliOAuthToken = mask;
         if (!string.IsNullOrEmpty(clone.InvestecSecret)) clone.InvestecSecret = mask;
         if (!string.IsNullOrEmpty(clone.InvestecApiKey)) clone.InvestecApiKey = mask;
         if (!string.IsNullOrEmpty(clone.SmtpPass)) clone.SmtpPass = mask;
@@ -120,12 +126,15 @@ public class SettingsController : ControllerBase
             if (requestSettings.GeminiApiKey == mask) requestSettings.GeminiApiKey = existingSettings.GeminiApiKey;
             if (requestSettings.OpenAiApiKey == mask) requestSettings.OpenAiApiKey = existingSettings.OpenAiApiKey;
             if (requestSettings.AnthropicApiKey == mask) requestSettings.AnthropicApiKey = existingSettings.AnthropicApiKey;
+            if (requestSettings.ClaudeCliOAuthToken == mask) requestSettings.ClaudeCliOAuthToken = existingSettings.ClaudeCliOAuthToken;
             if (requestSettings.FallbackGeminiApiKey == mask) requestSettings.FallbackGeminiApiKey = existingSettings.FallbackGeminiApiKey;
             if (requestSettings.FallbackOpenAiApiKey == mask) requestSettings.FallbackOpenAiApiKey = existingSettings.FallbackOpenAiApiKey;
             if (requestSettings.FallbackAnthropicApiKey == mask) requestSettings.FallbackAnthropicApiKey = existingSettings.FallbackAnthropicApiKey;
+            if (requestSettings.FallbackClaudeCliOAuthToken == mask) requestSettings.FallbackClaudeCliOAuthToken = existingSettings.FallbackClaudeCliOAuthToken;
             if (requestSettings.ThinkingGeminiApiKey == mask) requestSettings.ThinkingGeminiApiKey = existingSettings.ThinkingGeminiApiKey;
             if (requestSettings.ThinkingOpenAiApiKey == mask) requestSettings.ThinkingOpenAiApiKey = existingSettings.ThinkingOpenAiApiKey;
             if (requestSettings.ThinkingAnthropicApiKey == mask) requestSettings.ThinkingAnthropicApiKey = existingSettings.ThinkingAnthropicApiKey;
+            if (requestSettings.ThinkingClaudeCliOAuthToken == mask) requestSettings.ThinkingClaudeCliOAuthToken = existingSettings.ThinkingClaudeCliOAuthToken;
             if (requestSettings.InvestecSecret == mask) requestSettings.InvestecSecret = existingSettings.InvestecSecret;
             if (requestSettings.InvestecApiKey == mask) requestSettings.InvestecApiKey = existingSettings.InvestecApiKey;
             if (requestSettings.SmtpPass == mask) requestSettings.SmtpPass = existingSettings.SmtpPass;
@@ -159,11 +168,11 @@ public class SettingsController : ControllerBase
     }
 
     [HttpPost("test-ai")]
-    public async Task<IActionResult> TestAi()
+    public async Task<IActionResult> TestAi([FromBody] AppSettings? requestSettings = null)
     {
         try
         {
-            var result = await _aiService.TestConnectionAsync(UserId, useFallback: false, forceRefresh: true);
+            var result = await _aiService.TestConnectionAsync(UserId, useFallback: false, forceRefresh: true, overriddenSettings: requestSettings);
             _statusService.IsAiPrimaryOnline = result.Success;
             _statusService.PrimaryAiError = result.Success ? string.Empty : result.Error;
             
@@ -186,11 +195,11 @@ public class SettingsController : ControllerBase
     }
 
     [HttpPost("test-fallback-ai")]
-    public async Task<IActionResult> TestFallbackAi()
+    public async Task<IActionResult> TestFallbackAi([FromBody] AppSettings? requestSettings = null)
     {
         try
         {
-            var result = await _aiService.TestConnectionAsync(UserId, useFallback: true, forceRefresh: true);
+            var result = await _aiService.TestConnectionAsync(UserId, useFallback: true, forceRefresh: true, overriddenSettings: requestSettings);
             _statusService.IsAiFallbackOnline = result.Success;
             _statusService.FallbackAiError = result.Success ? string.Empty : result.Error;
 
@@ -213,11 +222,11 @@ public class SettingsController : ControllerBase
     }
 
     [HttpPost("test-thinking-ai")]
-    public async Task<IActionResult> TestThinkingAi()
+    public async Task<IActionResult> TestThinkingAi([FromBody] AppSettings? requestSettings = null)
     {
         try
         {
-            var result = await _aiService.TestConnectionAsync(UserId, useFallback: false, useThinking: true, forceRefresh: true);
+            var result = await _aiService.TestConnectionAsync(UserId, useFallback: false, useThinking: true, forceRefresh: true, overriddenSettings: requestSettings);
             if (result.Success)
             {
                 return Ok(new { Message = "Connected to Thinking AI successfully." });

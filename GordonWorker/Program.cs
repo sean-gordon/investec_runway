@@ -111,6 +111,7 @@ builder.Services.AddHttpClient("TelegramBotClient")
 builder.Services.AddSingleton<ITelegramBotClientFactory, TelegramBotClientFactory>();
 builder.Services.AddSingleton<ISettingsService, SettingsService>();
 builder.Services.AddSingleton<IActuarialService, ActuarialService>();
+builder.Services.AddSingleton<ClaudeCliService>();
 builder.Services.AddSingleton<ISystemStatusService, SystemStatusService>();
 builder.Services.AddSingleton<ITwilioService, TwilioService>();
 builder.Services.AddSingleton<ITelegramService, TelegramService>();

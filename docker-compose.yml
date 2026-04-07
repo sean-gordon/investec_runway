@@ -31,8 +31,10 @@ services:
       - JWT_AUDIENCE=${JWT_AUDIENCE:-GordonUsers}
       - TZ=${TZ}
       - Security__AllowedDomains__0=*
+      - HOME=/app/home
     volumes:
       - gordon_keys:/app/keys
+      - gordon_home:/app/home
     networks:
       - finance-net
     depends_on:
@@ -47,3 +49,4 @@ networks:
 volumes:
   timescaledb_data:
   gordon_keys:
+  gordon_home:

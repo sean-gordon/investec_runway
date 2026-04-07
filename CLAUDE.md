@@ -1,119 +1,94 @@
-# CLAUDE.md
+# Gordon Finance Engine: Guide for Claude
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file helps Claude Code (claude.ai/code) understand how to work with this project.
 
-## Project Overview
+## The Project
 
-**Gordon Finance Engine** (v2.9.0) — a self-hosted, containerized financial analytics platform that connects to the Investec Programmable Banking API for real-time transactions, runs Monte Carlo simulations for runway projections, and provides a natural language AI interface via Telegram bot and REST API.
+**Gordon Finance Engine** (v2.9.0) is a self-hosted financial dashboard. It pulls data from Investec's Programmable Banking API, runs simulations to predict your "runway" (how long your money will last), and lets you query your spending using AI (Ollama, Gemini, or Claude).
 
-## Build & Run Commands
+---
+
+## Commands
 
 ```bash
-# Production: build and start all services
+# Start everything (builds if needed)
 docker compose up -d --build
-
-# Start without rebuilding
-docker compose up -d
 
 # View logs
 docker compose logs -f gordon-worker
 
-# Stop
+# Stop everything
 docker compose down
 
-# .NET build (without Docker)
+# Manual .NET build (if not using Docker)
 cd GordonWorker
 dotnet build ./GordonWorker.csproj -c Release
-dotnet publish ./GordonWorker.csproj -c Release -o ./publish
 ```
 
-## Initial Setup
+## Setup
 
-```bash
-cp .env.template .env
-# Edit .env: set DB_PASSWORD, JWT_SECRET (must be ≥ 32 characters — validated at startup)
-```
+1. Copy `.env.template` to `.env`.
+2. Set a strong `DB_PASSWORD`.
+3. Set a `JWT_SECRET` (must be at least 32 characters or Gordon won't start).
 
-## Health Check Endpoints
+The dashboard runs at `http://localhost:52944`.
 
-```
-GET http://localhost:52944/health        # Overall health
-GET http://localhost:52944/health/ready  # Database + critical services
-GET http://localhost:52944/health/live   # Database only
-```
+---
 
-Dashboard is served at `http://localhost:52944`.
+## Health Checks
 
-## Architecture
+- `GET /health` — System status
+- `GET /health/ready` — Database and critical services
+- `GET /health/live` — Database connection only
 
-The application is a single .NET 8 Web API project (`GordonWorker/`) with a clean architecture:
+---
 
-```
-Controllers (HTTP API)
-    → Services (Business Logic)
-        → Repositories (Data Access via Dapper)
-            → TimescaleDB (PostgreSQL 16 time-series DB)
-```
+## How it's Built
 
-A Vue 3 frontend (no-build, no npm compile step) is served as static files from `GordonWorker/wwwroot/index.html`. All service registration and middleware wiring is in `GordonWorker/Program.cs`.
+It's a .NET 8 Web API (`GordonWorker/`) with a simple architecture:
+**Controllers** → **Services** → **Repositories (Dapper)** → **TimescaleDB**.
 
-### Key Services
+The frontend is a single-file Vue 3 app (`index.html`) served as static content. No npm build step required.
 
-- **`ActuarialService`** — Core analytics: burn rate, runway, Monte Carlo simulations, salary detection, variance analysis
-- **`AiService`** — Multi-provider LLM orchestration: routes to Ollama (primary) or Gemini (fallback), 5-min settings cache, exponential backoff (2s, 4s), 90s timeout
-- **`InvestecClient`** — OAuth2 client for the Investec bank API
-- **`TransactionSyncService`** — Deduplicates transactions using content-based fingerprinting
-- **`SettingsService`** — Stores encrypted user configuration (AES-256 via .NET Data Protection API) with 5-min `IMemoryCache`
-- **`TelegramChatService`** — Background `Channel<T>` queue for reliable Telegram message processing (15s heartbeat progress updates)
-- **`FinancialReportService`** — Orchestrates report generation: fetch → calculate → AI summary → HTML email
+### Core Services
+- **`ActuarialService`**: The math. Burn rates, runway, simulations, and salary detection.
+- **`AiService`**: Orchestrates the AI providers (Ollama, Gemini, Claude). Handles fallbacks and retries.
+- **`ClaudeCliService`**: Wrapper for the `claude` CLI tool to use consumer plans.
+- **`InvestecClient`**: Communicates with the bank's API.
+- **`TransactionSyncService`**: Deduplicates transactions and handles background categorisation.
+- **`SettingsService`**: Manages encrypted user config with a 5-minute memory cache.
+- **`TelegramChatService`**: A reliable message queue for the Telegram bot.
 
-### Background Workers (`Workers/`)
+### Background Workers
+- `TransactionsBackgroundService`: Polls the bank every 60 seconds.
+- `WeeklyReportWorker` / `DailyBriefingWorker`: Scheduled updates.
+- `RunwayTopUpWorker`: Logic for moving money between accounts.
+- `ConnectivityWorker`: Monitors service health.
 
-- `TransactionsBackgroundService` — Polls Investec API every 60 seconds
-- `WeeklyReportWorker` — Scheduled financial report delivery
-- `DailyBriefingWorker` — Daily summaries
-- `RunwayTopUpWorker` — Automated balance top-up logic
-- `ConnectivityWorker` — Health monitoring
+---
 
-### Database Schema
+## Technical Details
 
-```sql
-users               -- auth & roles
-user_settings       -- encrypted JSON config per user (JSONB)
-transactions        -- hypertable partitioned by transaction_date
-                    -- unique index on (id, transaction_date, user_id) for deduplication
-chat_history        -- AI conversation logs
-```
+- **Port:** 52944 (Internal 8080)
+- **Auth:** JWT Bearer tokens.
+- **Rate Limiting:** 100 requests/minute.
+- **Encryption:** AES-256 for stored keys (via .NET Data Protection).
+- **Database:** TimescaleDB (PostgreSQL 16) with hypertables.
+- **UI:** Vue 3, Tailwind CSS, and Chart.js.
 
-## Key Technical Details
+---
 
-- **Port:** 52944 (Docker maps 8080 → 52944)
-- **Authentication:** JWT Bearer; secret must be ≥ 32 chars (startup validation)
-- **Rate limiting:** 100 requests/minute per user/IP (`SemaphoreSlim` + middleware)
-- **Encryption:** AES-256 for stored settings via .NET Data Protection
-- **ORM:** Dapper with snake_case column mapping
-- **Charts:** ScottPlot (server-side rendering); requires fonts installed in Dockerfile
-- **Frontend:** Vue 3 Global Build (no compile step), Tailwind CSS CDN, Chart.js
+## Conventions
+- **Language:** English UK.
+- **Async:** Always use `CancellationToken`.
+- **Logging:** Structured logs with `[yyyy-MM-dd HH:mm:ss]` timestamps.
+- **Versioning:** Maintained in `GordonWorker.csproj`.
 
-## Language & Conventions
+---
 
-- English UK throughout (comments, user-facing strings, documentation)
-- All async methods must accept and respect `CancellationToken`
-- Log timestamps formatted as `[yyyy-MM-dd HH:mm:ss]`
-- Semantic versioning; version is maintained in `GordonWorker/GordonWorker.csproj`
-
-## External Service Dependencies
-
-| Service | Role |
-|---|---|
-| Investec API | OAuth2 bank transaction source (critical) |
-| TimescaleDB | Primary data store (critical) |
-| Ollama (local) | Primary LLM provider |
-| Google Gemini | Fallback LLM provider |
-| Telegram Bot | Webhook-based chat interface |
-| Twilio | SMS notifications (optional) |
-| SMTP | Email delivery (optional) |
-
-## GitHub Workflows
-
-`.github/workflows/gemini-*.yml` are automated Gemini AI dispatch/triage workflows — not CI/CD test pipelines.
+## External Services
+- **Investec API**: Primary transaction source.
+- **TimescaleDB**: Main storage.
+- **Ollama / Gemini / Claude**: AI brains.
+- **Telegram / Twilio**: Messaging and alerts.
+- **SMTP**: For the weekly financial report.

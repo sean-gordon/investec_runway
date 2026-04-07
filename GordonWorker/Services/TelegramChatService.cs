@@ -5,6 +5,8 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Telegram.Bot;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
 
 namespace GordonWorker.Services;
 
@@ -65,110 +67,104 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
         var investecClient = scope.ServiceProvider.GetRequiredService<IInvestecClient>();
         var actuarialService = scope.ServiceProvider.GetRequiredService<IActuarialService>();
         var chartService = scope.ServiceProvider.GetRequiredService<IChartService>();
-        var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
         var botClientFactory = scope.ServiceProvider.GetRequiredService<ITelegramBotClientFactory>();
-        var memoryCache = scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>();
+        var memoryCache = scope.ServiceProvider.GetRequiredService<IMemoryCache>();
+        var repo = scope.ServiceProvider.GetRequiredService<ITransactionRepository>();
+        var commandRouter = scope.ServiceProvider.GetRequiredService<ITelegramCommandRouter>();
 
         int placeholderId = 0;
         CancellationTokenSource? ctsHeartbeat = null;
 
         try
         {
-            _logger.LogInformation("Processing Telegram message for user {UserId}", request.UserId);
+            _logger.LogInformation("[Telegram] Fast-track processing for User {UserId}", request.UserId);
 
             var settings = await settingsService.GetSettingsAsync(request.UserId);
-            var botClient = botClientFactory.GetClient(settings.TelegramBotToken);
-            var repo = scope.ServiceProvider.GetRequiredService<ITransactionRepository>();
-            var commandRouter = scope.ServiceProvider.GetRequiredService<ITelegramCommandRouter>();
-
-            // Handle Slash Commands via Router
+            
+            // 1. Handle Commands immediately (zero LLM overhead)
             var commandResult = await commandRouter.RouteCommandAsync(request.UserId, request.MessageText, settings, ct);
-            if (commandResult != null)
-            {
-                return;
-            }
+            if (commandResult != null) return;
 
-            // Send typing indicator
+            // 2. Parallelize Data Fetching and Intent Detection
+            var intentTask = aiService.DetectIntentAsync(request.UserId, request.MessageText);
+            var historyTask = repo.GetHistoryForAnalysisAsync(request.UserId, 90);
+            
+            var botClient = botClientFactory.GetClient(settings.TelegramBotToken);
             await botClient.SendChatAction(request.ChatId, Telegram.Bot.Types.Enums.ChatAction.Typing, cancellationToken: ct);
 
-            // Send placeholder with progress
-            placeholderId = await telegramService.SendMessageWithIdAsync(request.UserId,
-                "<b>Analytical Engine Working</b>\n" +
-                "<code>▱▱▱▱▱▱▱</code>\n" +
-                "<i>Initializing financial analysis...</i>", request.ChatId);
+            // Wait brief moment for instant results before showing progress UI
+            var completedTask = await Task.WhenAny(intentTask, Task.Delay(1500, ct));
+            
+            if (completedTask != intentTask)
+            {
+                placeholderId = await telegramService.SendMessageWithIdAsync(request.UserId,
+                    "<b>Analytical Engine Working</b>\n" +
+                    "<code>▱▱▱▱▱▱▱</code>\n" +
+                    "<i>Initializing financial analysis...</i>", request.ChatId);
 
-            // Start heartbeat
-            ctsHeartbeat = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            var heartbeatTask = StartHeartbeatAsync(request.UserId, placeholderId, request.ChatId, telegramService, ctsHeartbeat.Token);
+                ctsHeartbeat = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                _ = StartHeartbeatAsync(request.UserId, placeholderId, request.ChatId, telegramService, ctsHeartbeat.Token);
+            }
 
-            // Configure Investec
-            investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
+            // 3. Resolve Parallel Tasks
+            var intentEl = await intentTask;
+            var history = (await historyTask).ToList();
 
-            // Fetch data
-            var history = (await repo.GetHistoryForAnalysisAsync(request.UserId, 90)).ToList();
-
+            // 4. Get Balances (Cached)
             var cacheKey = $"investec_balance_{request.UserId}";
             if (!memoryCache.TryGetValue(cacheKey, out decimal currentBalance))
             {
+                investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
                 var accounts = await investecClient.GetAccountsAsync();
                 currentBalance = 0;
                 foreach (var acc in accounts) currentBalance += await investecClient.GetAccountBalanceAsync(acc.AccountId);
-                
                 memoryCache.Set(cacheKey, currentBalance, TimeSpan.FromMinutes(15));
             }
 
+            // 5. Actuarial Analysis
             var summary = await actuarialService.AnalyzeHealthAsync(history, currentBalance, settings);
-            var summaryJson = JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true });
+            var summaryJson = JsonSerializer.Serialize(summary);
 
-            // Check for chart request
-            var (isChart, chartType, chartSql, chartTitle) = await aiService.AnalyzeChartRequestAsync(request.UserId, request.MessageText);
+            // 6. Execute Intent
+            var intent = intentEl?.TryGetProperty("intent", out var p) == true ? p.GetString() : "QUERY";
 
-            if (isChart && !string.IsNullOrWhiteSpace(chartSql))
+            if (intent == "CHART" && intentEl.Value.TryGetProperty("chart", out var chartObj))
             {
-                await HandleChartRequestAsync(request.UserId, chartSql!, chartType ?? "bar", chartTitle!, request.ChatId,
-                   repo, aiService, chartService, telegramService, placeholderId, ctsHeartbeat);
-                return;
+                var chartType = chartObj.TryGetProperty("type", out var ctEl) ? ctEl.GetString() : "bar";
+                var chartSql = chartObj.TryGetProperty("sql", out var sqlEl) ? sqlEl.GetString() : null;
+                var chartTitle = chartObj.TryGetProperty("title", out var titleEl) ? titleEl.GetString() : "Spending Chart";
+
+                if (!string.IsNullOrWhiteSpace(chartSql))
+                {
+                    await HandleChartRequestAsync(request.UserId, chartSql, chartType!, chartTitle!, request.ChatId,
+                        repo, aiService, chartService, telegramService, placeholderId, ctsHeartbeat);
+                    return;
+                }
+            }
+            else if (intent == "EXPLAIN")
+            {
+                var explanationResult = await aiService.AnalyzeExpenseExplanationAsync(request.UserId, request.MessageText, history);
+                if (explanationResult.TransactionId != null)
+                {
+                    await HandleTransactionExplanationAsync(request.UserId, explanationResult.TransactionId.Value, explanationResult.Note!, request.MessageText,
+                        request.ChatId, repo, history, telegramService, placeholderId, ctsHeartbeat);
+                    return;
+                }
+            }
+            else if (intent == "AFFORD" && intentEl.Value.TryGetProperty("afford", out var affordObj))
+            {
+                var amount = affordObj.TryGetProperty("amount", out var amtEl) && amtEl.ValueKind == JsonValueKind.Number ? amtEl.GetDecimal() : 0;
+                var desc = affordObj.TryGetProperty("desc", out var descEl) ? descEl.GetString() : "this purchase";
+
+                if (amount > 0)
+                {
+                    await HandleAffordabilityCheckAsync(request.UserId, amount, desc!, request.ChatId,
+                        history, currentBalance, summary, settings, actuarialService, chartService, telegramService, placeholderId, ctsHeartbeat);
+                    return;
+                }
             }
 
-            // Check for runway chart
-            if (!string.IsNullOrWhiteSpace(request.MessageText) && 
-                request.MessageText.ToLower().Contains("runway") &&
-                (request.MessageText.ToLower().Contains("chart") || request.MessageText.ToLower().Contains("graph")))
-            {
-                var chartBytes = chartService.GenerateRunwayChart(history, currentBalance, (double)summary.WeightedDailyBurn);
-                ctsHeartbeat.Cancel();
-                await telegramService.SendImageAsync(request.UserId, chartBytes, "<b>📉 Financial Runway Projection</b>", request.ChatId);
-                await telegramService.EditMessageAsync(request.UserId, placeholderId, "Visual runway projection generated.", request.ChatId);
-                return;
-            }
-
-            // Check for transaction explanation
-            var explanationResult = await aiService.AnalyzeExpenseExplanationAsync(request.UserId, request.MessageText ?? "", history);
-            Guid? explainedTxId = explanationResult.TransactionId;
-            string? explanationNote = explanationResult.Note;
-
-            if (explainedTxId != null)
-            {
-                await HandleTransactionExplanationAsync(request.UserId, explainedTxId.Value, explanationNote!, request.MessageText ?? "",
-                    request.ChatId, repo, history, telegramService, placeholderId, ctsHeartbeat);
-                return;
-            }
-
-            // Check for affordability question
-            var affordabilityResult = await aiService.AnalyzeAffordabilityAsync(request.UserId, request.MessageText ?? "");
-            bool isAffordability = affordabilityResult.IsAffordabilityCheck;
-            decimal? affordAmount = affordabilityResult.Amount;
-            string? affordDesc = affordabilityResult.Description;
-
-            if (isAffordability && affordAmount > 0)
-            {
-                await HandleAffordabilityCheckAsync(request.UserId, affordAmount!.Value, affordDesc!, request.ChatId,
-                    history, currentBalance, summary, settings, actuarialService, chartService, telegramService, placeholderId, ctsHeartbeat);
-                return;
-            }
-
-            // Standard financial query
-            await HandleStandardQueryAsync(request.UserId, request.MessageText ?? "", request.ChatId, currentBalance, summary,
+            await HandleStandardQueryAsync(request.UserId, request.MessageText, request.ChatId, currentBalance, summary,
                 summaryJson, repo, aiService, telegramService, placeholderId, ctsHeartbeat);
         }
         catch (OperationCanceledException)
@@ -178,21 +174,15 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing Telegram message for user {UserId}", request.UserId);
-
+            ctsHeartbeat?.Cancel();
             try
             {
                 var telegramSvc = scope.ServiceProvider.GetRequiredService<ITelegramService>();
-                var errorMessage = "⚠️ <b>Analytical Error</b>\n\nI encountered an unexpected issue while processing your request. Your data is safe. Please try again in a moment.";
-
-                if (placeholderId > 0)
-                    await telegramSvc.EditMessageAsync(request.UserId, placeholderId, errorMessage, request.ChatId);
-                else
-                    await telegramSvc.SendMessageAsync(request.UserId, errorMessage, request.ChatId);
+                var errorMessage = $"⚠️ <b>Analytical Error</b>\n\n{TelegramService.EscapeHtml(ex.Message)}";
+                if (placeholderId > 0) await telegramSvc.EditMessageAsync(request.UserId, placeholderId, errorMessage, request.ChatId);
+                else await telegramSvc.SendMessageAsync(request.UserId, errorMessage, request.ChatId);
             }
-            catch (Exception ex2)
-            {
-                _logger.LogError(ex2, "Failed to send error message to user {UserId}", request.UserId);
-            }
+            catch (Exception ex2) { _logger.LogError(ex2, "Failed to send error message."); }
         }
         finally
         {
@@ -205,16 +195,14 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
     {
         var wittyComments = new[]
         {
-            "Stress-testing current liquidity buffers...",
-            "Assessing variance in discretionary expenditure...",
-            "Optimizing capital allocation projections...",
-            "Benchmarking against historical salary cycles...",
-            "Recalibrating actuarial risk parameters...",
+            "Stress-testing liquidity buffers...",
+            "Assessing variance in expenditure...",
+            "Optimizing capital projections...",
+            "Benchmarking salary cycles...",
+            "Recalibrating risk parameters...",
             "Synthesizing transaction metadata...",
-            "Running Monte-Carlo runway simulations...",
-            "Auditing ledger for deterministic fingerprints...",
-            "Evaluating solvency relative to next payday...",
-            "Analyzing burn-rate velocity trends..."
+            "Running runway simulations...",
+            "Auditing ledger fingerprints..."
         };
 
         int stageIndex = 0;
@@ -224,20 +212,13 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
         {
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(2.5), ct);
+                await Task.Delay(TimeSpan.FromSeconds(3), ct);
+                if (ct.IsCancellationRequested) break;
 
                 var bar = progressStages[Math.Min(stageIndex, progressStages.Length - 1)];
-                var nextWitty = stageIndex switch
-                {
-                    0 => "Synchronizing Investec ledger data...",
-                    1 => "Running actuarial burn-rate simulations...",
-                    2 => "Generating strategic CFO commentary...",
-                    3 => "Finalizing liquidity risk assessment...",
-                    _ => wittyComments[Random.Shared.Next(wittyComments.Length)]
-                };
+                var nextWitty = wittyComments[Random.Shared.Next(wittyComments.Length)];
 
                 stageIndex++;
-
                 if (placeholderId > 0)
                 {
                     await telegramService.EditMessageAsync(userId, placeholderId,
@@ -253,61 +234,45 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
 
     private async Task HandleChartRequestAsync(int userId, string chartSql, string chartType, string chartTitle, string chatId,
         ITransactionRepository repo, IAiService aiService, IChartService chartService, ITelegramService telegramService,
-        int placeholderId, CancellationTokenSource ctsHeartbeat)
+        int placeholderId, CancellationTokenSource? ctsHeartbeat)
     {
-        try
+        var rawChartData = (await repo.GetChartDataAsync(userId, chartSql)).ToList();
+        if (rawChartData.Any())
         {
-            var rawChartData = (await repo.GetChartDataAsync(userId, chartSql)).ToList();
+            var chartData = rawChartData.Select(r => {
+                var dict = (IDictionary<string, object>)r;
+                var label = dict.Values.ElementAtOrDefault(0)?.ToString() ?? "";
+                var rawVal = dict.Values.ElementAtOrDefault(1);
+                var value = rawVal != null ? Convert.ToDouble(rawVal) : 0.0;
+                return (Label: label, Value: value);
+            }).ToList();
 
-            if (rawChartData.Any())
-            {
-                // Map dynamic results to typed tuples expected by the chart service
-                var chartData = rawChartData
-                    .Select(r => {
-                        var dict = (IDictionary<string, object>)r;
-                        var label = dict.Values.ElementAtOrDefault(0)?.ToString() ?? "";
-                        var rawVal = dict.Values.ElementAtOrDefault(1);
-                        var value = rawVal != null ? Convert.ToDouble(rawVal) : 0.0;
-                        return (Label: label, Value: value);
-                    })
-                    .ToList();
+            var chartBytes = chartService.GenerateGenericChart(chartTitle, chartType, chartData);
+            var commentaryPrompt = GordonWorker.Prompts.SystemPrompts.GetChartCommentaryPrompt(chartTitle, JsonSerializer.Serialize(rawChartData));
+            var caption = await aiService.FormatResponseAsync(userId, commentaryPrompt, "", isWhatsApp: false);
 
-                var chartBytes = chartService.GenerateGenericChart(chartTitle, chartType, chartData);
-                var dataJson = JsonSerializer.Serialize(rawChartData);
-                var commentaryPrompt = $@"You are the user's Personal CFO.
-The user requested a chart: '{chartTitle}'.
-DATA RETRIEVED: {dataJson}
-
-INSTRUCTIONS:
-- Provide a 2-sentence strategic observation about this specific data.
-- Mention any concerning trends or positive patterns.
-- Maintain a highly professional, boardroom tone.";
-
-                var caption = await aiService.FormatResponseAsync(userId, commentaryPrompt, "", isWhatsApp: false);
-
-                ctsHeartbeat.Cancel();
-                await telegramService.SendImageAsync(userId, chartBytes, $"<b>📊 {TelegramService.EscapeHtml(chartTitle)}</b>\n\n{caption}", chatId);
-                if (placeholderId > 0) await telegramService.EditMessageAsync(userId, placeholderId, "Analytical visualization complete.", chatId);
-            }
+            ctsHeartbeat?.Cancel();
+            await telegramService.SendImageAsync(userId, chartBytes, $"<b>📊 {TelegramService.EscapeHtml(chartTitle)}</b>\n\n{caption}", chatId);
+            if (placeholderId > 0) await telegramService.EditMessageAsync(userId, placeholderId, "Analytical visualization complete.", chatId);
         }
-        catch (Exception ex)
+        else
         {
-            _logger.LogWarning(ex, "Failed to generate chart for user {UserId}", userId);
+            ctsHeartbeat?.Cancel();
+            if (placeholderId > 0) await telegramService.EditMessageAsync(userId, placeholderId, "I couldn't find any data to chart for that request.", chatId);
         }
     }
 
     private async Task HandleTransactionExplanationAsync(int userId, Guid txId, string note, string messageText, string chatId,
-        ITransactionRepository repo, List<Transaction> history, ITelegramService telegramService, int placeholderId, CancellationTokenSource ctsHeartbeat)
+        ITransactionRepository repo, List<Transaction> history, ITelegramService telegramService, int placeholderId, CancellationTokenSource? ctsHeartbeat)
     {
         await repo.UpdateTransactionNoteAsync(txId, note);
-
         var tx = history.FirstOrDefault(t => t.Id == txId);
         var confirmation = $"✅ <b>Noted.</b> I've updated the ledger:\n<i>{TelegramService.EscapeHtml(tx?.Description ?? "Transaction")}</i>: {TelegramService.EscapeHtml(note)}";
-
+        
         await repo.InsertChatHistoryAsync(userId, messageText, true);
         await repo.InsertChatHistoryAsync(userId, confirmation, false);
 
-        ctsHeartbeat.Cancel();
+        ctsHeartbeat?.Cancel();
         if (placeholderId > 0) await telegramService.EditMessageAsync(userId, placeholderId, confirmation, chatId);
         else await telegramService.SendMessageAsync(userId, confirmation, chatId);
     }
@@ -315,11 +280,10 @@ INSTRUCTIONS:
     private async Task HandleAffordabilityCheckAsync(int userId, decimal amount, string description, string chatId,
         List<Transaction> history, decimal currentBalance, FinancialHealthReport summary, AppSettings settings,
         IActuarialService actuarialService, IChartService chartService, ITelegramService telegramService,
-        int placeholderId, CancellationTokenSource ctsHeartbeat)
+        int placeholderId, CancellationTokenSource? ctsHeartbeat)
     {
         var simulatedBalance = currentBalance - amount;
         var simSummary = await actuarialService.AnalyzeHealthAsync(history, simulatedBalance, settings);
-
         var runwayImpact = summary.ExpectedRunwayDays - simSummary.ExpectedRunwayDays;
         var riskLevel = simSummary.ExpectedRunwayDays < 10 ? "High" : runwayImpact > 5 ? "Medium" : "Low";
 
@@ -330,10 +294,10 @@ INSTRUCTIONS:
                        $"<b>Runway Impact:</b> -{runwayImpact:F1} days\n" +
                        $"<b>New Runway:</b> {simSummary.ExpectedRunwayDays:F1} days\n" +
                        $"<b>Risk Level:</b> {riskLevel}\n\n" +
-                       (riskLevel == "High" ? "🛑 <b>ADVISORY:</b> This purchase puts you in a dangerous liquidity position." :
-                        "✅ <b>ADVISORY:</b> You have sufficient buffer for this.");
+                       (riskLevel == "High" ? "🛑 <b>ADVISORY:</b> Dangerous liquidity position." :
+                        "✅ <b>ADVISORY:</b> Sufficient buffer for this.");
 
-        ctsHeartbeat.Cancel();
+        ctsHeartbeat?.Cancel();
         if (placeholderId > 0) await telegramService.EditMessageAsync(userId, placeholderId, response, chatId);
         else await telegramService.SendMessageAsync(userId, response, chatId);
 
@@ -346,7 +310,7 @@ INSTRUCTIONS:
 
     private async Task HandleStandardQueryAsync(int userId, string messageText, string chatId, decimal currentBalance,
         FinancialHealthReport summary, string summaryJson, ITransactionRepository repo, IAiService aiService,
-        ITelegramService telegramService, int placeholderId, CancellationTokenSource ctsHeartbeat)
+        ITelegramService telegramService, int placeholderId, CancellationTokenSource? ctsHeartbeat)
     {
         var culture = (System.Globalization.CultureInfo)System.Globalization.CultureInfo.InvariantCulture.Clone();
         culture.NumberFormat.CurrencySymbol = "R";
@@ -355,49 +319,28 @@ INSTRUCTIONS:
                          $"<b>Current Balance:</b> {TelegramService.EscapeHtml(currentBalance.ToString("C", culture))}\n" +
                          $"<b>Projected Runway:</b> {(summary.ExpectedRunwayDays < 0 ? "0" : TelegramService.EscapeHtml(summary.ExpectedRunwayDays.ToString("F0")))} Days\n" +
                          $"<b>Next Salary:</b> In {summary.DaysUntilNextSalary} Days\n" +
-                         $"<b>Burn Trend:</b> {TelegramService.EscapeHtml(summary.TrendDirection)}\n" +
                          $"---------------------------\n\n";
 
-        var recentHistory = (await repo.GetRecentChatHistoryAsync(userId, 10)).Reverse().ToList();
-
+        var recentHistory = (await repo.GetRecentChatHistoryAsync(userId, 5)).Reverse().ToList();
         var historyContext = string.Join("\n", recentHistory.Select(h => h.IsUser ? $"User: {h.MessageText}" : $"CFO: {h.MessageText}"));
 
-        var promptForSummary = $@"You are acting as the user's Personal CFO.
-
-**PREVIOUS CONVERSATION:**
-{historyContext}
-
-**CURRENT REQUEST:**
-User: {messageText}
-
-**INSTRUCTIONS:**
-- Provide a direct, data-driven answer based *only* on the provided financial summary and previous conversation context.
-- If the user's question implies financial stress, provide a path to stability.
-- If the user's question implies good health, suggest how to optimize or invest.
-- Maintain a tone of calm, professional competence.
-- Do NOT repeat the header stats (Balance, Runway, etc.) as they are already displayed above your message.
-
-**YOUR GOAL:**
-Demonstrate that you understand their financial reality better than they do, and guide them toward control.";
-
+        var promptForSummary = GordonWorker.Prompts.SystemPrompts.GetStandardQuerySummaryPrompt(historyContext, messageText);
         var aiResponse = await aiService.FormatResponseAsync(userId, promptForSummary, summaryJson, isWhatsApp: false);
 
         if (string.IsNullOrWhiteSpace(aiResponse) || aiResponse.Contains("I'm sorry") || aiResponse.Contains("difficulties connecting"))
         {
-            aiResponse = "<i>I'm currently observing some latency in my analytical engine. Your core metrics are displayed above for your review. The system remains operational and your data is secure.</i>";
+            aiResponse = "<i>analytical engine latency observed. Stats displayed above.</i>";
         }
 
         var finalAnswer = statsBlock + aiResponse;
+        if (finalAnswer.Length > 4000) finalAnswer = finalAnswer.Substring(0, 3990) + "...";
 
         await repo.InsertChatHistoryAsync(userId, messageText, true);
         await repo.InsertChatHistoryAsync(userId, aiResponse, false);
 
-        ctsHeartbeat.Cancel();
-
-        if (placeholderId > 0)
-            await telegramService.EditMessageAsync(userId, placeholderId, finalAnswer, chatId);
-        else
-            await telegramService.SendMessageAsync(userId, finalAnswer, chatId);
+        ctsHeartbeat?.Cancel();
+        if (placeholderId > 0) await telegramService.EditMessageAsync(userId, placeholderId, finalAnswer, chatId);
+        else await telegramService.SendMessageAsync(userId, finalAnswer, chatId);
     }
 
     private record TelegramRequest(int UserId, string ChatId, string MessageText);

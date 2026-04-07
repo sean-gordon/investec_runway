@@ -1,98 +1,86 @@
 # Changelog
 
-All notable changes to Gordon Finance Engine will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+All notable changes to Gordon Finance Engine are documented here.
 
 ---
 
 ## [Unreleased]
 
 ### Added
-- **API Side Hustle Bounty**: Integrated monetisation hooks (`IsPremiumUser`, `StripeSubscriptionId`) into settings and drafted `MONETISATION.md` strategy.
-- **Active Programmable Banking**: Implemented automated runway top-ups via `RunwayTopUpWorker`. Auto-transfers money from Savings to Spending when actuarial runway drops below the threshold.
-- **Transfers API**: Added `ExecuteTransferAsync` to `InvestecClient` leveraging `/za/pb/v1/accounts/transfermultiple` with native dry-run support.
-- **Environment Targeting**: Added `InvestecEnvironment` to settings to toggle smoothly between `Sandbox` and `Live` APIs.
-
+- **Claude CLI Support**: You can now use your consumer Claude Pro/Team plan via the CLI. This bypasses per-token API costs by acting as a wrapper around `@anthropic-ai/claude-code`.
+- **Manual Token Entry**: Added a simple way to authenticate Claude CLI. Just run `claude setup-token` locally and paste the key into the dashboard. Much more reliable than browser redirects in a Docker container.
+- **Auto-Top Ups**: Implemented automated runway top-ups. Gordon can now move money from Savings to Spending automatically if your projected runway drops below your safe threshold.
+- **Investec Environment Toggle**: Added a setting to switch between Sandbox and Live APIs without changing code.
+- **Stripe Integration Hooks**: Added backend fields for `IsPremiumUser` and `StripeSubscriptionId` to support future monetisation.
 
 ### Planned
-- Advanced ML categorisation for transaction categorisation
-- Multi-cycle seasonality analysis (YoY comparisons)
-- Black swan risk modeling with Student's t-distributions
-- Interactive chart visualization in web UI
-- Multi-currency support with automatic exchange rates
-- Transaction audit trail table
-- Prometheus metrics endpoint
-- Circuit breaker for Investec API
-- OpenTelemetry distributed tracing
-- Admin dashboard for system monitoring
+- Better transaction categorisation using specialized ML.
+- Year-on-year seasonality analysis.
+- Risk modeling for "black swan" spending events.
+- Interactive charts in the dashboard.
+- Support for multiple currencies and live exchange rates.
 
 ### Changed
-- **Ollama AI Health Check Optimization**: `ConnectivityWorker` now only polls the AI providers once every 4 hours instead of every 5 minutes to prevent Ollama from experiencing timeout errors and exhaustion.
-- **Dynamic Gemini Model Discovery Fix**: `SettingsController` now explicitly unmasks `********` placeholder settings sent by the frontend UI, allowing the `AiService` to authenticate with the true API key and fetch the live dynamic model list from Google's endpoint successfully instead of defaulting to hardcoded fallbacks.
+- **Smarter Health Checks**: `ConnectivityWorker` now only pings AI providers every 4 hours instead of every 5 minutes. This keeps Ollama from getting overwhelmed and timing out.
+- **Gemini Model Discovery**: Fixed a bug where masked settings prevented Gordon from fetching the latest model list from Google.
 
 ## [2.9.0] - 2026-02-27
 
 ### Added
-- **OpenAI Provider Support**: `gpt-4o`, `gpt-4.1`, `gpt-4.1-mini`, `o3-mini`, `o4-mini` and more. Dynamically fetches the latest GPT and o-series models from the OpenAI `/v1/models` endpoint. Supports Primary, Fallback, and Thinking Model slots.
-- **Anthropic (Claude) Provider Support**: `claude-3-7-sonnet-latest`, `claude-3-5-sonnet-latest`, `claude-3-5-haiku-latest`, `claude-opus-4-5`, `claude-sonnet-4-5`. Returns a curated static list (Anthropic has no public model list API).
-- **Thinking Model Instructions File**: `GordonWorker/Resources/thinking_model_instructions.md` — a rich, structured set of quality-control rules for the Thinking Model reviewer (accuracy, completeness, SQL validity, tone, safety). Loaded at runtime so it can be tuned without recompile.
-- **Four-Provider UI**: All three AI provider dropdowns (Primary Brain, Fallback, Thinking Model) in Settings now include `OpenAI` and `Anthropic (Claude)` options with conditional credential fields.
+- **OpenAI Support**: Added full support for GPT-4o, o3-mini, and the latest o-series models. Gordon now fetches these dynamically from OpenAI's API.
+- **Claude (API) Support**: Added official Anthropic API support alongside the new CLI method.
+- **Thinking Model Rules**: Added a customizable `thinking_model_instructions.md` file. This lets the "Thinking Model" reviewer check for SQL accuracy, tone, and data safety before Gordon replies.
+- **Updated UI**: The Brain settings now have slots for Primary, Fallback, and Thinking models across all providers.
 
 ### Changed
-- `AiService`: `GetAvailableModelsAsync` now dispatches to provider-specific model fetchers. `GenerateCompletionAsync` routes to `GenerateOpenAiCompletionAsync` or `GenerateAnthropicCompletionAsync` as appropriate.
-- `AiProviderConfig`: Added `OpenAiKey` and `AnthropicKey` fields.
-- `AppSettings`: Added `OpenAiApiKey`, `OpenAiModelName`, `AnthropicApiKey`, `AnthropicModelName` and their `Fallback*` and `Thinking*` counterparts (6 fields each, 12 new per slot = 18 new fields total).
-- `SettingsService`: All 6 new API key fields are encrypted at rest and decrypted on load.
-- `SettingsController`: All 6 new API key fields are masked when served to the frontend, and preserved when the masked placeholder is sent back.
+- **Unified AI Config**: Refactored `AiService` to handle different providers more cleanly.
+- **Encrypted Keys**: All new API keys are now encrypted at rest and masked in the UI.
 
 ## [2.8.2] - 2026-02-27
 
 ### Changed
-- **Thinking Model "Tennis Match" Loop**: Completely decoupled AI network retries (`AiRetryAttempts`) from the Thinking Model reflection loop. The Thinking Model can now engage in a back-and-forth "tennis match" with the primary LLM up to 3 times to meticulously reject and correct inadequate outputs without prematurely terminating due to network retry limits.
+- **Thinking Model "Tennis Match"**: The Thinking Model can now go back and forth with the primary LLM up to 3 times to correct bad answers. This is now independent of network retry limits.
 
 ## [2.8.1] - 2026-02-27
 
 ### Fixed
-- **Docker Compose Startup Variables**: Handled the missing `JWT_SECRET` gracefully in `docker-compose.yml` (`:-`) so the application can start and trigger the clear C# exception message instead of Docker Compose fatally crashing externally.
+- **Startup Stability**: Handled missing `JWT_SECRET` more gracefully so Docker doesn't crash before Gordon can tell you what's wrong.
 
 ## [2.8.0] - 2026-02-27
 
 ### Security
-- **JWT Secret Hardening**: Completely removed the hardcoded `SUPER_SECRET_FALLBACK_KEY_CHANGE_ME_NOW` fallback inside `AuthController.cs`. JWT secrets are now strictly enforced to be loaded from Environment Variables (`JWT_SECRET`) instead of `appsettings.json`, requiring Docker or OS-level configuration for enhanced security. Added definitions to `docker-compose.yml` and `.env.template`.
+- **Strict JWT Secrets**: Removed the hardcoded fallback secret. Gordon now requires a `JWT_SECRET` environment variable to start, which is much safer.
 
 ### Changed
-- **WhatsApp Performance**: Replaced O(N) database queries per message with an O(1) `GetUserIdByWhatsAppNumberAsync` memory-cached lookup. 
-- **WhatsApp Live API Caching**: Replaced synchronous 5-second polling of live Investec balances with a 15-minute `IMemoryCache` duration, greatly reducing Twilio webhook timeouts.
-- **Removed Code Bloat**: Deleted legacy Markdown planning files, old build logs, and commented-out dead code blocks from controllers.
+- **WhatsApp Speed**: Optimized user lookups and account balance polling. Continuous chat on WhatsApp now feels significantly faster.
+- **Code Cleanup**: Removed a bunch of dead code, legacy planning files, and old logs to keep the repo lean.
 
 ## [2.7.11] - 2026-02-27
 
 ### Fixed
-- **Compilation Error**: Added missing `Microsoft.Extensions.Caching.Memory` using directive in `TelegramChatService` which caused Docker builds to fail for version 2.7.10.
+- **Docker Build Fix**: Fixed a missing reference that was breaking production builds.
 
 ## [2.7.10] - 2026-02-27
 
 ### Changed
-- **Telegram Perception Speed**: Reduced the AI processing heartbeat update delay from 15 seconds to 2.5 seconds. The user will now see "Analytical Engine Working [10%]" much faster instead of a long silent pause.
-- **Telegram Live API Caching**: The application previously spent 3 to 5 seconds synchronously polling live Investec account balances *before* generating a reply to a generic AI message. This is now cached in memory for 15 minutes, making continuous AI chatting feel instant.
+- **Better Feedback**: Reduced the delay for "Analytical Engine Working" updates in Telegram. You'll see progress updates every 2.5 seconds now.
+- **Balance Caching**: Account balances are now cached for 15 minutes, so chatting with Gordon doesn't wait on the bank API every single time.
 
 ## [2.7.9] - 2026-02-27
 
 ### Fixed
-- **Webhook Dual-Path Bug**: Fixed a bug where registering a webhook from the frontend resulted in Telegram server registering `.../telegram/webhook/webhook/{token}` which caused Telegram messages to silently 404. It now strips any trailing paths and explicitly sets `/telegram/webhook/{token}`.
+- **Telegram Webhook Bug**: Fixed a URL path issue that caused some Telegram messages to fail with a 404 error.
 
 ## [2.7.8] - 2026-02-27
 
 ### Fixed
-- **Build Server Compilation Error**: Fixed a compile-time bug in `TelegramController` where `AppSettings` was erroneously prefixed entirely with `Models.`, causing Docker build failures in production.
+- **Compile Error**: Fixed a namespace issue in `TelegramController` that broke production builds.
 
 ## [2.7.7] - 2026-02-27
 
 ### Fixed
-- **Telegram Webhook Bottleneck**: Added an in-memory `_tokenCache` to `TelegramController` to map webhook tokens to user IDs instantly in O(1) time. This prevents the previous O(N) database iteration of all users and decrypting all settings on every single webhook hit, drastically reducing latency and preventing Telegram server timeouts.
-- **Socket Exhaustion (Telegram)**: Introduced `ITelegramBotClientFactory` to cache and reuse `TelegramBotClient` instances using `IHttpClientFactory`. Previously, a new client (and underlying `HttpClient`) was created *every time* a message was sent or received, leading to socket exhaustion under load which eventually manifested as "Telegram send and receive is no longer working" and caused AI connection timeouts.
+- **Telegram Bottleneck**: Added an in-memory cache for tokens so Gordon doesn't have to scan the whole database for every incoming message.
+- **Socket Exhaustion**: Added a proper factory for Telegram clients to prevent "socket exhaustion" errors during high traffic.
 
 ## [2.7.0] - 2026-02-26
 

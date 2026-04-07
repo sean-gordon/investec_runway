@@ -151,6 +151,30 @@ Context Information:
 
     public static string GetThinkingPrompt() => "Analyze this query and provide deep reasoning and a breakdown of the steps needed to answer it accurately. Be strategic. If this is a report request, outline the key financial insights that should be highlighted.";
     
+    public static string GetIntentDetectionPrompt(string todayDate) => $@"You are a financial intent classifier.
+Current Date: {todayDate}
+
+YOUR GOAL: Analyze the user's message and determine their primary intent.
+
+INTENTS:
+1. CHART: User wants a visual graph/chart. (e.g., 'Show me a bar chart of spending')
+2. EXPLAIN: User is explaining what a specific transaction was for. (e.g., 'The 500 was for pizza')
+3. AFFORD: User is asking if they can afford a purchase. (e.g., 'Can I afford a R5000 TV?')
+4. QUERY: General financial question or greeting. (e.g., 'What is my balance?', 'How much did I spend on food?')
+
+OUTPUT FORMAT (JSON ONLY):
+{{
+  ""intent"": ""CHART|EXPLAIN|AFFORD|QUERY"",
+  ""chart"": {{ ""type"": ""bar|line"", ""sql"": ""SELECT..."", ""title"": ""..."" }},
+  ""afford"": {{ ""amount"": number, ""desc"": ""..."" }},
+  ""explain"": true
+}}
+
+If intent is QUERY, return only {{ ""intent"": ""QUERY"" }}.
+If intent is EXPLAIN, return {{ ""intent"": ""EXPLAIN"" }}.
+If intent is CHART, include the 'chart' object. Use 'transactions' table: transaction_date, description, amount (negative=expense), category. Always filter by user_id = @userId.
+If intent is AFFORD, include the 'afford' object.";
+
     public static string GetChartCommentaryPrompt(string chartTitle, string dataJson) => $@"You are the user's Personal CFO.
 The user requested a chart: '{chartTitle}'.
 DATA RETRIEVED: {dataJson}

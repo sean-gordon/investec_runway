@@ -1,37 +1,36 @@
-# Monetising Gordon Finance Engine
+# Making Money with Gordon
 
-The Gordon Finance Engine is primarily open source, but it has been specifically adapted to support a "Side Hustle" monetisation strategy in compliance with the Investec API Bounty requirements.
+While Gordon is open source, I've built him with a clear path to becoming a profitable side hustle. This matches the Investec API Bounty requirements for "monetisation potential."
 
-## Our Strategy: Hosted Premium (SaaS) Pattern
+## The Plan: A Hosted SaaS
 
-Gordon provides "Actuarial-grade" financial insights. The easiest way to monetise this is to offer a hosted version of the application for users who lack the technical expertise or infrastructure to self-host the Docker containers.
+Gordon provides high-level actuarial insights that are usually locked behind expensive financial advisors. Most people won't want to mess with Docker or a Linux server, so the most obvious way to make money is a hosted version (Software as a Service).
 
 ### Premium Features
 
-We have built specific feature flags directly into the engine's core configuration model (`AppSettings`):
-1. **`IsPremiumUser`**: A boolean flag stored securely in TimescaleDB settings.
-2. **`StripeSubscriptionId`**: A reference to the external billing system.
+The codebase already has hooks for a "Premium" tier built into the `AppSettings`:
+1. **`IsPremiumUser`**: A toggle in the database that identifies paid subscribers.
+2. **`StripeSubscriptionId`**: A field to link the account to a real payment.
 
-When a user is flagged as Premium, they unlock:
-- **Active Programmable Banking**: Automated Runway Top-Ups (moving money between Savings and Spending accounts when the runway drops below a critical threshold).
-- **Advanced AI Analysis**: Real-time spending analysis utilizing more advanced AI models or more frequent API syncs without getting rate-limited.
-- **Priority Telegram Support**: Guaranteed fastest processing queue for chat reports.
+### What Premium Users Get:
+- **Auto-Top Ups**: The engine can automatically move money from savings to spending if your runway gets too short. This is "Active Programmable Banking" in action.
+- **Better Brains**: Access to faster, smarter cloud AI models (like Claude 3.5 Sonnet or GPT-4o) without having to bring your own API key.
+- **Priority Bot**: Their Telegram messages hit the front of the queue, giving them instant answers.
 
 ### Implementation Blueprint
 
-The current codebase is ready for integration with a payment provider (like Stripe or Paddle). To complete the loop:
+The engine is already "subscription-ready." Here is how we'd go live:
 
-1. Deploy the Gordon UI on a public domain with a landing page advertising the "Premium Actuarial Analysis" features.
-2. Use the `/api/users/register` endpoint to create accounts.
-3. Upon checkout, issue a webhook to update the user's `config` JSONB column in TimescaleDB:
+1. Host the dashboard on a public URL with a "Pricing" page.
+2. When someone pays via Stripe, a webhook updates their user config:
    ```json
    {
        "IsPremiumUser": true,
        "StripeSubscriptionId": "sub_123456789"
    }
    ```
-4. Gordon's built-in `SettingsService` automatically maps these to the `AppSettings` class, seamlessly unlocking the premium dashboard panels.
+3. Gordon's `SettingsService` picks this up immediately, unlocking the premium features in the dashboard.
 
-### Future Expansion
-- **Affiliate Links**: The dashboard can suggest high-yield savings accounts or credit cards when the user's spending habits match a specific demographic, generating referral revenue.
-- **White-labeling**: Offering Gordon to independent financial advisors as a tool they use to manage their clients (B2B SaaS model).
+### Other Ideas
+- **Referrals**: If Gordon sees you're paying a high interest rate on a loan, he could suggest a better bank or credit card using an affiliate link.
+- **Advisor Tools**: Financial advisors could use a "White Label" version of Gordon to manage their clients' portfolios and automate their reporting.

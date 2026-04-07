@@ -241,6 +241,7 @@
                                     settings.aiProvider === 'Gemini' ? settings.geminiModelName :
                                     settings.aiProvider === 'OpenAI' ? settings.openAiModelName :
                                     settings.aiProvider === 'Anthropic' ? settings.anthropicModelName :
+                                    settings.aiProvider === 'Claude CLI' ? settings.claudeCliModelName :
                                     settings.ollamaModelName }}</p>
                             </div>
 
@@ -265,6 +266,7 @@
                                     settings.fallbackAiProvider === 'Gemini' ? settings.fallbackGeminiModelName :
                                     settings.fallbackAiProvider === 'OpenAI' ? settings.fallbackOpenAiModelName :
                                     settings.fallbackAiProvider === 'Anthropic' ? settings.fallbackAnthropicModelName :
+                                    settings.fallbackAiProvider === 'Claude CLI' ? settings.fallbackClaudeCliModelName :
                                     settings.fallbackOllamaModelName }}</p>
                             </div>
 
@@ -866,7 +868,8 @@
                                             <option value="Ollama">Ollama</option>
                                             <option value="Gemini">Gemini</option>
                                             <option value="OpenAI">OpenAI</option>
-                                            <option value="Anthropic">Anthropic (Claude)</option>
+                                            <option value="Anthropic">Anthropic (API)</option>
+                                            <option value="Claude CLI">Anthropic Plan (Claude CLI)</option>
                                         </select></div>
                                     <div><label class="text-xs font-bold text-slate-700">Persona Name</label><input
                                             v-model="settings.systemPersona" type="text"
@@ -878,6 +881,7 @@
                                         <span v-if="settings.aiProvider === 'Ollama'">Ollama URL</span>
                                         <span v-else-if="settings.aiProvider === 'Gemini'">Gemini API Key</span>
                                         <span v-else-if="settings.aiProvider === 'OpenAI'">OpenAI API Key</span>
+                                        <span v-else-if="settings.aiProvider === 'Claude CLI'">Claude CLI Auth Status</span>
                                         <span v-else>Anthropic API Key</span>
                                     </label>
                                     <div class="flex gap-2 mt-1">
@@ -890,6 +894,12 @@
                                         <input v-else-if="settings.aiProvider === 'OpenAI'"
                                             v-model="settings.openAiApiKey" type="password"
                                             class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                        <div v-else-if="settings.aiProvider === 'Claude CLI'" class="flex-1 flex flex-col gap-1">
+                                            <input v-model="settings.claudeCliOAuthToken" type="password"
+                                                placeholder="sk-ant-oat..."
+                                                class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                            <p class="text-[10px] text-slate-500 italic">Run <code class="bg-slate-100 px-1 rounded text-slate-700">npx @anthropic-ai/claude-code setup-token</code> locally to get this.</p>
+                                        </div>
                                         <input v-else v-model="settings.anthropicApiKey" type="password"
                                             class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
                                         <button @click="testAi"
@@ -1012,6 +1022,7 @@
                                                 API Key</span>
                                             <span v-else-if="settings.fallbackAiProvider === 'OpenAI'">Fallback OpenAI
                                                 API Key</span>
+                                            <span v-else-if="settings.fallbackAiProvider === 'Claude CLI'">Claude CLI Auth Status</span>
                                             <span v-else>Fallback Anthropic API Key</span>
                                         </label>
                                         <div class="flex gap-2 mt-1">
@@ -1023,6 +1034,10 @@
                                                 class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
                                             <input v-else-if="settings.fallbackAiProvider === 'OpenAI'"
                                                 v-model="settings.fallbackOpenAiApiKey" type="password"
+                                                class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                            <input v-else-if="settings.fallbackAiProvider === 'Claude CLI'"
+                                                v-model="settings.fallbackClaudeCliOAuthToken" type="password"
+                                                placeholder="sk-ant-oat..."
                                                 class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
                                             <input v-else v-model="settings.fallbackAnthropicApiKey" type="password"
                                                 class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
@@ -1109,6 +1124,7 @@
                                                 API Key</span>
                                             <span v-else-if="settings.thinkingAiProvider === 'OpenAI'">Thinking OpenAI
                                                 API Key</span>
+                                            <span v-else-if="settings.thinkingAiProvider === 'Claude CLI'">Claude CLI Auth Status</span>
                                             <span v-else>Thinking Anthropic API Key</span>
                                         </label>
                                         <div class="flex gap-2 mt-1">
@@ -1121,9 +1137,13 @@
                                             <input v-else-if="settings.thinkingAiProvider === 'OpenAI'"
                                                 v-model="settings.thinkingOpenAiApiKey" type="password"
                                                 class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+                                            <input v-else-if="settings.thinkingAiProvider === 'Claude CLI'"
+                                                v-model="settings.thinkingClaudeCliOAuthToken" type="password"
+                                                placeholder="sk-ant-oat..."
+                                                class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
                                             <input v-else v-model="settings.thinkingAnthropicApiKey" type="password"
                                                 class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
-                                            <button @click="testThinkingAi"
+                                            <button v-if="settings.thinkingAiProvider !== 'Claude CLI'" @click="testThinkingAi"
                                                 class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold border border-slate-200">Test
                                                 Thinking</button>
                                         </div>
@@ -1820,6 +1840,24 @@
                     const res = await this.api(url, method, this.userForm);
                     if (res.ok) { this.showToast("User Saved"); this.isUserModalOpen = false; this.loadUsers(); }
                     else this.showToast("Save Failed");
+                },
+                async loginClaudeCli() {
+                    this.showToast("Initializing Claude CLI Login...");
+                    try {
+                        const res = await this.api('/api/settings/claude/login', 'POST');
+                        if (res.ok) {
+                            const data = await res.json();
+                            // Show the link in a popup/alert so user can click/copy it
+                            alert("Claude CLI Auth:\\n\\n" + data.output + "\\n\\nComplete the login in your browser, then close this popup.");
+                            // Refresh status
+                            const resSt = await this.api('/api/settings/status');
+                            if (resSt.ok) this.systemStatus = await resSt.json();
+                        } else {
+                            this.showToast("Failed to start Claude CLI login");
+                        }
+                    } catch (e) {
+                        this.showToast("Error communicating with Claude CLI");
+                    }
                 },
                 async deleteUser(id) {
                     if (!confirm("Are you sure?")) return;

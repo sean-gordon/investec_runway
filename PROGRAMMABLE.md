@@ -1,21 +1,21 @@
-# Active Programmable Banking with Gordon
+# Smart Automation with Gordon
 
-The Gordon Finance Engine does not just track expenses; it actively helps you survive until payday by utilizing the Investec Programmable Banking transfer capabilities.
+Gordon doesn't just watch your bank account; he actively manages it. Using Investec's Programmable Banking API, Gordon can move money for you so you never run out of cash before payday.
 
-## Automated Runway Top-Ups
+## Auto-Top Ups
 
-By enabling the "Auto Top-Up" feature in the Connections dashboard, Gordon will actively monitor your runway (via `ActuarialService`) and initiate inter-account transfers to prevent overdrafts.
+If you turn on "Auto Top-Up" in the dashboard, Gordon will keep an eye on your runway. If he sees you're about to hit zero, he'll automatically move money from your savings to your spending account.
 
-### How It Works
-1. **The Actuarial Assessment**: Every day, the `RunwayTopUpWorker` recalculates your expected runway based on current account balance, history, and fixed costs.
-2. **Threshold Monitoring**: If your runway drops below a configurable threshold (e.g., 5 days), a top-up sequence is triggered.
-3. **The Transfer**: Gordon uses the `/za/pb/v1/accounts/transfermultiple` Investec API endpoint to move your configured "Top-Up Amount" from your Savings to your Spending account safely.
-4. **Alerts**: You are immediately notified via Telegram with a full breakdown of the event.
+### How it works
+1. **The Daily Check**: Every day, a background worker looks at your balance, your upcoming bills, and your recent spending to figure out your "Runway" (how many days of cash you have left).
+2. **The Red Line**: If that runway drops below your limit (e.g., 5 days), Gordon starts a top-up.
+3. **The Transfer**: Gordon calls the Investec API to move your chosen top-up amount from your Savings account into your Spending account.
+4. **The Ping**: You'll get an instant message on Telegram letting you know exactly what happened and why.
 
-### Safety Features
-- **Dry-Run Mode**: You can test the entire pipeline without actually moving money by toggling the "Dry Run" switch in the dashboard.
-- **Environment Targeting**: A dropdown setting dictates whether Gordon points to the Sandbox API (`https://openapi.sandbox.investec.com`) or the Live API.
-- **Background Orchestration**: Top-ups run as a safe decoupled background process (`RunwayTopUpWorker`), ensuring that UI interactions are lightning-fast and API rate limits are respected.
+### Keeping it safe
+- **Dry-Run Mode**: You can leave this on to see Gordon's "decisions" without actually moving any real money. Perfect for testing.
+- **Sandbox Support**: You can point Gordon at Investec's Sandbox environment to play around with fake money and fake accounts.
+- **Background Only**: Transfers happen in a dedicated background process, so the dashboard stays fast and we never spam the bank's API.
 
 ---
-*“Gordon gives you the data, Investec provides the power.”*
+*"Gordon handles the math, Investec handles the money."*

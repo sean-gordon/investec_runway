@@ -32,5 +32,6 @@ Thumbs.db
 app_data/
 
 .gemini/
+.claude/
 gha-creds-*.json
 node_modules/

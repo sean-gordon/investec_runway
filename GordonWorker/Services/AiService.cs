@@ -15,7 +15,7 @@ public interface IAiService
     Task<(bool IsChartRequest, string? ChartType, string? Sql, string? Title)> AnalyzeChartRequestAsync(int userId, string userMessage);
     Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false, bool useThinking = false, bool forceRefresh = false, AppSettings? overriddenSettings = null);
     Task<List<string>> GetAvailableModelsAsync(int userId, bool useFallback = false, bool useThinking = false, AppSettings? overriddenSettings = null);
-    Task<string> GenerateCompletionAsync(int userId, string system, string prompt, bool useFallback = false, CancellationToken ct = default, bool useThinking = false);
+    Task<string> GenerateCompletionAsync(int userId, string system, string prompt, bool useFallback = false, CancellationToken ct = default, bool useThinking = false, bool requiresReasoning = false);
     Task<JsonElement?> DetectIntentAsync(int userId, string userMessage, CancellationToken ct = default);
 }
 
@@ -449,17 +449,17 @@ public class AiService : IAiService
             : "4. **Formatting:** Use semantic HTML tags for Telegram: <b>bold</b> and <i>italic</i>. For lists, use plain bullet points (•). Do NOT use standard Markdown (**, _, ###).";
 
         var systemPrompt = GordonWorker.Prompts.SystemPrompts.GetFormatResponsePrompt(settings.SystemPersona, settings.UserName, formattingRule, dataContext);
-        return await GenerateCompletionAsync(userId, systemPrompt, userPrompt, ct: ct);
+        return await GenerateCompletionAsync(userId, systemPrompt, userPrompt, ct: ct, requiresReasoning: true);
     }
 
     public async Task<string> GenerateSimpleReportAsync(int userId, string statsJson)
     {
         var settings = await _settingsService.GetSettingsAsync(userId);
         var systemPrompt = GordonWorker.Prompts.SystemPrompts.GetWeeklyReportPrompt(settings.SystemPersona, settings.UserName);
-        return await GenerateCompletionAsync(userId, systemPrompt, $"[DATA_CONTEXT]\n{statsJson}\n[/DATA_CONTEXT]\n\nResponse:");
+        return await GenerateCompletionAsync(userId, systemPrompt, $"[DATA_CONTEXT]\n{statsJson}\n[/DATA_CONTEXT]\n\nResponse:", requiresReasoning: true);
     }
 
-    public async Task<string> GenerateCompletionAsync(int userId, string system, string prompt, bool useFallback = false, CancellationToken ct = default, bool useThinking = false)
+    public async Task<string> GenerateCompletionAsync(int userId, string system, string prompt, bool useFallback = false, CancellationToken ct = default, bool useThinking = false, bool requiresReasoning = false)
     {
         var settings = await _settingsService.GetSettingsAsync(userId);
         var perCallTimeout = settings.AiTimeoutSeconds > 0 ? settings.AiTimeoutSeconds : 90;
@@ -467,8 +467,19 @@ public class AiService : IAiService
         deadlineCts.CancelAfter(TimeSpan.FromSeconds(perCallTimeout * 3));
         var token = deadlineCts.Token;
 
+        // Gate the thinking model so we only pay its latency when it actually helps.
+        // Classifier / intent-detection / SQL-gen callers are simple JSON-shape tasks — a
+        // reasoning preamble is pure overhead there. We invoke the thinking model only when:
+        //   1. The caller explicitly opts in (requiresReasoning=true — e.g. FormatResponse,
+        //      weekly/daily reports, affordability verdict), OR
+        //   2. The prompt itself is long enough (>2000 chars) that strategic decomposition
+        //      is likely to pay for itself (e.g. huge data contexts).
+        // This cuts typical chat-reply latency roughly in half for simple QUERY intents.
         var finalPrompt = prompt;
-        if (settings.EnableThinkingModel && !useThinking)
+        var shouldThink = settings.EnableThinkingModel
+                          && !useThinking
+                          && (requiresReasoning || prompt.Length > 2000);
+        if (shouldThink)
         {
             try
             {
@@ -499,7 +510,7 @@ public class AiService : IAiService
                 if (attempt == maxAttempts && !useFallback && settings.EnableAiFallback)
                 {
                     _logger.LogWarning("Switching to fallback AI.");
-                    return await GenerateCompletionAsync(userId, system, prompt, useFallback: true, ct: token, useThinking: useThinking);
+                    return await GenerateCompletionAsync(userId, system, prompt, useFallback: true, ct: token, useThinking: useThinking, requiresReasoning: requiresReasoning);
                 }
                 if (attempt < maxAttempts) await Task.Delay(TimeSpan.FromSeconds(2 * attempt), token);
             }

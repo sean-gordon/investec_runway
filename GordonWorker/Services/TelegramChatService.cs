@@ -124,14 +124,17 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
             {
                 investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
                 var accounts = await investecClient.GetAccountsAsync();
-                currentBalance = 0;
-                foreach (var acc in accounts) currentBalance += await investecClient.GetAccountBalanceAsync(acc.AccountId);
+                // Parallel balance fetches — was sequential foreach (N round-trips against the
+                // Investec API), now fan out and join. Cuts Telegram first-byte by ~N×latency.
+                var balances = await Task.WhenAll(accounts.Select(acc => investecClient.GetAccountBalanceAsync(acc.AccountId)));
+                currentBalance = balances.Sum();
                 memoryCache.Set(cacheKey, currentBalance, TimeSpan.FromMinutes(15));
             }
 
-            // 5. Actuarial Analysis
-            var summary = await actuarialService.AnalyzeHealthAsync(history, currentBalance, settings);
-            var summaryJson = JsonSerializer.Serialize(summary);
+            // 5. Kick off actuarial analysis as a deferred task. We won't await it here — branches
+            //    that need it will await as late as possible. AFFORD specifically can fan out the
+            //    simulated analysis alongside this one, halving total actuarial wall-clock.
+            var summaryTask = actuarialService.AnalyzeHealthAsync(history, currentBalance, settings);
 
             // 6. Execute Intent
             var intent = intentEl?.TryGetProperty("intent", out var p) == true ? p.GetString() : "QUERY";
@@ -166,12 +169,26 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
 
                 if (amount > 0)
                 {
+                    // Fan out the simulated-balance analysis ALONGSIDE the in-flight summaryTask.
+                    // Both run on the same in-memory history list and are CPU-bound, so this nearly
+                    // halves the actuarial wall-clock time before the AI verdict prompt fires.
+                    var simulatedBalance = currentBalance - amount;
+                    var simSummaryTask = actuarialService.AnalyzeHealthAsync(history, simulatedBalance, settings);
+                    await Task.WhenAll(summaryTask, simSummaryTask);
+                    var summaryForAfford = await summaryTask;
+                    var simSummary = await simSummaryTask;
+
                     await HandleAffordabilityCheckAsync(request.UserId, amount, desc!, request.ChatId,
-                        history, currentBalance, summary, settings, actuarialService, aiService, chartService, telegramService, placeholderId, ctsHeartbeat, ct);
+                        history, currentBalance, simulatedBalance, summaryForAfford, simSummary, settings,
+                        aiService, chartService, telegramService, placeholderId, ctsHeartbeat, ct);
                     return;
                 }
             }
 
+            // Default path (QUERY, fall-through from CHART without sql, EXPLAIN without match):
+            // we now need the summary, so await it here.
+            var summary = await summaryTask;
+            var summaryJson = JsonSerializer.Serialize(summary);
             await HandleStandardQueryAsync(request.UserId, request.MessageText, request.ChatId, currentBalance, summary,
                 summaryJson, repo, aiService, telegramService, placeholderId, ctsHeartbeat, ct);
         }
@@ -333,12 +350,11 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
     }
 
     private async Task HandleAffordabilityCheckAsync(int userId, decimal amount, string description, string chatId,
-        List<Transaction> history, decimal currentBalance, FinancialHealthReport summary, AppSettings settings,
-        IActuarialService actuarialService, IAiService aiService, IChartService chartService, ITelegramService telegramService,
+        List<Transaction> history, decimal currentBalance, decimal simulatedBalance,
+        FinancialHealthReport summary, FinancialHealthReport simSummary, AppSettings settings,
+        IAiService aiService, IChartService chartService, ITelegramService telegramService,
         int placeholderId, CancellationTokenSource? ctsHeartbeat, CancellationToken ct)
     {
-        var simulatedBalance = currentBalance - amount;
-        var simSummary = await actuarialService.AnalyzeHealthAsync(history, simulatedBalance, settings);
         var runwayImpact = summary.ExpectedRunwayDays - simSummary.ExpectedRunwayDays;
         var riskLevel = simSummary.ExpectedRunwayDays < 10 ? "High" : runwayImpact > 5 ? "Medium" : "Low";
 

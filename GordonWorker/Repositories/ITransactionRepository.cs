@@ -27,4 +27,9 @@ public interface ITransactionRepository
     Task<List<Transaction>> GetHistoryForAnalysisAsync(int userId, int days);
     Task<IEnumerable<dynamic>> GetChartDataAsync(int userId, string sql);
     Task UpdateTransactionNoteAsync(Guid transactionId, string note);
+
+    // Returns up to `limit` (description, category) pairs from the user's already-categorised
+    // transactions, intended as few-shot examples for the categorisation prompt. Distinct by
+    // description to avoid blowing token budget on near-duplicates.
+    Task<List<(string Description, string Category)>> GetCategorizationExamplesAsync(int userId, int limit = 30);
 }

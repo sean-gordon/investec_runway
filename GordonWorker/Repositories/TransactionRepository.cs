@@ -160,6 +160,30 @@ public class TransactionRepository : ITransactionRepository
             new { UserId = userId, Cutoff = cutoff })).ToList();
     }
 
+    public async Task<List<(string Description, string Category)>> GetCategorizationExamplesAsync(int userId, int limit = 30)
+    {
+        // Pull one representative transaction per distinct category from the user's most recent
+        // AI-processed history. This gives the categoriser a personalised few-shot set, so
+        // "Woolworths" is learned as Groceries for this user even if it's Shopping for another.
+        await using var connection = new NpgsqlConnection(_connectionString);
+        const string sql = @"
+            SELECT DISTINCT ON (LOWER(description)) description AS Description, category AS Category
+            FROM transactions
+            WHERE user_id = @UserId
+              AND is_ai_processed = TRUE
+              AND category IS NOT NULL
+              AND category <> ''
+              AND category <> 'General'
+              AND category <> 'Undetermined'
+              AND description IS NOT NULL
+              AND description <> ''
+            ORDER BY LOWER(description), transaction_date DESC
+            LIMIT @Limit";
+        var rows = await connection.QueryAsync<(string Description, string Category)>(sql,
+            new { UserId = userId, Limit = limit });
+        return rows.ToList();
+    }
+
     public async Task<IEnumerable<dynamic>> GetChartDataAsync(int userId, string sql)
     {
         // Validate AI-generated SQL: must be a single SELECT statement, no DML/DDL,

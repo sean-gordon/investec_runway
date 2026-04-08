@@ -75,8 +75,9 @@ public class DailyBriefingWorker : BackgroundService
             var accounts = await investecClient.GetAccountsAsync();
             if (!accounts.Any()) return;
 
-            decimal currentBalance = 0;
-            foreach (var acc in accounts) currentBalance += await investecClient.GetAccountBalanceAsync(acc.AccountId);
+            // Parallel balance fetches — was sequential (N round-trips), now 1 round-trip wide.
+            var balances = await Task.WhenAll(accounts.Select(acc => investecClient.GetAccountBalanceAsync(acc.AccountId)));
+            decimal currentBalance = balances.Sum();
 
             using var db = new Npgsql.NpgsqlConnection(config.GetConnectionString("DefaultConnection"));
             // Get minimal history for context

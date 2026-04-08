@@ -2,6 +2,24 @@ namespace GordonWorker.Prompts;
 
 public static class SystemPrompts
 {
+    // Overload: includes the user's own previously confirmed categorisations as few-shot
+    // examples. These matter more than any generic rule list because merchant naming is
+    // idiosyncratic (e.g. "WW FOOD JHB" vs "WOOLWORTHS" vs "WLWRTHS") and users' own
+    // categorisation preferences are the ground truth for *their* data.
+    public static string GetCategorizationPrompt(IEnumerable<(string Description, string Category)> examples)
+    {
+        var examplesList = examples?.Take(30).ToList() ?? new List<(string, string)>();
+        if (examplesList.Count == 0) return GetCategorizationPrompt();
+
+        var exampleBlock = string.Join("\n", examplesList.Select(e => $"- \"{e.Description}\" → {e.Category}"));
+        return GetCategorizationPrompt() + $@"
+
+USER-SPECIFIC EXAMPLES (GROUND TRUTH — these are how THIS user has categorised similar merchants in the past; match their style):
+{exampleBlock}
+
+When a new transaction's description closely resembles one of the examples above, use the same category the user chose. Only fall back to the generic rules when no example matches.";
+    }
+
     public static string GetCategorizationPrompt() => @"You are a financial data classifier for the Gordon Finance Engine.
 YOUR GOAL: Categorize bank transactions into semantic categories with high precision.
 

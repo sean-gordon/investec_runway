@@ -146,24 +146,105 @@ public class DatabaseInitializer
                 
                 // Create the definitive unique index required for Sync (ON CONFLICT target)
                 // In TimescaleDB, the partitioning column (transaction_date) MUST be part of any unique index.
-                await connection.ExecuteAsync("CREATE UNIQUE INDEX IF NOT EXISTS ux_transactions_id_date_user ON transactions (id, transaction_date, user_id);"); 
+                await connection.ExecuteAsync("CREATE UNIQUE INDEX IF NOT EXISTS ux_transactions_id_date_user ON transactions (id, transaction_date, user_id);");
                 _logger.LogInformation("Unique index 'ux_transactions_id_date_user' ensured.");
-            } 
-            catch (Exception ex) 
-            { 
-                _logger.LogError(ex, "CRITICAL: Could not ensure unique index 'ux_transactions_id_date_user'. Sync will fail."); 
+
+                // Supporting indexes for the hot query paths identified in the code review.
+                // 1) Chart/category queries: WHERE user_id = ? GROUP BY category ORDER BY date DESC
+                await connection.ExecuteAsync(@"
+                    CREATE INDEX IF NOT EXISTS idx_transactions_user_category_date
+                    ON transactions (user_id, category, transaction_date DESC);");
+
+                // 2) Background categorisation worker: WHERE user_id = ? AND is_ai_processed = FALSE
+                //    Partial index keeps it tiny — only uncategorised rows live here.
+                await connection.ExecuteAsync(@"
+                    CREATE INDEX IF NOT EXISTS idx_transactions_user_unprocessed
+                    ON transactions (user_id, transaction_date DESC)
+                    WHERE is_ai_processed = FALSE;");
+
+                // 3) Date-range scans by user (dashboard / actuarial history fetch):
+                //    WHERE user_id = ? AND transaction_date >= ? ORDER BY transaction_date
+                await connection.ExecuteAsync(@"
+                    CREATE INDEX IF NOT EXISTS idx_transactions_user_date
+                    ON transactions (user_id, transaction_date DESC);");
+
+                _logger.LogInformation("Supporting indexes for category/unprocessed/date scans ensured.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "CRITICAL: Could not ensure transaction indexes. Performance will degrade.");
             }
 
             // Convert to Hypertable
-            try 
-            { 
+            try
+            {
                 // Note: migrate_data => true is required if data already exists
-                await connection.ExecuteAsync("SELECT create_hypertable('transactions', 'transaction_date', if_not_exists => TRUE, migrate_data => TRUE);"); 
-            } 
+                await connection.ExecuteAsync("SELECT create_hypertable('transactions', 'transaction_date', if_not_exists => TRUE, migrate_data => TRUE);");
+            }
             catch (Exception ex)
             {
                 // If it's already a hypertable, this will fail but we can ignore it
                 if (!ex.Message.Contains("already")) _logger.LogWarning("Hypertable conversion note: {Message}", ex.Message);
+            }
+
+            // 4a. TimescaleDB compression — compress chunks older than 90 days.
+            // Typical 5-10x reduction in on-disk size and often FASTER scans for analytical queries.
+            // Wrapped in try/catch so older TimescaleDB versions don't break startup.
+            try
+            {
+                await connection.ExecuteAsync(@"
+                    ALTER TABLE transactions SET (
+                        timescaledb.compress,
+                        timescaledb.compress_segmentby = 'user_id',
+                        timescaledb.compress_orderby = 'transaction_date DESC'
+                    );");
+                await connection.ExecuteAsync("SELECT add_compression_policy('transactions', INTERVAL '90 days', if_not_exists => TRUE);");
+                _logger.LogInformation("TimescaleDB compression policy ensured (>90 days).");
+            }
+            catch (Exception ex)
+            {
+                // Already configured is fine; log anything else as a warning (non-fatal).
+                if (!ex.Message.Contains("already", StringComparison.OrdinalIgnoreCase))
+                    _logger.LogWarning("Compression policy note: {Message}", ex.Message);
+            }
+
+            // 4b. Continuous aggregate — pre-rolls daily per-user per-category spend.
+            // The dashboard's category charts re-scan millions of raw rows on every render;
+            // this materialised view lets them query a tiny daily summary instead.
+            // The refresh policy keeps the last 30 days hot; older buckets are finalised.
+            try
+            {
+                await connection.ExecuteAsync(@"
+                    CREATE MATERIALIZED VIEW IF NOT EXISTS transactions_daily_category
+                    WITH (timescaledb.continuous) AS
+                    SELECT
+                        user_id,
+                        time_bucket(INTERVAL '1 day', transaction_date) AS bucket,
+                        COALESCE(category, 'Uncategorized') AS category,
+                        SUM(amount) AS total_amount,
+                        COUNT(*) AS tx_count
+                    FROM transactions
+                    GROUP BY user_id, bucket, category
+                    WITH NO DATA;");
+
+                await connection.ExecuteAsync(@"
+                    SELECT add_continuous_aggregate_policy('transactions_daily_category',
+                        start_offset => INTERVAL '30 days',
+                        end_offset => INTERVAL '1 hour',
+                        schedule_interval => INTERVAL '1 hour',
+                        if_not_exists => TRUE);");
+
+                // Index the continuous aggregate for the typical chart query pattern.
+                await connection.ExecuteAsync(@"
+                    CREATE INDEX IF NOT EXISTS idx_tx_daily_cat_user_bucket
+                    ON transactions_daily_category (user_id, bucket DESC);");
+
+                _logger.LogInformation("Continuous aggregate 'transactions_daily_category' ensured.");
+            }
+            catch (Exception ex)
+            {
+                if (!ex.Message.Contains("already", StringComparison.OrdinalIgnoreCase))
+                    _logger.LogWarning("Continuous aggregate note: {Message}", ex.Message);
             }
 
             // Cleanup old config table

@@ -65,7 +65,11 @@ public class TransactionClassifierService : ITransactionClassifierService
             foreach (var kv in batchResults) merchantResults[kv.Key] = kv.Value;
         }
 
-        // Step 4: fan out results to every transaction in each merchant group and persist.
+        // Step 4: fan out results to every transaction in each merchant group, then persist
+        // them all in a SINGLE batched UPDATE. The previous version issued one UPDATE per
+        // transaction — on a 500-tx sync that meant 500 round-trips to the database. The
+        // batch path collapses it to one statement via Postgres unnest().
+        var batchUpdates = new List<(Guid Id, string Category)>(transactions.Count);
         foreach (var group in groups)
         {
             var repId = group.First().Id;
@@ -75,14 +79,20 @@ public class TransactionClassifierService : ITransactionClassifierService
             {
                 tx.Category = category;
                 tx.IsAiProcessed = true;
-                try
-                {
-                    await _repository.UpdateTransactionCategoryAsync(tx.Id, category);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to persist category for tx {TxId}", tx.Id);
-                }
+                batchUpdates.Add((tx.Id, category));
+            }
+        }
+
+        if (batchUpdates.Count > 0)
+        {
+            try
+            {
+                await _repository.UpdateTransactionCategoriesBatchAsync(batchUpdates);
+                _logger.LogInformation("Persisted {Count} category updates in one batch for user {UserId}.", batchUpdates.Count, userId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Batch category persist failed for user {UserId}; categories live in-memory only this pass.", userId);
             }
         }
 

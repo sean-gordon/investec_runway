@@ -41,6 +41,16 @@ public class TransactionRepository : ITransactionRepository
             new { UserId = userId, Limit = limit })).ToList();
     }
 
+    public async Task<List<Transaction>> GetTransactionsByUserSinceAsync(int userId, DateTime since)
+    {
+        // Backed by idx_transactions_user_date — this should be a fast index range scan rather
+        // than the full hypertable scan that the unbounded sibling produces on long histories.
+        await using var connection = new NpgsqlConnection(_connectionString);
+        return (await connection.QueryAsync<Transaction>(
+            "SELECT * FROM transactions WHERE user_id = @UserId AND transaction_date >= @Since ORDER BY transaction_date DESC",
+            new { UserId = userId, Since = since })).ToList();
+    }
+
     public async Task UpdateTransactionCategoryAsync(Guid transactionId, string category)
     {
         await using var connection = new NpgsqlConnection(_connectionString);
@@ -51,13 +61,34 @@ public class TransactionRepository : ITransactionRepository
 
     public async Task UpdateTransactionsAsync(IEnumerable<Transaction> transactions)
     {
+        // Delegates to the batch path so the legacy callers also benefit. Filters out anything
+        // without a category — those rows haven't actually been classified yet.
+        var updates = transactions
+            .Where(t => !string.IsNullOrEmpty(t.Category))
+            .Select(t => (t.Id, t.Category!));
+        await UpdateTransactionCategoriesBatchAsync(updates);
+    }
+
+    public async Task UpdateTransactionCategoriesBatchAsync(IEnumerable<(Guid Id, string Category)> updates)
+    {
+        var list = updates as IList<(Guid Id, string Category)> ?? updates.ToList();
+        if (list.Count == 0) return;
+
+        // Single-statement batch update via unnest. Postgres builds two parallel arrays from the
+        // @Ids / @Categories parameters and joins them in the FROM clause — far cheaper than
+        // round-tripping each row, and crucially still benefits from the partial index on
+        // is_ai_processed because we only ever set it to TRUE.
+        var ids = list.Select(u => u.Id).ToArray();
+        var cats = list.Select(u => u.Category ?? "General").ToArray();
+
         await using var connection = new NpgsqlConnection(_connectionString);
-        foreach (var tx in transactions)
-        {
-            await connection.ExecuteAsync(
-                "UPDATE transactions SET category = @Category, is_ai_processed = @IsAiProcessed WHERE id = @Id",
-                new { tx.Category, tx.IsAiProcessed, tx.Id });
-        }
+        await connection.ExecuteAsync(@"
+            UPDATE transactions AS t
+            SET category = u.cat,
+                is_ai_processed = TRUE
+            FROM unnest(@Ids::uuid[], @Categories::text[]) AS u(id, cat)
+            WHERE t.id = u.id;",
+            new { Ids = ids, Categories = cats });
     }
 
     public async Task<int> GetTransactionCountAsync(int userId)
@@ -83,7 +114,7 @@ public class TransactionRepository : ITransactionRepository
             INSERT INTO transactions (id, user_id, account_id, transaction_date, description, amount, balance, category, is_ai_processed, notes)
             VALUES (@Id, @UserId, @AccountId, @TransactionDate, @Description, @Amount, @Balance, @Category, @IsAiProcessed, NULL)
             ON CONFLICT (id, transaction_date, user_id) DO NOTHING";
-        
+
         return await connection.ExecuteAsync(insertSql, new {
             tx.Id,
             UserId = userId,
@@ -95,6 +126,54 @@ public class TransactionRepository : ITransactionRepository
             tx.Category,
             tx.IsAiProcessed
         });
+    }
+
+    public async Task<int> InsertTransactionsBatchAsync(IEnumerable<Transaction> transactions, int userId)
+    {
+        var list = transactions as IList<Transaction> ?? transactions.ToList();
+        if (list.Count == 0) return 0;
+
+        // Build parallel arrays and let unnest() expand them in a single INSERT. Dapper doesn't
+        // expand .NET array parameters into VALUES tuples natively, but Npgsql happily binds
+        // T[] -> Postgres array, so unnest() is the cleanest portable shape. ON CONFLICT keeps
+        // re-runs idempotent — exactly the same semantics as the per-row sibling above.
+        var ids          = list.Select(t => t.Id).ToArray();
+        var accountIds   = list.Select(t => t.AccountId ?? "").ToArray();
+        var dates        = list.Select(t => t.TransactionDate.UtcDateTime).ToArray();
+        var descriptions = list.Select(t => t.Description ?? "").ToArray();
+        var amounts      = list.Select(t => t.Amount).ToArray();
+        var balances     = list.Select(t => t.Balance).ToArray();
+        var categories   = list.Select(t => t.Category ?? "").ToArray();
+        var processed    = list.Select(t => t.IsAiProcessed).ToArray();
+
+        await using var connection = new NpgsqlConnection(_connectionString);
+        return await connection.ExecuteAsync(@"
+            INSERT INTO transactions
+                (id, user_id, account_id, transaction_date, description, amount, balance, category, is_ai_processed, notes)
+            SELECT u.id, @UserId, u.account_id, u.transaction_date, u.description, u.amount, u.balance, u.category, u.is_ai_processed, NULL
+            FROM unnest(
+                @Ids::uuid[],
+                @AccountIds::text[],
+                @Dates::timestamptz[],
+                @Descriptions::text[],
+                @Amounts::numeric[],
+                @Balances::numeric[],
+                @Categories::text[],
+                @Processed::boolean[]
+            ) AS u(id, account_id, transaction_date, description, amount, balance, category, is_ai_processed)
+            ON CONFLICT (id, transaction_date, user_id) DO NOTHING;",
+            new
+            {
+                UserId = userId,
+                Ids = ids,
+                AccountIds = accountIds,
+                Dates = dates,
+                Descriptions = descriptions,
+                Amounts = amounts,
+                Balances = balances,
+                Categories = categories,
+                Processed = processed
+            });
     }
 
     public async Task<List<Transaction>> GetUnprocessedTransactionsAsync(int userId, int limit)

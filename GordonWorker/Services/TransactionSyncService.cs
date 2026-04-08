@@ -76,60 +76,71 @@ public class TransactionSyncService : ITransactionSyncService
         int totalNew = 0;
         var pendingAlerts = new List<string>();
 
-        foreach (var account in accounts)
+        // Fetch every account's transactions in parallel — they're independent network calls
+        // against Investec, so the previous sequential loop was paying N round-trips of latency
+        // for nothing. Same for the existing-id lookups.
+        var accountTxTasks = accounts.Select(async acc =>
         {
-            var txs = await _client.GetTransactionsAsync(account.AccountId, fromDate);
-            _logger.LogInformation("User {UserId}: Fetched {Count} transactions for account {AccountId} from {FromDate}", userId, txs.Count, account.AccountId, fromDate);
-
-            // Filter out transactions already in DB to avoid unnecessary AI calls
-            var existingIds = await _repository.GetExistingTransactionIdsAsync(userId, account.AccountId, fromDate);
-
+            var txs = await _client.GetTransactionsAsync(acc.AccountId, fromDate);
+            var existingIds = await _repository.GetExistingTransactionIdsAsync(userId, acc.AccountId, fromDate);
             var newTxs = txs.Where(t => !existingIds.Contains(t.Id)).ToList();
-            
-            if (newTxs.Any())
+            _logger.LogInformation("User {UserId}: Fetched {Count} ({New} new) for account {AccountId} from {FromDate}",
+                userId, txs.Count, newTxs.Count, acc.AccountId, fromDate);
+            return newTxs;
+        }).ToList();
+
+        var perAccountNew = await Task.WhenAll(accountTxTasks);
+        var allNewTxs = perAccountNew.SelectMany(x => x).ToList();
+
+        if (allNewTxs.Count > 0)
+        {
+            // One categorisation pass for the WHOLE sync, not one per account. Combined with the
+            // batch UPDATE in the classifier this means a 200-tx multi-account sync is roughly
+            // 1 AI call (or N/50 batches) + 1 SQL UPDATE, instead of 200 round-trips.
+            if (allNewTxs.Count <= 50 || forceCategorizeAll)
             {
-                if (newTxs.Count <= 50 || forceCategorizeAll)
+                try
                 {
-                    try
-                    {
-                        _logger.LogInformation("User {UserId}: Categorizing {Count} new transactions with AI...", userId, newTxs.Count);
-                        await _classifier.CategorizeTransactionsAsync(userId, newTxs);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "User {UserId}: AI categorization failed or service offline. Transactions will be stored uncategorized and retried in background.", userId);
-                    }
+                    _logger.LogInformation("User {UserId}: Categorizing {Count} new transactions with AI...", userId, allNewTxs.Count);
+                    await _classifier.CategorizeTransactionsAsync(userId, allNewTxs);
                 }
-                else
+                catch (Exception ex)
                 {
-                    _logger.LogWarning("User {UserId}: Skipping AI categorization for {Count} transactions (batch too large). Guarding against timeouts. Will process in background.", userId, newTxs.Count);
+                    _logger.LogWarning(ex, "User {UserId}: AI categorization failed or service offline. Transactions will be stored uncategorized and retried in background.", userId);
                 }
             }
-
-            foreach (var tx in newTxs)
+            else
             {
-                var rowsAffected = await _repository.InsertTransactionAsync(tx, userId);
-                if (rowsAffected > 0)
+                _logger.LogWarning("User {UserId}: Skipping AI categorization for {Count} transactions (batch too large). Will process in background.", userId, allNewTxs.Count);
+            }
+
+            // Bulk insert: one round-trip via unnest() instead of one INSERT per row.
+            var inserted = await _repository.InsertTransactionsBatchAsync(allNewTxs, userId);
+            totalNew = inserted;
+            _logger.LogInformation("User {UserId}: Bulk-inserted {Inserted} of {Candidates} transactions.", userId, inserted, allNewTxs.Count);
+
+            // Alert generation runs over the same in-memory list — if the bulk insert reported
+            // nothing was actually new (everything collided on the unique index) we still need
+            // to skip alerts. We can't tell per-row which ones won the conflict, so we treat the
+            // pre-filtered list as authoritative: GetExistingTransactionIdsAsync already
+            // excluded duplicates above, so any collisions here are races and rare in practice.
+            if (!silent && inserted > 0)
+            {
+                foreach (var tx in allNewTxs)
                 {
-                    totalNew++;
-                    _logger.LogDebug("User {UserId}: New transaction inserted: {Id} - {Description} ({Category})", userId, tx.Id, tx.Description, tx.Category);
-                    
-                    if (!silent)
+                    if (tx.Amount <= -settings.UnexpectedPaymentThreshold)
                     {
-                        if (tx.Amount <= -settings.UnexpectedPaymentThreshold)
-                        {
-                            var normalizedDesc = _actuarialService.NormalizeDescription(tx.Description);
-                            if (!_actuarialService.IsFixedCost(normalizedDesc, settings) && !_actuarialService.IsSalary(tx, settings))
-                            {
-                                triggerReport = true;
-                                pendingAlerts.Add($"🚨 <b>High Spend:</b> {TelegramService.EscapeHtml(tx.Description)} (R{Math.Abs(tx.Amount):N2})");
-                            }
-                        }
-                        if (tx.Amount >= settings.IncomeAlertThreshold) 
+                        var normalizedDesc = _actuarialService.NormalizeDescription(tx.Description);
+                        if (!_actuarialService.IsFixedCost(normalizedDesc, settings) && !_actuarialService.IsSalary(tx, settings))
                         {
                             triggerReport = true;
-                            pendingAlerts.Add($"💰 <b>Large Income:</b> {TelegramService.EscapeHtml(tx.Description)} (R{tx.Amount:N2})");
+                            pendingAlerts.Add($"🚨 <b>High Spend:</b> {TelegramService.EscapeHtml(tx.Description)} (R{Math.Abs(tx.Amount):N2})");
                         }
+                    }
+                    if (tx.Amount >= settings.IncomeAlertThreshold)
+                    {
+                        triggerReport = true;
+                        pendingAlerts.Add($"💰 <b>Large Income:</b> {TelegramService.EscapeHtml(tx.Description)} (R{tx.Amount:N2})");
                     }
                 }
             }

@@ -58,8 +58,16 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
         }
     }
 
-    private async Task ProcessMessageAsync(TelegramRequest request, CancellationToken ct)
+    // Hard ceiling for the entire Telegram reply pipeline. Beyond this the user has lost patience
+    // and the AI provider is almost certainly stuck retrying — better to bail and tell them.
+    private static readonly TimeSpan TelegramProcessingBudget = TimeSpan.FromSeconds(90);
+
+    private async Task ProcessMessageAsync(TelegramRequest request, CancellationToken outerCt)
     {
+        using var budgetCts = CancellationTokenSource.CreateLinkedTokenSource(outerCt);
+        budgetCts.CancelAfter(TelegramProcessingBudget);
+        var ct = budgetCts.Token;
+
         using var scope = _serviceProvider.CreateScope();
         var settingsService = scope.ServiceProvider.GetRequiredService<ISettingsService>();
         var telegramService = scope.ServiceProvider.GetRequiredService<ITelegramService>();
@@ -167,6 +175,26 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
             await HandleStandardQueryAsync(request.UserId, request.MessageText, request.ChatId, currentBalance, summary,
                 summaryJson, repo, aiService, telegramService, placeholderId, ctsHeartbeat);
         }
+        catch (OperationCanceledException) when (budgetCts.IsCancellationRequested && !outerCt.IsCancellationRequested)
+        {
+            // Hit our own 90s budget — almost always means the AI provider is overloaded and the
+            // retry loop has been spinning. Tell the user clearly instead of leaving them staring
+            // at a frozen progress bar.
+            _logger.LogWarning("Telegram processing exceeded {Budget}s budget for user {UserId}",
+                TelegramProcessingBudget.TotalSeconds, request.UserId);
+            ctsHeartbeat?.Cancel();
+            try
+            {
+                var telegramSvc = scope.ServiceProvider.GetRequiredService<ITelegramService>();
+                var timeoutMessage =
+                    "⏳ <b>Taking longer than expected</b>\n\n" +
+                    "My analytical engine is under heavy load right now (the AI provider is " +
+                    "throttling requests). Please try again in a minute or two.";
+                if (placeholderId > 0) await telegramSvc.EditMessageAsync(request.UserId, placeholderId, timeoutMessage, request.ChatId);
+                else await telegramSvc.SendMessageAsync(request.UserId, timeoutMessage, request.ChatId);
+            }
+            catch (Exception ex2) { _logger.LogError(ex2, "Failed to send timeout message."); }
+        }
         catch (OperationCanceledException)
         {
             _logger.LogWarning("Telegram processing cancelled for user {UserId}", request.UserId);
@@ -197,20 +225,26 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
 
     private async Task StartHeartbeatAsync(int userId, int placeholderId, string chatId, ITelegramService telegramService, CancellationToken ct)
     {
+        // Deterministic rotation — must NOT pick at random, otherwise consecutive editMessageText
+        // calls collide and Telegram returns "message is not modified" 400s.
         var wittyComments = new[]
         {
-            "Stress-testing liquidity buffers...",
-            "Assessing variance in expenditure...",
-            "Optimizing capital projections...",
-            "Benchmarking salary cycles...",
-            "Recalibrating risk parameters...",
-            "Synthesizing transaction metadata...",
-            "Running runway simulations...",
-            "Auditing ledger fingerprints..."
+            "Stress-testing liquidity buffers",
+            "Assessing variance in expenditure",
+            "Optimizing capital projections",
+            "Benchmarking salary cycles",
+            "Recalibrating risk parameters",
+            "Synthesizing transaction metadata",
+            "Running runway simulations",
+            "Auditing ledger fingerprints"
         };
-
-        int stageIndex = 0;
         string[] progressStages = { "▰▱▱▱▱▱▱", "▰▰▱▱▱▱▱", "▰▰▰▱▱▱▱", "▰▰▰▰▱▱▱", "▰▰▰▰▰▱▱", "▰▰▰▰▰▰▱", "▰▰▰▰▰▰▰" };
+
+        // Heartbeat caps itself well inside the overall processing budget so it never out-lives
+        // a stuck AI call. After this point we leave a calm "still working" message in place.
+        var heartbeatBudget = TimeSpan.FromSeconds(45);
+        var startedAt = DateTime.UtcNow;
+        int tick = 0;
 
         while (!ct.IsCancellationRequested)
         {
@@ -219,16 +253,33 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
                 await Task.Delay(TimeSpan.FromSeconds(3), ct);
                 if (ct.IsCancellationRequested) break;
 
-                var bar = progressStages[Math.Min(stageIndex, progressStages.Length - 1)];
-                var nextWitty = wittyComments[Random.Shared.Next(wittyComments.Length)];
+                var elapsed = DateTime.UtcNow - startedAt;
+                if (elapsed > heartbeatBudget)
+                {
+                    // Final state — written exactly once, then the heartbeat goes quiet.
+                    if (placeholderId > 0)
+                    {
+                        await telegramService.EditMessageAsync(userId, placeholderId,
+                            "<b>Analytical Engine Working</b>\n" +
+                            "<code>▰▰▰▰▰▰▰</code>\n" +
+                            "<i>Still crunching — the AI provider is taking its time…</i>", chatId);
+                    }
+                    return;
+                }
 
-                stageIndex++;
+                var bar = progressStages[Math.Min(tick, progressStages.Length - 1)];
+                var witty = wittyComments[tick % wittyComments.Length];
+                // Rotating dot count guarantees the rendered string changes every tick even after
+                // the bar maxes out, so Telegram never rejects an edit as "not modified".
+                var dots = new string('.', (tick % 3) + 1);
+
+                tick++;
                 if (placeholderId > 0)
                 {
                     await telegramService.EditMessageAsync(userId, placeholderId,
                         $"<b>Analytical Engine Working</b>\n" +
                         $"<code>{bar}</code>\n" +
-                        $"<i>{TelegramService.EscapeHtml(nextWitty)}</i>", chatId);
+                        $"<i>{TelegramService.EscapeHtml(witty)}{dots}</i>", chatId);
                 }
             }
             catch (TaskCanceledException) { break; }

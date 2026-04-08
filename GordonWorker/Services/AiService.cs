@@ -8,15 +8,15 @@ namespace GordonWorker.Services;
 public interface IAiService
 {
     Task<string> GenerateSqlAsync(int userId, string userPrompt);
-    Task<string> FormatResponseAsync(int userId, string userPrompt, string dataContext, bool isWhatsApp = false);
+    Task<string> FormatResponseAsync(int userId, string userPrompt, string dataContext, bool isWhatsApp = false, CancellationToken ct = default);
     Task<string> GenerateSimpleReportAsync(int userId, string statsJson);
-    Task<(Guid? TransactionId, string? Note)> AnalyzeExpenseExplanationAsync(int userId, string userMessage, List<Transaction> recentTransactions);
+    Task<(Guid? TransactionId, string? Note)> AnalyzeExpenseExplanationAsync(int userId, string userMessage, List<Transaction> recentTransactions, CancellationToken ct = default);
     Task<(bool IsAffordabilityCheck, decimal? Amount, string? Description)> AnalyzeAffordabilityAsync(int userId, string userMessage);
     Task<(bool IsChartRequest, string? ChartType, string? Sql, string? Title)> AnalyzeChartRequestAsync(int userId, string userMessage);
     Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false, bool useThinking = false, bool forceRefresh = false, AppSettings? overriddenSettings = null);
     Task<List<string>> GetAvailableModelsAsync(int userId, bool useFallback = false, bool useThinking = false, AppSettings? overriddenSettings = null);
     Task<string> GenerateCompletionAsync(int userId, string system, string prompt, bool useFallback = false, CancellationToken ct = default, bool useThinking = false);
-    Task<JsonElement?> DetectIntentAsync(int userId, string userMessage);
+    Task<JsonElement?> DetectIntentAsync(int userId, string userMessage, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -39,12 +39,12 @@ public class AiService : IAiService
         _claudeCliService = claudeCliService;
     }
 
-    public async Task<JsonElement?> DetectIntentAsync(int userId, string userMessage)
+    public async Task<JsonElement?> DetectIntentAsync(int userId, string userMessage, CancellationToken ct = default)
     {
         var today = DateTime.Today.ToString("yyyy-MM-dd");
         var systemPrompt = GordonWorker.Prompts.SystemPrompts.GetIntentDetectionPrompt(today);
 
-        var jsonResponse = await GenerateCompletionAsync(userId, systemPrompt, $"USER MESSAGE: \"{userMessage}\"");
+        var jsonResponse = await GenerateCompletionAsync(userId, systemPrompt, $"USER MESSAGE: \"{userMessage}\"", ct: ct);
 
         try
         {
@@ -127,7 +127,7 @@ public class AiService : IAiService
         return (false, null, null);
     }
 
-    public async Task<(Guid? TransactionId, string? Note)> AnalyzeExpenseExplanationAsync(int userId, string userMessage, List<Transaction> recentTransactions)
+    public async Task<(Guid? TransactionId, string? Note)> AnalyzeExpenseExplanationAsync(int userId, string userMessage, List<Transaction> recentTransactions, CancellationToken ct = default)
     {
         var settings = await _settingsService.GetSettingsAsync(userId);
 
@@ -146,7 +146,7 @@ public class AiService : IAiService
 
         var prompt = $"USER MESSAGE: \"{userMessage}\"\n\nTRANSACTIONS:\n{candidatesJson}";
 
-        var jsonResponse = await GenerateCompletionAsync(userId, systemPrompt, prompt);
+        var jsonResponse = await GenerateCompletionAsync(userId, systemPrompt, prompt, ct: ct);
 
         try
         {
@@ -441,7 +441,7 @@ public class AiService : IAiService
         return response;
     }
 
-    public async Task<string> FormatResponseAsync(int userId, string userPrompt, string dataContext, bool isWhatsApp = false)
+    public async Task<string> FormatResponseAsync(int userId, string userPrompt, string dataContext, bool isWhatsApp = false, CancellationToken ct = default)
     {
         var settings = await _settingsService.GetSettingsAsync(userId);
         var formattingRule = isWhatsApp
@@ -449,7 +449,7 @@ public class AiService : IAiService
             : "4. **Formatting:** Use semantic HTML tags for Telegram: <b>bold</b> and <i>italic</i>. For lists, use plain bullet points (•). Do NOT use standard Markdown (**, _, ###).";
 
         var systemPrompt = GordonWorker.Prompts.SystemPrompts.GetFormatResponsePrompt(settings.SystemPersona, settings.UserName, formattingRule, dataContext);
-        return await GenerateCompletionAsync(userId, systemPrompt, userPrompt);
+        return await GenerateCompletionAsync(userId, systemPrompt, userPrompt, ct: ct);
     }
 
     public async Task<string> GenerateSimpleReportAsync(int userId, string statsJson)
@@ -486,6 +486,12 @@ public class AiService : IAiService
             try
             {
                 return await SendRawCompletionAsync(userId, system, finalPrompt, useFallback, token, useThinking);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested || token.IsCancellationRequested)
+            {
+                // Caller asked us to stop (e.g. Telegram processing budget hit). Do NOT retry —
+                // bubble it up so the caller can render the right user-facing message.
+                throw;
             }
             catch (Exception ex)
             {

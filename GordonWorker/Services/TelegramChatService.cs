@@ -94,7 +94,7 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
             if (commandResult != null) return;
 
             // 2. Parallelize Data Fetching and Intent Detection
-            var intentTask = aiService.DetectIntentAsync(request.UserId, request.MessageText);
+            var intentTask = aiService.DetectIntentAsync(request.UserId, request.MessageText, ct);
             var historyTask = repo.GetHistoryForAnalysisAsync(request.UserId, 90);
             
             var botClient = botClientFactory.GetClient(settings.TelegramBotToken);
@@ -145,13 +145,13 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
                 if (!string.IsNullOrWhiteSpace(chartSql))
                 {
                     await HandleChartRequestAsync(request.UserId, chartSql, chartType!, chartTitle!, request.ChatId,
-                        repo, aiService, chartService, telegramService, placeholderId, ctsHeartbeat);
+                        repo, aiService, chartService, telegramService, placeholderId, ctsHeartbeat, ct);
                     return;
                 }
             }
             else if (intent == "EXPLAIN")
             {
-                var explanationResult = await aiService.AnalyzeExpenseExplanationAsync(request.UserId, request.MessageText, history);
+                var explanationResult = await aiService.AnalyzeExpenseExplanationAsync(request.UserId, request.MessageText, history, ct);
                 if (explanationResult.TransactionId != null)
                 {
                     await HandleTransactionExplanationAsync(request.UserId, explanationResult.TransactionId.Value, explanationResult.Note!, request.MessageText,
@@ -173,7 +173,7 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
             }
 
             await HandleStandardQueryAsync(request.UserId, request.MessageText, request.ChatId, currentBalance, summary,
-                summaryJson, repo, aiService, telegramService, placeholderId, ctsHeartbeat);
+                summaryJson, repo, aiService, telegramService, placeholderId, ctsHeartbeat, ct);
         }
         catch (OperationCanceledException) when (budgetCts.IsCancellationRequested && !outerCt.IsCancellationRequested)
         {
@@ -289,7 +289,7 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
 
     private async Task HandleChartRequestAsync(int userId, string chartSql, string chartType, string chartTitle, string chatId,
         ITransactionRepository repo, IAiService aiService, IChartService chartService, ITelegramService telegramService,
-        int placeholderId, CancellationTokenSource? ctsHeartbeat)
+        int placeholderId, CancellationTokenSource? ctsHeartbeat, CancellationToken ct)
     {
         var rawChartData = (await repo.GetChartDataAsync(userId, chartSql)).ToList();
         if (rawChartData.Any())
@@ -304,7 +304,7 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
 
             var chartBytes = chartService.GenerateGenericChart(chartTitle, chartType, chartData);
             var commentaryPrompt = GordonWorker.Prompts.SystemPrompts.GetChartCommentaryPrompt(chartTitle, JsonSerializer.Serialize(rawChartData));
-            var caption = await aiService.FormatResponseAsync(userId, commentaryPrompt, "", isWhatsApp: false);
+            var caption = await aiService.FormatResponseAsync(userId, commentaryPrompt, "", isWhatsApp: false, ct: ct);
 
             ctsHeartbeat?.Cancel();
             await telegramService.SendImageAsync(userId, chartBytes, $"<b>📊 {TelegramService.EscapeHtml(chartTitle)}</b>\n\n{caption}", chatId);
@@ -365,7 +365,7 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
 
     private async Task HandleStandardQueryAsync(int userId, string messageText, string chatId, decimal currentBalance,
         FinancialHealthReport summary, string summaryJson, ITransactionRepository repo, IAiService aiService,
-        ITelegramService telegramService, int placeholderId, CancellationTokenSource? ctsHeartbeat)
+        ITelegramService telegramService, int placeholderId, CancellationTokenSource? ctsHeartbeat, CancellationToken ct)
     {
         var culture = (System.Globalization.CultureInfo)System.Globalization.CultureInfo.InvariantCulture.Clone();
         culture.NumberFormat.CurrencySymbol = "R";
@@ -389,7 +389,7 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
         }
 
         var promptForSummary = GordonWorker.Prompts.SystemPrompts.GetStandardQuerySummaryPrompt(historyContext, messageText);
-        var aiResponse = await aiService.FormatResponseAsync(userId, promptForSummary, summaryJson, isWhatsApp: false);
+        var aiResponse = await aiService.FormatResponseAsync(userId, promptForSummary, summaryJson, isWhatsApp: false, ct: ct);
 
         if (string.IsNullOrWhiteSpace(aiResponse) || aiResponse.Contains("I'm sorry") || aiResponse.Contains("difficulties connecting"))
         {

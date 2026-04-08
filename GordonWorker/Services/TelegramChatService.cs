@@ -167,7 +167,7 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
                 if (amount > 0)
                 {
                     await HandleAffordabilityCheckAsync(request.UserId, amount, desc!, request.ChatId,
-                        history, currentBalance, summary, settings, actuarialService, chartService, telegramService, placeholderId, ctsHeartbeat);
+                        history, currentBalance, summary, settings, actuarialService, aiService, chartService, telegramService, placeholderId, ctsHeartbeat, ct);
                     return;
                 }
             }
@@ -334,23 +334,53 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
 
     private async Task HandleAffordabilityCheckAsync(int userId, decimal amount, string description, string chatId,
         List<Transaction> history, decimal currentBalance, FinancialHealthReport summary, AppSettings settings,
-        IActuarialService actuarialService, IChartService chartService, ITelegramService telegramService,
-        int placeholderId, CancellationTokenSource? ctsHeartbeat)
+        IActuarialService actuarialService, IAiService aiService, IChartService chartService, ITelegramService telegramService,
+        int placeholderId, CancellationTokenSource? ctsHeartbeat, CancellationToken ct)
     {
         var simulatedBalance = currentBalance - amount;
         var simSummary = await actuarialService.AnalyzeHealthAsync(history, simulatedBalance, settings);
         var runwayImpact = summary.ExpectedRunwayDays - simSummary.ExpectedRunwayDays;
         var riskLevel = simSummary.ExpectedRunwayDays < 10 ? "High" : runwayImpact > 5 ? "Medium" : "Low";
 
-        var response = $"<b>Affordability Analysis: {TelegramService.EscapeHtml(description)}</b>\n" +
+        // Ask the AI to act as the user's personal banker and give a clear verdict.
+        // Best-effort: if the AI is unavailable, fall back to a deterministic rule-based verdict
+        // so the user always gets actionable guidance, never just a numbers dump.
+        string verdict;
+        try
+        {
+            var verdictPrompt = GordonWorker.Prompts.SystemPrompts.GetAffordabilityVerdictPrompt(
+                description, amount, currentBalance, simulatedBalance,
+                summary.ExpectedRunwayDays, simSummary.ExpectedRunwayDays, runwayImpact,
+                summary.DaysUntilNextSalary, riskLevel);
+            verdict = await aiService.FormatResponseAsync(userId, verdictPrompt, "", isWhatsApp: false, ct: ct);
+            if (string.IsNullOrWhiteSpace(verdict) || verdict.Contains("I'm sorry") || verdict.Contains("difficulties connecting"))
+            {
+                verdict = BuildFallbackAffordabilityVerdict(description, amount, simulatedBalance,
+                    simSummary.ExpectedRunwayDays, summary.DaysUntilNextSalary, riskLevel);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Affordability AI verdict failed for user {UserId}; using rule-based fallback.", userId);
+            verdict = BuildFallbackAffordabilityVerdict(description, amount, simulatedBalance,
+                simSummary.ExpectedRunwayDays, summary.DaysUntilNextSalary, riskLevel);
+        }
+
+        var riskBadge = riskLevel switch
+        {
+            "High" => "🛑",
+            "Medium" => "⚠️",
+            _ => "✅"
+        };
+
+        var response = $"<b>{riskBadge} Affordability Check: {TelegramService.EscapeHtml(description)}</b>\n" +
                        $"-----------------------------\n" +
                        $"<b>Price:</b> R{amount:N2}\n" +
                        $"<b>New Balance:</b> R{simulatedBalance:N2}\n" +
-                       $"<b>Runway Impact:</b> -{runwayImpact:F1} days\n" +
-                       $"<b>New Runway:</b> {simSummary.ExpectedRunwayDays:F1} days\n" +
-                       $"<b>Risk Level:</b> {riskLevel}\n\n" +
-                       (riskLevel == "High" ? "🛑 <b>ADVISORY:</b> Dangerous liquidity position." :
-                        "✅ <b>ADVISORY:</b> Sufficient buffer for this.");
+                       $"<b>New Runway:</b> {simSummary.ExpectedRunwayDays:F0} days (was {summary.ExpectedRunwayDays:F0})\n" +
+                       $"<b>Days to Payday:</b> {summary.DaysUntilNextSalary}\n" +
+                       $"-----------------------------\n\n" +
+                       TelegramService.EscapeHtml(verdict);
 
         ctsHeartbeat?.Cancel();
         if (placeholderId > 0) await telegramService.EditMessageAsync(userId, placeholderId, response, chatId);
@@ -361,6 +391,36 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
             var chartBytes = chartService.GenerateRunwayChart(history, simulatedBalance, (double)summary.WeightedDailyBurn);
             await telegramService.SendImageAsync(userId, chartBytes, "<b>📉 Projected Impact Visualization</b>", chatId);
         }
+    }
+
+    // Deterministic backstop: when the AI is unavailable we still owe the user a clear yes/no
+    // verdict instead of a wall of numbers. Phrasing mirrors the AI prompt's tone.
+    private static string BuildFallbackAffordabilityVerdict(string description, decimal amount,
+        decimal simulatedBalance, decimal newRunwayDays, int daysUntilNextSalary, string riskLevel)
+    {
+        if (simulatedBalance < 0)
+        {
+            return $"No, I'd strongly advise against buying {description} right now — it would push your balance below zero, " +
+                   $"which means dipping into overdraft or missing essentials. The smart move is to wait until after payday in {daysUntilNextSalary} days, " +
+                   $"or set aside a portion of each paycheck until you've saved the R{amount:N2}. You've got this — patience now means peace of mind later.";
+        }
+
+        if (riskLevel == "High" || newRunwayDays < daysUntilNextSalary)
+        {
+            return $"I'd hold off on {description} for now. After this purchase your runway drops to roughly {newRunwayDays:F0} days, " +
+                   $"but payday is {daysUntilNextSalary} days away — that's cutting it dangerously close. Wait until your next salary lands and revisit it then; " +
+                   $"a few weeks of patience will turn this from a risk into a comfortable yes.";
+        }
+
+        if (riskLevel == "Medium")
+        {
+            return $"Yes, you can afford {description} — but with caution. It noticeably trims your safety buffer, so I'd only go ahead if you're confident " +
+                   $"no surprise expenses are coming this month. If you can wait until just after payday, you'll feel a lot more relaxed about it. Either way, " +
+                   $"you're in control here.";
+        }
+
+        return $"Yes, you can comfortably afford {description}. Your buffer stays healthy and your runway easily covers the gap to payday, " +
+               $"so this won't put any strain on your finances. Enjoy it — you've earned it.";
     }
 
     private async Task HandleStandardQueryAsync(int userId, string messageText, string chatId, decimal currentBalance,

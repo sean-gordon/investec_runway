@@ -5,6 +5,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace GordonWorker.Controllers;
@@ -14,6 +15,7 @@ namespace GordonWorker.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly IUserRepository _userRepository;
+    private readonly IRefreshTokenRepository _refreshTokenRepository;
     private readonly IConfiguration _configuration;
     private readonly IMemoryCache _cache;
     private readonly ILogger<AuthController> _logger;
@@ -25,9 +27,23 @@ public class AuthController : ControllerBase
     private const int MaxFailedAttempts = 5;
     private static readonly TimeSpan LockoutWindow = TimeSpan.FromMinutes(15);
 
-    public AuthController(IUserRepository userRepository, IConfiguration configuration, IMemoryCache cache, ILogger<AuthController> logger)
+    // Token lifetimes for the rotating-refresh-cookie flow.
+    // Access tokens are deliberately short so a stolen JWT is only useful for ~15 minutes.
+    // Refresh tokens live for 30 days but are rotated on every use, so theft is detectable
+    // (the original holder gets a 401 the next time they try to refresh).
+    private static readonly TimeSpan AccessTokenLifetime = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan RefreshTokenLifetime = TimeSpan.FromDays(30);
+    private const string RefreshCookieName = "gfe_rt";
+
+    public AuthController(
+        IUserRepository userRepository,
+        IRefreshTokenRepository refreshTokenRepository,
+        IConfiguration configuration,
+        IMemoryCache cache,
+        ILogger<AuthController> logger)
     {
         _userRepository = userRepository;
+        _refreshTokenRepository = refreshTokenRepository;
         _configuration = configuration;
         _cache = cache;
         _logger = logger;
@@ -114,6 +130,7 @@ public class AuthController : ControllerBase
             ClearFailedAttempts(model.Username);
 
             var token = GenerateJwtToken(user);
+            await IssueRefreshCookieAsync(user.Id);
             return Ok(new { Token = token, Username = user.Username });
         }
         catch (Exception ex)
@@ -123,13 +140,98 @@ public class AuthController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Exchanges a valid refresh cookie for a new access token, rotating the refresh token in
+    /// the process. Detection of a re-used (already-revoked) token revokes the entire chain for
+    /// that user — that's the canonical sign of a stolen refresh token.
+    /// </summary>
+    [HttpPost("refresh")]
+    public async Task<IActionResult> Refresh()
+    {
+        if (!Request.Cookies.TryGetValue(RefreshCookieName, out var rawToken) || string.IsNullOrWhiteSpace(rawToken))
+        {
+            return Unauthorized();
+        }
+
+        var hash = HashRefreshToken(rawToken);
+        var stored = await _refreshTokenRepository.GetByHashAsync(hash);
+
+        if (stored == null)
+        {
+            // Unknown token — could be tampered or just expired off the table. Clear the cookie
+            // so the browser doesn't keep retrying with the same garbage.
+            ClearRefreshCookie();
+            return Unauthorized();
+        }
+
+        if (stored.RevokedAt != null)
+        {
+            // Revoked-token reuse: someone is presenting a token we already rotated. Either the
+            // legitimate user is on a stale tab OR the token was stolen. Safest move is to nuke
+            // every active token for this user and force re-login.
+            _logger.LogWarning("Refresh token reuse detected for user {UserId} (token id {TokenId}); revoking all active tokens.",
+                stored.UserId, stored.Id);
+            await _refreshTokenRepository.RevokeAllForUserAsync(stored.UserId);
+            ClearRefreshCookie();
+            return Unauthorized();
+        }
+
+        if (stored.ExpiresAt <= DateTime.UtcNow)
+        {
+            ClearRefreshCookie();
+            return Unauthorized();
+        }
+
+        var user = await _userRepository.GetByIdAsync(stored.UserId);
+        if (user == null)
+        {
+            ClearRefreshCookie();
+            return Unauthorized();
+        }
+
+        // Rotate: insert the new row first, then mark the old as replaced_by the new.
+        var newRawToken = GenerateOpaqueToken();
+        var newHash = HashRefreshToken(newRawToken);
+        var newId = await _refreshTokenRepository.CreateAsync(
+            user.Id,
+            newHash,
+            DateTime.UtcNow.Add(RefreshTokenLifetime),
+            Request.Headers.UserAgent.ToString(),
+            HttpContext.Connection.RemoteIpAddress?.ToString());
+        await _refreshTokenRepository.RevokeAsync(stored.Id, newId);
+
+        WriteRefreshCookie(newRawToken);
+
+        var accessToken = GenerateJwtToken(user);
+        return Ok(new { Token = accessToken, Username = user.Username });
+    }
+
+    /// <summary>
+    /// Revokes the current refresh token (if any) and clears the cookie.
+    /// </summary>
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout()
+    {
+        if (Request.Cookies.TryGetValue(RefreshCookieName, out var rawToken) && !string.IsNullOrWhiteSpace(rawToken))
+        {
+            var hash = HashRefreshToken(rawToken);
+            var stored = await _refreshTokenRepository.GetByHashAsync(hash);
+            if (stored != null && stored.RevokedAt == null)
+            {
+                await _refreshTokenRepository.RevokeAsync(stored.Id, replacedById: null);
+            }
+        }
+        ClearRefreshCookie();
+        return NoContent();
+    }
+
     private string GenerateJwtToken(User user)
     {
         var jwtSettings = _configuration.GetSection("Jwt");
-        var secret = Environment.GetEnvironmentVariable("JWT_SECRET") 
-                     ?? jwtSettings["Secret"] 
+        var secret = Environment.GetEnvironmentVariable("JWT_SECRET")
+                     ?? jwtSettings["Secret"]
                      ?? throw new InvalidOperationException("CRITICAL: JWT Secret is not configured in Environment Variables.");
-                     
+
         var key = Encoding.ASCII.GetBytes(secret);
 
         var tokenDescriptor = new SecurityTokenDescriptor
@@ -140,7 +242,7 @@ public class AuthController : ControllerBase
                 new Claim(ClaimTypes.Name, user.Username),
                 new Claim(ClaimTypes.Role, user.Role)
             }),
-            Expires = DateTime.UtcNow.AddDays(7),
+            Expires = DateTime.UtcNow.Add(AccessTokenLifetime),
             SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature),
             Issuer = jwtSettings["Issuer"],
             Audience = jwtSettings["Audience"]
@@ -149,5 +251,62 @@ public class AuthController : ControllerBase
         var tokenHandler = new JwtSecurityTokenHandler();
         var token = tokenHandler.CreateToken(tokenDescriptor);
         return tokenHandler.WriteToken(token);
+    }
+
+    private async Task IssueRefreshCookieAsync(int userId)
+    {
+        var rawToken = GenerateOpaqueToken();
+        var hash = HashRefreshToken(rawToken);
+        await _refreshTokenRepository.CreateAsync(
+            userId,
+            hash,
+            DateTime.UtcNow.Add(RefreshTokenLifetime),
+            Request.Headers.UserAgent.ToString(),
+            HttpContext.Connection.RemoteIpAddress?.ToString());
+        WriteRefreshCookie(rawToken);
+    }
+
+    private void WriteRefreshCookie(string rawToken)
+    {
+        // Path is scoped to /api/auth so the cookie is only ever sent to refresh/logout — every
+        // other API call carries the JWT in Authorization instead. SameSite=Strict prevents the
+        // cookie from being attached to any cross-site request, which is the practical CSRF
+        // mitigation for this endpoint set.
+        Response.Cookies.Append(RefreshCookieName, rawToken, new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = true,
+            SameSite = SameSiteMode.Strict,
+            Path = "/api/auth",
+            Expires = DateTimeOffset.UtcNow.Add(RefreshTokenLifetime)
+        });
+    }
+
+    private void ClearRefreshCookie()
+    {
+        Response.Cookies.Delete(RefreshCookieName, new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = true,
+            SameSite = SameSiteMode.Strict,
+            Path = "/api/auth"
+        });
+    }
+
+    private static string GenerateOpaqueToken()
+    {
+        // 32 bytes = 256 bits of entropy, base64url-encoded so it survives a Set-Cookie header
+        // without any escaping shenanigans.
+        var bytes = RandomNumberGenerator.GetBytes(32);
+        return Convert.ToBase64String(bytes)
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+    }
+
+    private static string HashRefreshToken(string rawToken)
+    {
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(rawToken));
+        return Convert.ToHexString(bytes);
     }
 }

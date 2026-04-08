@@ -1732,18 +1732,61 @@
             },
             methods: {
                 async api(path, method = 'GET', body = null) {
-                    const headers = { 'Authorization': `Bearer ${this.auth.token}` };
-                    if (body) headers['Content-Type'] = 'application/json';
-                    const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : null });
-                    if (res.status === 401) this.logout();
+                    // Access tokens are short-lived (15 min). On a 401 we attempt one silent
+                    // refresh via the httpOnly refresh cookie, then retry the original request
+                    // exactly once. Concurrent 401s collapse onto a single shared refresh
+                    // promise so a burst of requests doesn't trigger N rotations.
+                    const doFetch = () => {
+                        const headers = { 'Authorization': `Bearer ${this.auth.token}` };
+                        if (body) headers['Content-Type'] = 'application/json';
+                        return fetch(path, {
+                            method,
+                            headers,
+                            body: body ? JSON.stringify(body) : null,
+                            credentials: 'include'
+                        });
+                    };
+
+                    let res = await doFetch();
+                    if (res.status === 401 && this.auth.token && !path.startsWith('/api/auth/')) {
+                        const refreshed = await this.tryRefreshToken();
+                        if (refreshed) {
+                            res = await doFetch();
+                        } else {
+                            this.logout();
+                        }
+                    }
                     return res;
+                },
+                async tryRefreshToken() {
+                    // Coalesce: if a refresh is already in flight, await the same promise so we
+                    // never rotate the refresh token twice in parallel (which would invalidate
+                    // one of the rotations).
+                    if (this._refreshPromise) return this._refreshPromise;
+                    this._refreshPromise = (async () => {
+                        try {
+                            const res = await fetch('/api/auth/refresh', {
+                                method: 'POST',
+                                credentials: 'include'
+                            });
+                            if (!res.ok) return false;
+                            const data = await res.json();
+                            this.auth.token = data.token;
+                            localStorage.setItem('token', data.token);
+                            return true;
+                        } catch { return false; }
+                        finally { this._refreshPromise = null; }
+                    })();
+                    return this._refreshPromise;
                 },
                 async login() {
                     this.loading = true;
                     try {
                         const res = await fetch('/api/auth/login', {
-                            method: 'POST', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(this.loginForm)
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(this.loginForm),
+                            credentials: 'include'
                         });
                         if (res.ok) {
                             const data = await res.json();
@@ -1772,12 +1815,26 @@
                         else this.showToast("Registration Failed");
                     } finally { this.loading = false; }
                 },
-                logout() {
+                async logout() {
+                    // Best-effort revoke server-side; clear local state regardless so a network
+                    // failure can't trap the user logged in.
+                    try {
+                        await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+                    } catch { /* ignore */ }
                     this.auth = { token: null, username: null, role: null };
                     localStorage.clear();
                 },
                 async loadData() {
-                    const resS = await this.api('/api/settings');
+                    // Fire the four independent cold-load requests in parallel instead of
+                    // staircasing them. On a fresh login this cuts dashboard time-to-render
+                    // from ~4× round-trip to ~1× round-trip.
+                    const [resS, resSt, resStats, resTx] = await Promise.all([
+                        this.api('/api/settings'),
+                        this.api('/api/settings/status'),
+                        this.api('/api/settings/stats'),
+                        this.api('/api/settings/recent-transactions'),
+                    ]);
+
                     if (resS.ok) {
                         this.settings = await resS.json();
                         // Pre-fill thinking prompt textarea with default if user has nothing saved
@@ -1785,20 +1842,17 @@
                             const defRes = await this.api('/api/settings/thinking-prompt-default');
                             if (defRes.ok) this.settings.thinkingModelInstructions = await defRes.text();
                         }
-                        this.loadModels(false);
-                        this.loadModels(true);
-                        this.loadModels(false, true);
+                        // Fire-and-forget — model lists never need to block the dashboard render.
+                        // Swallow rejections so they don't surface as unhandled promise errors.
+                        this.loadModels(false).catch(() => {});
+                        this.loadModels(true).catch(() => {});
+                        this.loadModels(false, true).catch(() => {});
                         this.$nextTick(() => {
                             document.title = `Gordon | ${this.settings.userName || this.auth.username}`;
                         });
                     }
-                    const resSt = await this.api('/api/settings/status');
                     if (resSt.ok) this.systemStatus = await resSt.json();
-
-                    const resStats = await this.api('/api/settings/stats');
                     if (resStats.ok) this.healthStats = await resStats.json();
-
-                    const resTx = await this.api('/api/settings/recent-transactions');
                     if (resTx.ok) this.recentTransactions = await resTx.json();
 
                     if (this.activeTab === 'dashboard') {

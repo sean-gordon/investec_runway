@@ -88,6 +88,29 @@ public class DatabaseInitializer
                 CREATE INDEX IF NOT EXISTS idx_chat_history_user_date ON chat_history(user_id, timestamp DESC);";
             await connection.ExecuteAsync(chatHistorySql);
 
+            // 2.2 Refresh Tokens Table
+            // Backs the short-lived-JWT + rotating-refresh-cookie flow. We store only a SHA-256
+            // hash of the opaque token (so a DB read can't be replayed), with a per-row revoked_at
+            // and replaced_by chain for rotation auditing. The two partial indexes keep lookups
+            // for active tokens fast even as the table accumulates revoked rows.
+            var refreshTokensSql = @"
+                CREATE TABLE IF NOT EXISTS refresh_tokens (
+                    id           BIGSERIAL PRIMARY KEY,
+                    user_id      INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    token_hash   TEXT NOT NULL UNIQUE,
+                    issued_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    expires_at   TIMESTAMPTZ NOT NULL,
+                    revoked_at   TIMESTAMPTZ NULL,
+                    replaced_by  BIGINT NULL REFERENCES refresh_tokens(id) ON DELETE SET NULL,
+                    user_agent   TEXT NULL,
+                    ip           TEXT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user
+                    ON refresh_tokens(user_id) WHERE revoked_at IS NULL;
+                CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires
+                    ON refresh_tokens(expires_at) WHERE revoked_at IS NULL;";
+            await connection.ExecuteAsync(refreshTokensSql);
+
             // 3. Transactions Table Migration
             // Ensure Transactions Table exists (for new installs)
             var transactionsSql = @"

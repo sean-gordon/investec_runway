@@ -178,7 +178,11 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
             try
             {
                 var telegramSvc = scope.ServiceProvider.GetRequiredService<ITelegramService>();
-                var errorMessage = $"⚠️ <b>Analytical Error</b>\n\n{TelegramService.EscapeHtml(ex.Message)}";
+                // User-facing copy stays calm and actionable; the raw exception is in the logs above.
+                var errorMessage =
+                    "⚠️ <b>Analytical engine hiccup</b>\n\n" +
+                    "I couldn't complete that analysis just now. Please try again in a moment — " +
+                    "if it keeps happening, check the worker logs for details.";
                 if (placeholderId > 0) await telegramSvc.EditMessageAsync(request.UserId, placeholderId, errorMessage, request.ChatId);
                 else await telegramSvc.SendMessageAsync(request.UserId, errorMessage, request.ChatId);
             }
@@ -321,8 +325,17 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
                          $"<b>Next Salary:</b> In {summary.DaysUntilNextSalary} Days\n" +
                          $"---------------------------\n\n";
 
-        var recentHistory = (await repo.GetRecentChatHistoryAsync(userId, 5)).Reverse().ToList();
-        var historyContext = string.Join("\n", recentHistory.Select(h => h.IsUser ? $"User: {h.MessageText}" : $"CFO: {h.MessageText}"));
+        // Chat history is best-effort context — never fail the whole reply because we couldn't load it.
+        var historyContext = string.Empty;
+        try
+        {
+            var recentHistory = (await repo.GetRecentChatHistoryAsync(userId, 5)).Reverse().ToList();
+            historyContext = string.Join("\n", recentHistory.Select(h => h.IsUser ? $"User: {h.MessageText}" : $"CFO: {h.MessageText}"));
+        }
+        catch (Exception histEx)
+        {
+            _logger.LogWarning(histEx, "Could not load recent chat history for user {UserId}; continuing without context.", userId);
+        }
 
         var promptForSummary = GordonWorker.Prompts.SystemPrompts.GetStandardQuerySummaryPrompt(historyContext, messageText);
         var aiResponse = await aiService.FormatResponseAsync(userId, promptForSummary, summaryJson, isWhatsApp: false);

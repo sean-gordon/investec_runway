@@ -136,11 +136,19 @@ public class TransactionRepository : ITransactionRepository
     public async Task<IEnumerable<(string MessageText, bool IsUser)>> GetRecentChatHistoryAsync(int userId, int limit = 10)
     {
         await using var connection = new NpgsqlConnection(_connectionString);
+        // COALESCE guards against legacy rows where is_user / message_text were inserted as NULL.
+        // Previously we cast a null dynamic value straight to bool, which threw
+        // "Cannot convert null to 'bool'" and broke the entire Telegram chat flow for the user.
         var res = await connection.QueryAsync<dynamic>(
-            "SELECT message_text As MessageText, is_user As IsUser FROM chat_history WHERE user_id = @UserId ORDER BY timestamp DESC LIMIT @Limit",
+            @"SELECT COALESCE(message_text, '') AS ""MessageText"",
+                     COALESCE(is_user, FALSE)  AS ""IsUser""
+              FROM chat_history
+              WHERE user_id = @UserId
+              ORDER BY timestamp DESC
+              LIMIT @Limit",
             new { UserId = userId, Limit = limit });
-            
-        return res.Select(r => ((string)r.MessageText, (bool)r.IsUser));
+
+        return res.Select(r => ((string)(r.MessageText ?? string.Empty), r.IsUser is bool b && b));
     }
 
     public async Task<List<Transaction>> GetHistoryForAnalysisAsync(int userId, int days)

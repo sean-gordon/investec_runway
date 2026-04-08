@@ -1,3 +1,5 @@
+using System.Net.Http;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -17,6 +19,13 @@ public interface IAiService
     Task<List<string>> GetAvailableModelsAsync(int userId, bool useFallback = false, bool useThinking = false, AppSettings? overriddenSettings = null);
     Task<string> GenerateCompletionAsync(int userId, string system, string prompt, bool useFallback = false, CancellationToken ct = default, bool useThinking = false, bool requiresReasoning = false);
     Task<JsonElement?> DetectIntentAsync(int userId, string userMessage, CancellationToken ct = default);
+    /// <summary>
+    /// Yields incremental text chunks from the configured AI provider as they arrive.
+    /// Used by Telegram briefings to give immediate feedback (placeholder + edits) instead
+    /// of waiting for the full buffered response. Falls back to a single buffered chunk
+    /// for providers that don't expose a streaming endpoint (e.g. Claude CLI).
+    /// </summary>
+    IAsyncEnumerable<string> GenerateCompletionStreamAsync(int userId, string system, string prompt, bool useFallback = false, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -609,6 +618,264 @@ public class AiService : IAiService
         var responseString = await response.Content.ReadAsStringAsync(cts.Token);
         using var doc = JsonDocument.Parse(responseString);
         return doc.RootElement.GetProperty("content")[0].GetProperty("text").GetString()?.Trim() ?? "";
+    }
+
+    // ---------------------------------------------------------------------------
+    // Streaming dispatch
+    // ---------------------------------------------------------------------------
+
+    public async IAsyncEnumerable<string> GenerateCompletionStreamAsync(
+        int userId,
+        string system,
+        string prompt,
+        bool useFallback = false,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        var settings = await _settingsService.GetSettingsAsync(userId);
+        var perCallTimeout = settings.AiTimeoutSeconds > 0 ? settings.AiTimeoutSeconds : 90;
+        var config = await GetProviderConfigAsync(userId, useFallback);
+
+        IAsyncEnumerable<string> stream = config.Provider switch
+        {
+            "Anthropic" => StreamAnthropicAsync(system, prompt, config.AnthropicKey, config.ModelName, perCallTimeout, ct),
+            "OpenAI"    => StreamOpenAiAsync(system, prompt, config.OpenAiKey, config.ModelName, perCallTimeout, ct),
+            "Gemini"    => StreamGeminiAsync(system, prompt, config.GeminiKey, config.ModelName, perCallTimeout, ct),
+            "Ollama"    => StreamOllamaAsync(system, prompt, config.OllamaUrl, config.ModelName, perCallTimeout, ct),
+            // Claude CLI doesn't expose a true stream, so degrade gracefully to a single buffered
+            // chunk via the existing path. The caller still gets a real string back, just not
+            // progressively — same UX as the buffered fallback in TelegramChatService.
+            _ => SingleChunkAsync(GenerateCompletionAsync(userId, system, prompt, useFallback, ct))
+        };
+
+        await foreach (var chunk in stream.WithCancellation(ct))
+        {
+            if (!string.IsNullOrEmpty(chunk)) yield return chunk;
+        }
+    }
+
+    private static async IAsyncEnumerable<string> SingleChunkAsync(Task<string> task)
+    {
+        var result = await task;
+        if (!string.IsNullOrEmpty(result)) yield return result;
+    }
+
+    // Anthropic Messages API: server-sent events. We only care about content_block_delta
+    // events whose delta.type == "text_delta".
+    private async IAsyncEnumerable<string> StreamAnthropicAsync(
+        string system, string prompt, string apiKey, string modelName, int timeoutSeconds,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        var request = new
+        {
+            model = !string.IsNullOrWhiteSpace(modelName) ? modelName : "claude-3-5-sonnet-latest",
+            max_tokens = 8192,
+            stream = true,
+            system,
+            messages = new[] { new { role = "user", content = prompt } }
+        };
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.anthropic.com/v1/messages");
+        req.Headers.Add("x-api-key", apiKey);
+        req.Headers.Add("anthropic-version", "2023-06-01");
+        req.Content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
+
+        using var response = await _httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+        response.EnsureSuccessStatusCode();
+        using var stream = await response.Content.ReadAsStreamAsync(cts.Token);
+        using var reader = new StreamReader(stream);
+
+        while (!reader.EndOfStream)
+        {
+            cts.Token.ThrowIfCancellationRequested();
+            var line = await reader.ReadLineAsync(cts.Token);
+            if (string.IsNullOrEmpty(line) || !line.StartsWith("data:")) continue;
+            var data = line[5..].Trim();
+            if (data == "[DONE]") yield break;
+
+            string? piece = null;
+            try
+            {
+                using var doc = JsonDocument.Parse(data);
+                if (doc.RootElement.TryGetProperty("type", out var typeEl) &&
+                    typeEl.GetString() == "content_block_delta" &&
+                    doc.RootElement.TryGetProperty("delta", out var delta) &&
+                    delta.TryGetProperty("type", out var dt) &&
+                    dt.GetString() == "text_delta" &&
+                    delta.TryGetProperty("text", out var textEl))
+                {
+                    piece = textEl.GetString();
+                }
+            }
+            catch (JsonException) { /* malformed SSE frame — skip */ }
+
+            if (!string.IsNullOrEmpty(piece)) yield return piece;
+        }
+    }
+
+    // OpenAI Chat Completions API: SSE with `data: {...}` frames; the delta lives at
+    // choices[0].delta.content.
+    private async IAsyncEnumerable<string> StreamOpenAiAsync(
+        string system, string prompt, string apiKey, string modelName, int timeoutSeconds,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        var request = new
+        {
+            model = !string.IsNullOrWhiteSpace(modelName) ? modelName : "gpt-4o-mini",
+            stream = true,
+            messages = new[]
+            {
+                new { role = "system", content = system },
+                new { role = "user", content = prompt }
+            }
+        };
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/chat/completions");
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+        req.Content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
+
+        using var response = await _httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+        response.EnsureSuccessStatusCode();
+        using var stream = await response.Content.ReadAsStreamAsync(cts.Token);
+        using var reader = new StreamReader(stream);
+
+        while (!reader.EndOfStream)
+        {
+            cts.Token.ThrowIfCancellationRequested();
+            var line = await reader.ReadLineAsync(cts.Token);
+            if (string.IsNullOrEmpty(line) || !line.StartsWith("data:")) continue;
+            var data = line[5..].Trim();
+            if (data == "[DONE]") yield break;
+
+            string? piece = null;
+            try
+            {
+                using var doc = JsonDocument.Parse(data);
+                if (doc.RootElement.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0)
+                {
+                    var first = choices[0];
+                    if (first.TryGetProperty("delta", out var delta) &&
+                        delta.TryGetProperty("content", out var contentEl))
+                    {
+                        piece = contentEl.GetString();
+                    }
+                }
+            }
+            catch (JsonException) { /* skip malformed frame */ }
+
+            if (!string.IsNullOrEmpty(piece)) yield return piece;
+        }
+    }
+
+    // Gemini streamGenerateContent with SSE alt. Each frame is a candidates[0].content.parts[0].text fragment.
+    private async IAsyncEnumerable<string> StreamGeminiAsync(
+        string system, string prompt, string apiKey, string modelName, int timeoutSeconds,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        var model = !string.IsNullOrWhiteSpace(modelName)
+            ? (modelName.StartsWith("models/") ? modelName[7..] : modelName)
+            : "gemini-2.0-flash";
+        var url = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?alt=sse";
+        var request = new
+        {
+            contents = new[] { new { role = "user", parts = new[] { new { text = system + "\n\n" + prompt } } } },
+            safetySettings = new[]
+            {
+                new { category = "HARM_CATEGORY_HARASSMENT",        threshold = "BLOCK_NONE" },
+                new { category = "HARM_CATEGORY_HATE_SPEECH",       threshold = "BLOCK_NONE" },
+                new { category = "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold = "BLOCK_NONE" },
+                new { category = "HARM_CATEGORY_DANGEROUS_CONTENT", threshold = "BLOCK_NONE" }
+            }
+        };
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+
+        using var httpReq = new HttpRequestMessage(HttpMethod.Post, url);
+        httpReq.Headers.Add("x-goog-api-key", apiKey);
+        httpReq.Content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
+
+        using var response = await _httpClient.SendAsync(httpReq, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+        response.EnsureSuccessStatusCode();
+        using var stream = await response.Content.ReadAsStreamAsync(cts.Token);
+        using var reader = new StreamReader(stream);
+
+        while (!reader.EndOfStream)
+        {
+            cts.Token.ThrowIfCancellationRequested();
+            var line = await reader.ReadLineAsync(cts.Token);
+            if (string.IsNullOrEmpty(line) || !line.StartsWith("data:")) continue;
+            var data = line[5..].Trim();
+
+            string? piece = null;
+            try
+            {
+                using var doc = JsonDocument.Parse(data);
+                if (doc.RootElement.TryGetProperty("candidates", out var candidates) && candidates.GetArrayLength() > 0)
+                {
+                    var content = candidates[0].GetProperty("content");
+                    if (content.TryGetProperty("parts", out var parts) && parts.GetArrayLength() > 0)
+                    {
+                        piece = parts[0].GetProperty("text").GetString();
+                    }
+                }
+            }
+            catch (JsonException) { /* skip */ }
+            catch (KeyNotFoundException) { /* skip */ }
+
+            if (!string.IsNullOrEmpty(piece)) yield return piece;
+        }
+    }
+
+    // Ollama: /api/generate with stream=true emits one JSON object per line (NDJSON).
+    private async IAsyncEnumerable<string> StreamOllamaAsync(
+        string system, string prompt, string ollamaUrl, string modelName, int timeoutSeconds,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(modelName)) throw new InvalidOperationException("AI model is not configured.");
+
+        var request = new { model = modelName, prompt = $"{system}\n\n{prompt}", stream = true, keep_alive = -1 };
+        var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
+
+        var baseUrl = ollamaUrl;
+        if (baseUrl.Contains("/api/generate")) baseUrl = baseUrl.Replace("/api/generate", "");
+        else if (baseUrl.EndsWith("/api")) baseUrl = baseUrl[..^4];
+        var baseUri = baseUrl.EndsWith("/") ? baseUrl : baseUrl + "/";
+        var fullUrl = new Uri(new Uri(baseUri), "api/generate");
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(Math.Max(timeoutSeconds, 180)));
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, fullUrl) { Content = content };
+        using var response = await _httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+        response.EnsureSuccessStatusCode();
+        using var stream = await response.Content.ReadAsStreamAsync(cts.Token);
+        using var reader = new StreamReader(stream);
+
+        while (!reader.EndOfStream)
+        {
+            cts.Token.ThrowIfCancellationRequested();
+            var line = await reader.ReadLineAsync(cts.Token);
+            if (string.IsNullOrWhiteSpace(line)) continue;
+
+            string? piece = null;
+            bool done = false;
+            try
+            {
+                using var doc = JsonDocument.Parse(line);
+                if (doc.RootElement.TryGetProperty("response", out var respEl)) piece = respEl.GetString();
+                if (doc.RootElement.TryGetProperty("done", out var doneEl) && doneEl.ValueKind == JsonValueKind.True) done = true;
+            }
+            catch (JsonException) { /* skip */ }
+
+            if (!string.IsNullOrEmpty(piece)) yield return piece;
+            if (done) yield break;
+        }
     }
 
     private class AiProviderConfig

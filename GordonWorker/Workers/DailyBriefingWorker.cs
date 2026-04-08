@@ -102,15 +102,19 @@ INSTRUCTIONS:
 - Otherwise, wish them a productive day.
 - Do NOT use 'Subject:' lines.";
 
-            var briefing = await aiService.FormatResponseAsync(userId, prompt, "", isWhatsApp: false);
-            
-            if (!string.IsNullOrWhiteSpace(briefing))
+            // Stream the briefing into Telegram via the placeholder/edit pattern so the user
+            // sees text growing within ~1s instead of staring at "typing…" for the full
+            // AI latency. The system prompt is the same one FormatResponseAsync would build.
+            var systemPrompt = GordonWorker.Prompts.SystemPrompts.GetFormatResponsePrompt(
+                settings.SystemPersona, settings.UserName,
+                "4. **Formatting:** Use semantic HTML tags for Telegram: <b>bold</b> and <i>italic</i>. For lists, use plain bullet points (•). Do NOT use standard Markdown (**, _, ###).",
+                "");
+            var stream = aiService.GenerateCompletionStreamAsync(userId, systemPrompt, prompt, ct: token);
+            var briefing = await telegramService.StreamMessageAsync(userId, stream, header: "🌅 <b>Morning Briefing</b>", ct: token);
+
+            if (string.IsNullOrWhiteSpace(briefing))
             {
-                await telegramService.SendMessageAsync(userId, $"🌅 <b>Morning Briefing</b>\n\n{briefing}");
-            }
-            else 
-            {
-                _logger.LogWarning("Skipping daily briefing for user {UserId} due to AI failure.", userId);
+                _logger.LogWarning("Daily briefing for user {UserId} produced empty content.", userId);
             }
         }
         catch (Exception ex)

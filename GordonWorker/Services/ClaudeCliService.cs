@@ -62,7 +62,20 @@ namespace GordonWorker.Services
                 process.BeginOutputReadLine();
                 process.BeginErrorReadLine();
 
-                await process.WaitForExitAsync(cancellationToken);
+                // Hard ceiling so a wedged CLI invocation can't hang an entire request pipeline.
+                // The caller's CancellationToken still wins if it fires earlier.
+                using var processCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                processCts.CancelAfter(TimeSpan.FromSeconds(75));
+                try
+                {
+                    await process.WaitForExitAsync(processCts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
+                    if (cancellationToken.IsCancellationRequested) throw;
+                    throw new TimeoutException("Claude CLI did not respond within 75 seconds.");
+                }
 
                 var stdout = stdoutBuilder.ToString();
                 var stderr = stderrBuilder.ToString();

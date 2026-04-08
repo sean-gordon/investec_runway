@@ -68,8 +68,10 @@ public class RunwayTopUpWorker : BackgroundService
 
             try
             {
-                // Fetch existing transactions from DB to calculate runway
-                var history = await repo.GetTransactionsByUserAsync(userId);
+                // Fetch a bounded slice of recent history — the actuarial maths only needs the
+                // last few months to project runway. Pulling the user's full ledger every tick
+                // wastes memory linearly with how long they've been on the app.
+                var history = await repo.GetTransactionsByUserSinceAsync(userId, DateTime.UtcNow.AddDays(-120));
                 decimal currentBalance = 0;
                 
                 if (history.Any())

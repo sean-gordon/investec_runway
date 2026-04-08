@@ -44,13 +44,23 @@ public class InvestecClient : IInvestecClient
     private readonly ILogger<InvestecClient> _logger;
     private readonly SemaphoreSlim _authLock = new(1, 1);
 
-    private string? _clientId;
-    private string? _secret;
-    private string? _apiKey;
-    private string? _accessToken;
-    private string _baseUrl = "https://openapi.investec.com/";
-    private DateTime _tokenExpiry;
-    private List<InvestecAccount> _cachedAccounts = new();
+    // All per-tenant state lives in this immutable session record. Configure() atomically swaps
+    // the entire reference, so any method that captures it once at the top is guaranteed to see
+    // a self-consistent set of credentials + token + cache, even if Configure() is called again
+    // concurrently (e.g. by another scope sharing the same instance by accident). This eliminates
+    // an entire class of cross-tenant credential-leak bugs.
+    private sealed class Session
+    {
+        public string ClientId { get; init; } = string.Empty;
+        public string Secret { get; init; } = string.Empty;
+        public string ApiKey { get; init; } = string.Empty;
+        public string BaseUrl { get; init; } = "https://openapi.investec.com/";
+        public string? AccessToken;          // mutable but only mutated under _authLock
+        public DateTime TokenExpiry;         // ditto
+        public List<InvestecAccount> CachedAccounts = new();
+    }
+
+    private volatile Session? _session;
 
     public InvestecClient(HttpClient httpClient, ILogger<InvestecClient> logger)
     {
@@ -60,40 +70,45 @@ public class InvestecClient : IInvestecClient
 
     public void Configure(string clientId, string secret, string apiKey, string baseUrl = "https://openapi.investec.com/", string environment = "Production")
     {
-        _authLock.Wait();
-        try
+        var effectiveUrl = string.IsNullOrWhiteSpace(baseUrl) ? "https://openapi.investec.com/" : baseUrl;
+        effectiveUrl = effectiveUrl.TrimEnd('/') + "/";
+        if (environment.Equals("Sandbox", StringComparison.OrdinalIgnoreCase) && !effectiveUrl.Contains("sandbox", StringComparison.OrdinalIgnoreCase))
         {
-            _clientId = clientId;
-            _secret = secret;
-            _apiKey = apiKey;
-            var effectiveUrl = string.IsNullOrWhiteSpace(baseUrl) ? "https://openapi.investec.com/" : baseUrl;
-            effectiveUrl = effectiveUrl.TrimEnd('/') + "/";
-            if (environment.Equals("Sandbox", StringComparison.OrdinalIgnoreCase) && !effectiveUrl.Contains("sandbox", StringComparison.OrdinalIgnoreCase))
-            {
-                effectiveUrl += "sandbox/";
-            }
-            _baseUrl = effectiveUrl;
-            _accessToken = null;
-            _cachedAccounts.Clear();
+            effectiveUrl += "sandbox/";
         }
-        finally
+
+        // Atomic single-reference swap. Any in-flight call that already captured the previous
+        // session keeps using its own credentials to completion — which is the correct behaviour.
+        _session = new Session
         {
-            _authLock.Release();
-        }
+            ClientId = clientId ?? string.Empty,
+            Secret = secret ?? string.Empty,
+            ApiKey = apiKey ?? string.Empty,
+            BaseUrl = effectiveUrl
+        };
     }
 
-    private Uri GetUri(string path) => new Uri(new Uri(_baseUrl), path);
+    private Session RequireSession()
+    {
+        var s = _session;
+        if (s == null)
+            throw new InvalidOperationException("InvestecClient.Configure() must be called before any API method.");
+        return s;
+    }
+
+    private static Uri GetUri(Session session, string path) => new Uri(new Uri(session.BaseUrl), path);
 
     public async Task<decimal> GetAccountBalanceAsync(string accountId)
     {
-        if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry) await AuthenticateAsync();
-        
-        // Find account type from cache or fetch if missing
-        if (!_cachedAccounts.Any()) await GetAccountsAsync();
-        var account = _cachedAccounts.FirstOrDefault(a => a.AccountId == accountId);
+        var session = RequireSession();
+        if (string.IsNullOrEmpty(session.AccessToken) || DateTime.UtcNow > session.TokenExpiry) await AuthenticateAsync();
 
-        var request = new HttpRequestMessage(HttpMethod.Get, GetUri($"za/pb/v1/accounts/{accountId}/balance"));
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+        // Find account type from cache or fetch if missing
+        if (!session.CachedAccounts.Any()) await GetAccountsAsync();
+        var account = session.CachedAccounts.FirstOrDefault(a => a.AccountId == accountId);
+
+        var request = new HttpRequestMessage(HttpMethod.Get, GetUri(session, $"za/pb/v1/accounts/{accountId}/balance"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.AccessToken);
         var response = await _httpClient.SendAsync(request);
         if (!response.IsSuccessStatusCode) return 0;
         
@@ -121,28 +136,29 @@ public class InvestecClient : IInvestecClient
 
     public async Task<string> AuthenticateAsync()
     {
-        if (string.IsNullOrEmpty(_clientId) || string.IsNullOrEmpty(_secret)) return string.Empty;
+        var session = RequireSession();
+        if (string.IsNullOrEmpty(session.ClientId) || string.IsNullOrEmpty(session.Secret)) return string.Empty;
 
         await _authLock.WaitAsync();
         try
         {
-            // Double-check after acquiring lock — another thread may have refreshed
-            if (!string.IsNullOrEmpty(_accessToken) && DateTime.UtcNow <= _tokenExpiry)
-                return _accessToken;
+            // Double-check after acquiring lock — another thread may have refreshed this session.
+            if (!string.IsNullOrEmpty(session.AccessToken) && DateTime.UtcNow <= session.TokenExpiry)
+                return session.AccessToken;
 
-            var request = new HttpRequestMessage(HttpMethod.Post, GetUri("identity/v2/oauth2/token"));
-            var authString = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_clientId}:{_secret}"));
+            var request = new HttpRequestMessage(HttpMethod.Post, GetUri(session, "identity/v2/oauth2/token"));
+            var authString = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{session.ClientId}:{session.Secret}"));
             request.Headers.Authorization = new AuthenticationHeaderValue("Basic", authString);
-            request.Headers.Add("x-api-key", _apiKey);
+            request.Headers.Add("x-api-key", session.ApiKey);
             request.Content = new FormUrlEncodedContent(new[] { new KeyValuePair<string, string>("grant_type", "client_credentials") });
             var response = await _httpClient.SendAsync(request);
             if (!response.IsSuccessStatusCode) return string.Empty;
             var content = await response.Content.ReadAsStringAsync();
             var tokenResponse = JsonSerializer.Deserialize<JsonElement>(content);
-            _accessToken = tokenResponse.GetProperty("access_token").GetString();
+            session.AccessToken = tokenResponse.GetProperty("access_token").GetString();
             var expiresIn = tokenResponse.GetProperty("expires_in").GetInt32();
-            _tokenExpiry = DateTime.UtcNow.AddSeconds(expiresIn - 60);
-            return _accessToken ?? string.Empty;
+            session.TokenExpiry = DateTime.UtcNow.AddSeconds(expiresIn - 60);
+            return session.AccessToken ?? string.Empty;
         }
         finally
         {
@@ -152,28 +168,30 @@ public class InvestecClient : IInvestecClient
 
     public async Task<List<InvestecAccount>> GetAccountsAsync()
     {
-        if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry) await AuthenticateAsync();
-        var request = new HttpRequestMessage(HttpMethod.Get, GetUri("za/pb/v1/accounts"));
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+        var session = RequireSession();
+        if (string.IsNullOrEmpty(session.AccessToken) || DateTime.UtcNow > session.TokenExpiry) await AuthenticateAsync();
+        var request = new HttpRequestMessage(HttpMethod.Get, GetUri(session, "za/pb/v1/accounts"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.AccessToken);
         var response = await _httpClient.SendAsync(request);
         if (!response.IsSuccessStatusCode) return new List<InvestecAccount>();
         var content = await response.Content.ReadAsStringAsync();
         var root = JsonSerializer.Deserialize<InvestecAccountsResponse>(content, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-        _cachedAccounts = root?.Data?.Accounts ?? new List<InvestecAccount>();
-        return _cachedAccounts;
+        session.CachedAccounts = root?.Data?.Accounts ?? new List<InvestecAccount>();
+        return session.CachedAccounts;
     }
 
     public async Task<List<Transaction>> GetTransactionsAsync(string accountId, DateTimeOffset fromDate)
     {
-        if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry) await AuthenticateAsync();
-        
+        var session = RequireSession();
+        if (string.IsNullOrEmpty(session.AccessToken) || DateTime.UtcNow > session.TokenExpiry) await AuthenticateAsync();
+
         var transactions = new List<Transaction>();
         var url = $"za/pb/v1/accounts/{accountId}/transactions?fromDate={fromDate:yyyy-MM-dd}";
-        
+
         while (!string.IsNullOrEmpty(url))
         {
-            var request = new HttpRequestMessage(HttpMethod.Get, GetUri(url));
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+            var request = new HttpRequestMessage(HttpMethod.Get, GetUri(session, url));
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.AccessToken);
             var response = await _httpClient.SendAsync(request);
             if (!response.IsSuccessStatusCode) break;
             
@@ -231,9 +249,10 @@ public class InvestecClient : IInvestecClient
 
     public async Task<List<InvestecCard>> GetCardsAsync(string accountId)
     {
-        if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry) await AuthenticateAsync();
-        var request = new HttpRequestMessage(HttpMethod.Get, GetUri($"za/pb/v1/accounts/{accountId}/cards"));
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+        var session = RequireSession();
+        if (string.IsNullOrEmpty(session.AccessToken) || DateTime.UtcNow > session.TokenExpiry) await AuthenticateAsync();
+        var request = new HttpRequestMessage(HttpMethod.Get, GetUri(session, $"za/pb/v1/accounts/{accountId}/cards"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.AccessToken);
         var response = await _httpClient.SendAsync(request);
         if (!response.IsSuccessStatusCode) return new List<InvestecCard>();
         var content = await response.Content.ReadAsStringAsync();
@@ -249,13 +268,14 @@ public class InvestecClient : IInvestecClient
             return (true, string.Empty);
         }
 
-        if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry) await AuthenticateAsync();
+        var session = RequireSession();
+        if (string.IsNullOrEmpty(session.AccessToken) || DateTime.UtcNow > session.TokenExpiry) await AuthenticateAsync();
 
         var transferPayload = new
         {
             transferList = new[]
             {
-                new 
+                new
                 {
                     beneficiaryAccountId = toAccountId,
                     amount = amount.ToString("F2", CultureInfo.InvariantCulture),
@@ -265,8 +285,8 @@ public class InvestecClient : IInvestecClient
             }
         };
 
-        var request = new HttpRequestMessage(HttpMethod.Post, GetUri($"za/pb/v1/accounts/{fromAccountId}/transfermultiple"));
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+        var request = new HttpRequestMessage(HttpMethod.Post, GetUri(session, $"za/pb/v1/accounts/{fromAccountId}/transfermultiple"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.AccessToken);
         request.Content = new StringContent(JsonSerializer.Serialize(transferPayload), Encoding.UTF8, "application/json");
 
         try

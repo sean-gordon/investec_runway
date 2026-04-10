@@ -4,7 +4,7 @@
 
 ---
 
-I built Gordon because most finance apps just tell you what you've already spent. I wanted something that could tell me what's coming next—my actual burn rate, how many days of "runway" I have left before my next paycheck, and whether a big purchase today is going to bite me in two weeks.
+I built Gordon because most finance apps just tell you what you've already spent. I wanted something that could tell me what's coming next - my actual burn rate, how many days of "runway" I have left before my next paycheck, and whether a big purchase today is going to bite me in two weeks.
 
 Gordon connects to **Investec Programmable Banking**, stores everything in a private database, and uses AI (Ollama, Gemini, or Claude) so you can just ask questions about your money in plain English.
 

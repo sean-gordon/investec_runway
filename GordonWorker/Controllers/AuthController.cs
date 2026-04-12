@@ -1,5 +1,6 @@
 using GordonWorker.Models;
 using GordonWorker.Repositories;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.IdentityModel.Tokens;
@@ -75,11 +76,19 @@ public class AuthController : ControllerBase
         _cache.Remove(GetLockoutKey(username));
     }
 
+    [Authorize(Roles = "Admin")]
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterModel model)
     {
         if (string.IsNullOrWhiteSpace(model.Username) || string.IsNullOrWhiteSpace(model.Password))
             return BadRequest("Username and Password are required.");
+
+        // Security check for role: only admins can create other admins
+        var role = model.Role ?? "User";
+        if (role == "Admin" && !User.IsInRole("Admin"))
+        {
+            return Forbid("Only admins can create other admin users.");
+        }
 
         try
         {
@@ -88,7 +97,7 @@ public class AuthController : ControllerBase
                 return BadRequest("Username already exists.");
 
             var passwordHash = BCrypt.Net.BCrypt.HashPassword(model.Password);
-            await _userRepository.CreateUserAsync(model.Username, passwordHash);
+            await _userRepository.CreateUserAsync(model.Username, passwordHash, role);
 
             return Ok(new { Message = "Registration successful." });
         }

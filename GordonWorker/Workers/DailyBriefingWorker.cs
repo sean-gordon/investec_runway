@@ -21,9 +21,9 @@ public class DailyBriefingWorker : BackgroundService
         {
             try
             {
-                var now = DateTime.Now;
-                // Target 08:00 AM
-                var nextRun = now.Date.AddHours(8);
+                var now = DateTime.UtcNow;
+                // Target 06:00 UTC (08:00 SAST) — consistent with UTC used elsewhere.
+                var nextRun = now.Date.AddHours(6);
                 if (now >= nextRun) nextRun = nextRun.AddDays(1);
 
                 var delay = nextRun - now;

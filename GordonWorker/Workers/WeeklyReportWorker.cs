@@ -34,7 +34,7 @@ public class WeeklyReportWorker : BackgroundService
                     users = await connection.QueryAsync<UserReportStatus>("SELECT id, last_weekly_report_sent as LastWeeklyReportSent FROM users");
                 }
 
-                var now = DateTime.Now;
+                var now = DateTime.UtcNow;
 
                 var tasks = users.Select(user => ProcessUserReportAsync(user, now, stoppingToken));
                 await Task.WhenAll(tasks);

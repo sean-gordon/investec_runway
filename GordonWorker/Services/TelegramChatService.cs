@@ -337,7 +337,7 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
     private async Task HandleTransactionExplanationAsync(int userId, Guid txId, string note, string messageText, string chatId,
         ITransactionRepository repo, List<Transaction> history, ITelegramService telegramService, int placeholderId, CancellationTokenSource? ctsHeartbeat)
     {
-        await repo.UpdateTransactionNoteAsync(txId, note);
+        await repo.UpdateTransactionNoteAsync(txId, userId, note);
         var tx = history.FirstOrDefault(t => t.Id == txId);
         var confirmation = $"✅ <b>Noted.</b> I've updated the ledger:\n<i>{TelegramService.EscapeHtml(tx?.Description ?? "Transaction")}</i>: {TelegramService.EscapeHtml(note)}";
         

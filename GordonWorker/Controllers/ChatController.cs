@@ -24,7 +24,15 @@ public class ChatController : ControllerBase
         _logger = logger;
     }
 
-    private int UserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    private int UserId
+    {
+        get
+        {
+            var claim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (int.TryParse(claim, out var id)) return id;
+            throw new UnauthorizedAccessException("Missing or invalid user identifier claim.");
+        }
+    }
 
     [HttpPost]
     public async Task<IActionResult> Post([FromBody] ChatRequest request)

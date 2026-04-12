@@ -27,11 +27,20 @@ public class TransactionsController : ControllerBase
         _logger = logger;
     }
 
-    private int UserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    private int UserId
+    {
+        get
+        {
+            var claim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (int.TryParse(claim, out var id)) return id;
+            return 0; // Handled by [Authorize] normally, but we fallback safely
+        }
+    }
 
     [HttpPost("categorize-all")]
     public async Task<IActionResult> CategorizeAll()
     {
+        if (UserId == 0) return Unauthorized();
         try
         {
             var transactions = (await _transactionRepository.GetTransactionsForCategorizationAsync(UserId)).ToList();
@@ -53,23 +62,25 @@ public class TransactionsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to categorize history for user {UserId}", UserId);
-            return StatusCode(500, new { Error = ex.Message });
+            return StatusCode(500, new { Error = "Internal server error during categorization." });
         }
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetTransactions([FromQuery] int limit = 500)
+    public async Task<IActionResult> GetTransactions([FromQuery] int limit = 500, [FromQuery] int offset = 0)
     {
+        if (UserId == 0) return Unauthorized();
         limit = Math.Clamp(limit, 1, 5000);
+        offset = Math.Max(0, offset);
         try
         {
-            var transactions = await _transactionRepository.GetTransactionsByUserAsync(UserId, limit);
+            var transactions = await _transactionRepository.GetTransactionsByUserAsync(UserId, limit, offset);
             return Ok(transactions);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get raw transactions for user {UserId}", UserId);
-            return StatusCode(500, new { Error = ex.Message });
+            return StatusCode(500, new { Error = "Internal server error fetching transactions." });
         }
     }
 }

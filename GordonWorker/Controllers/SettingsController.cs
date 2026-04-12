@@ -62,11 +62,20 @@ public class SettingsController : ControllerBase
         _logger = logger;
     }
 
-    private int UserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    private int UserId
+    {
+        get
+        {
+            var claim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (int.TryParse(claim, out var id)) return id;
+            return 0;
+        }
+    }
 
     [HttpGet]
     public async Task<IActionResult> Get()
     {
+        if (UserId == 0) return Unauthorized();
         var settings = await _settingsService.GetSettingsAsync(UserId);
         
         // SECURITY FIX: Mask sensitive fields before sending to frontend
@@ -149,7 +158,7 @@ public class SettingsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to update settings for user {UserId}", UserId);
-            return StatusCode(500, new { Error = ex.Message });
+            return StatusCode(500, new { Error = "Failed to update settings. Check logs for details." });
         }
     }
 
@@ -305,7 +314,7 @@ public class SettingsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get models.");
-            return Ok(new List<string> { $"SettingsController Error: {ex.Message}" });
+            return StatusCode(500, new { Error = "Failed to fetch models." });
         }
     }
 
@@ -314,52 +323,63 @@ public class SettingsController : ControllerBase
     {
         // Check Investec status for THIS user on demand (lightweight check)
         var settings = await _settingsService.GetSettingsAsync(UserId);
-        var isInvestecOnline = false;
-        if (!string.IsNullOrEmpty(settings.InvestecClientId))
-        {
-            _investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey, settings.InvestecBaseUrl, "Production");
-            var (success, _) = await _investecClient.TestConnectivityAsync();
-            isInvestecOnline = success;
-        }
-
-        // Proactive AI check: if global status is offline, but THIS user might have a working connection,
-        // we check it now to provide immediate feedback on dashboard refresh.
-        // We only do this if it's currently offline to avoid overhead, and we add a cooldown for SUCCESSFUL checks.
-        // If it's currently offline, we ALWAYS allow one re-check to let the user "fix" it by refreshing.
         var canRetryCheck = (DateTime.UtcNow - _statusService.LastAiCheck).TotalMinutes > 1;
 
+        // Fire all connectivity checks in parallel with a 10-second timeout so the
+        // dashboard never blocks for more than ~10 s even if a service is unresponsive.
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        // Investec check
+        var investecTask = Task.Run(async () =>
+        {
+            if (string.IsNullOrEmpty(settings.InvestecClientId)) return false;
+            _investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey, settings.InvestecBaseUrl, "Production");
+            var (success, _) = await _investecClient.TestConnectivityAsync();
+            return success;
+        }, cts.Token);
+
+        // Primary AI check
         var isPrimaryOnline = _statusService.IsAiPrimaryOnline;
         var primaryError = _statusService.PrimaryAiError;
-
-        if (!isPrimaryOnline || canRetryCheck)
+        var primaryTask = Task.Run(async () =>
         {
+            if (isPrimaryOnline && !canRetryCheck) return (isPrimaryOnline, primaryError);
             var (ok, err) = await _aiService.TestConnectionAsync(UserId, useFallback: false);
-            isPrimaryOnline = ok;
-            primaryError = ok ? string.Empty : err;
+            return (ok, ok ? string.Empty : err);
+        }, cts.Token);
 
-            // Only update global status if the current user is an admin or the designated status user
+        // Fallback AI check
+        var isFallbackOnline = _statusService.IsAiFallbackOnline;
+        var fallbackError = _statusService.FallbackAiError;
+        var fallbackTask = Task.Run(async () =>
+        {
+            if (!settings.EnableAiFallback || (isFallbackOnline && !canRetryCheck)) return (isFallbackOnline, fallbackError);
+            var (ok, err) = await _aiService.TestConnectionAsync(UserId, useFallback: true);
+            return (ok, ok ? string.Empty : err);
+        }, cts.Token);
+
+        try { await Task.WhenAll(investecTask, primaryTask, fallbackTask); }
+        catch (OperationCanceledException) { /* one or more timed out — use cached values */ }
+
+        var isInvestecOnline = investecTask.IsCompletedSuccessfully && investecTask.Result;
+
+        if (primaryTask.IsCompletedSuccessfully)
+        {
+            (isPrimaryOnline, primaryError) = primaryTask.Result;
             if (User.IsInRole("Admin"))
             {
-                _statusService.IsAiPrimaryOnline = ok;
+                _statusService.IsAiPrimaryOnline = isPrimaryOnline;
                 _statusService.PrimaryAiError = primaryError;
                 _statusService.LastAiCheck = DateTime.UtcNow;
             }
         }
 
-        var isFallbackOnline = _statusService.IsAiFallbackOnline;
-        var fallbackError = _statusService.FallbackAiError;
-        var canRetryFallback = (DateTime.UtcNow - _statusService.LastAiCheck).TotalMinutes > 1;
-
-        if (settings.EnableAiFallback && (!isFallbackOnline || canRetryFallback))
+        if (fallbackTask.IsCompletedSuccessfully)
         {
-            var (ok, err) = await _aiService.TestConnectionAsync(UserId, useFallback: true);
-            isFallbackOnline = ok;
-            fallbackError = ok ? string.Empty : err;
-
-            // Only update global status if the current user is an admin or the designated status user
+            (isFallbackOnline, fallbackError) = fallbackTask.Result;
             if (User.IsInRole("Admin"))
             {
-                _statusService.IsAiFallbackOnline = ok;
+                _statusService.IsAiFallbackOnline = isFallbackOnline;
                 _statusService.FallbackAiError = fallbackError;
                 _statusService.LastAiCheck = DateTime.UtcNow;
             }

@@ -21,29 +21,29 @@ namespace GordonWorker.Services
         {
             try
             {
-                var escapedPrompt = prompt.Replace("\"", "\\\"");
-                var arguments = $"-p \"{escapedPrompt}\"";
-                
-                if (!string.IsNullOrEmpty(model))
-                {
-                    // Ensure we use the alias if it's a known family name to prevent deprecation issues
-                    var cleanModel = model.ToLower();
-                    if (cleanModel.Contains("sonnet")) cleanModel = "sonnet";
-                    else if (cleanModel.Contains("haiku")) cleanModel = "haiku";
-                    else if (cleanModel.Contains("opus")) cleanModel = "opus";
-                    
-                    arguments += $" --model {cleanModel}";
-                }
+                // Use ArgumentList instead of Arguments string to avoid shell metacharacter
+                // injection from user-supplied prompts.
+                var cleanModel = model?.ToLower() ?? "";
+                if (cleanModel.Contains("sonnet")) cleanModel = "sonnet";
+                else if (cleanModel.Contains("haiku")) cleanModel = "haiku";
+                else if (cleanModel.Contains("opus")) cleanModel = "opus";
 
                 var processStartInfo = new ProcessStartInfo
                 {
                     FileName = "claude",
-                    Arguments = arguments,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 };
+
+                processStartInfo.ArgumentList.Add("-p");
+                processStartInfo.ArgumentList.Add(prompt);
+                if (!string.IsNullOrEmpty(model) && !string.IsNullOrEmpty(cleanModel))
+                {
+                    processStartInfo.ArgumentList.Add("--model");
+                    processStartInfo.ArgumentList.Add(cleanModel);
+                }
 
                 if (!string.IsNullOrWhiteSpace(token))
                 {

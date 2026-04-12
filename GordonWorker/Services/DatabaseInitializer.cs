@@ -49,10 +49,11 @@ public class DatabaseInitializer
                 // If not provided in ENV, we generate a random one and log it once.
                 _logger.LogWarning("ADMIN_PASSWORD not set in environment. Generating a secure one...");
                 adminPass = Guid.NewGuid().ToString("N").Substring(0, 12);
-                _logger.LogCritical("******************************************************************");
-                _logger.LogCritical($" INITIAL ADMIN PASSWORD: {adminPass} ");
-                _logger.LogCritical(" PLEASE RECORD THIS AND CHANGE IT IN THE UI IMMEDIATELY. ");
-                _logger.LogCritical("******************************************************************");
+                // Write to a one-time file instead of logs to avoid password exposure via the
+                // /api/logs endpoint or centralised log shipping.
+                var passFile = Path.Combine(AppContext.BaseDirectory, "admin_password.txt");
+                File.WriteAllText(passFile, $"Admin: {adminUser}\nPassword: {adminPass}\n\nDelete this file after recording the password.");
+                _logger.LogCritical("INITIAL ADMIN PASSWORD written to {File} — record it and delete the file.", passFile);
             }
 
             var adminHash = BCrypt.Net.BCrypt.HashPassword(adminPass);

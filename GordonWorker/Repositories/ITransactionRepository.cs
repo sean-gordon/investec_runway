@@ -10,7 +10,7 @@ public interface ITransactionRepository
     Task<IEnumerable<int>> GetAllUserIdsAsync();
     
     Task<List<Transaction>> GetTransactionsByUserAsync(int userId);
-    Task<List<Transaction>> GetTransactionsByUserAsync(int userId, int limit);
+    Task<List<Transaction>> GetTransactionsByUserAsync(int userId, int limit, int offset = 0);
     /// <summary>
     /// Returns transactions for a user from <paramref name="since"/> onwards. Use this on the
     /// hot paths (runway top-up, daily briefing, actuarial recompute) so we don't drag the
@@ -45,7 +45,7 @@ public interface ITransactionRepository
     
     Task<List<Transaction>> GetHistoryForAnalysisAsync(int userId, int days);
     Task<IEnumerable<dynamic>> GetChartDataAsync(int userId, string sql);
-    Task UpdateTransactionNoteAsync(Guid transactionId, string note);
+    Task UpdateTransactionNoteAsync(Guid transactionId, int userId, string note);
 
     // Returns up to `limit` (description, category) pairs from the user's already-categorised
     // transactions, intended as few-shot examples for the categorisation prompt. Distinct by

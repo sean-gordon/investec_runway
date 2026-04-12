@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace GordonWorker.Controllers;
 
-[Authorize]
+[Authorize(Roles = "Admin")]
 [ApiController]
 [Route("api/[controller]")]
 public class LogsController : ControllerBase

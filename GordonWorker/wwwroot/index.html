@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gordon Finance Engine</title>
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📈</text></svg>">
@@ -38,19 +38,6 @@
 
 <body class="bg-slate-50 text-slate-900 h-screen overflow-hidden flex flex-col">
 
-    <!-- HELP TOOLTIP COMPONENT -->
-    <script type="text/x-template" id="help-tooltip-template">
-        <div class="relative inline-block ml-1 group">
-            <span class="cursor-help text-slate-400 hover:text-brand-600 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-            </span>
-            <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 bg-slate-800 text-white text-[10px] p-2 rounded shadow-lg z-50 pointer-events-none text-center">
-                {{ text }}
-                <div class="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800"></div>
-            </div>
-        </div>
-    </script>
-
     <div id="app" v-cloak class="flex-1 flex flex-col h-full overflow-hidden relative">
 
         <!-- AUTH OVERLAY -->
@@ -67,9 +54,9 @@
                 <div class="p-8">
                     <div v-if="authView === 'login'" class="space-y-4">
                         <h3 class="text-lg font-bold text-slate-800">Sign In</h3>
-                        <input v-model="loginForm.username" type="text" placeholder="Username"
+                        <input v-model="loginForm.username" type="text" placeholder="Username" required
                             class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none">
-                        <input v-model="loginForm.password" type="password" placeholder="Password" @keyup.enter="login"
+                        <input v-model="loginForm.password" type="password" placeholder="Password" required @keyup.enter="login"
                             class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none">
                         <button @click="login" :disabled="loading"
                             class="w-full bg-brand-600 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-brand-700">
@@ -80,9 +67,9 @@
                     </div>
                     <div v-else class="space-y-4">
                         <h3 class="text-lg font-bold text-slate-800">Register</h3>
-                        <input v-model="registerForm.username" type="text" placeholder="Choose Username"
+                        <input v-model="registerForm.username" type="text" placeholder="Choose Username" required
                             class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none">
-                        <input v-model="registerForm.password" type="password" placeholder="Choose Password"
+                        <input v-model="registerForm.password" type="password" placeholder="Choose Password" required minlength="6"
                             class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none">
                         <button @click="register" :disabled="loading"
                             class="w-full bg-slate-800 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-slate-900">
@@ -124,7 +111,7 @@
                     </div>
                     <button @click="logout"
                         class="text-xs font-bold text-slate-400 hover:text-red-500 transition-colors">LOGOUT</button>
-                    <div class="md:hidden text-2xl" @click="isMobileMenuOpen = !isMobileMenuOpen">☰</div>
+                    <!-- Mobile nav is handled by the bottom navbar -->
                 </div>
             </header>
 
@@ -159,31 +146,37 @@
 
                     <!-- DASHBOARD -->
                     <div v-if="activeTab === 'dashboard'" class="space-y-6">
-                        <div class="flex justify-between items-center">
+                        <div class="flex flex-wrap gap-2 justify-between items-center">
                             <h2 class="text-2xl font-bold">Dashboard</h2>
-                            <div class="flex gap-2">
+                            <div class="flex flex-wrap gap-2">
                                 <button @click="categorizeExisting" :disabled="categorizing"
                                     class="text-xs bg-white border border-slate-200 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-50 disabled:opacity-50">
-                                    {{ categorizing ? '⏳ Processing...' : '🧠 Categorize' }}
+                                    {{ categorizing ? 'Processing...' : 'Categorize' }}
                                 </button>
                                 <button @click="forceRepull"
-                                    class="text-xs bg-white border border-slate-200 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-50">🔄
-                                    Sync</button>
+                                    class="text-xs bg-white border border-slate-200 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-50">Sync</button>
+                                <!-- Mobile-friendly Run Report. The sidebar version is hidden on
+                                     small screens, so without this entry mobile users had no way
+                                     to trigger the weekly report on demand. -->
+                                <button @click="sendReportNow" :disabled="sendingReport"
+                                    class="text-xs bg-white border border-slate-200 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-50 disabled:opacity-50">
+                                    {{ sendingReport ? 'Processing...' : 'Run Report' }}
+                                </button>
                             </div>
                         </div>
-                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+                        <!-- KPI strip: 3 cols × 2 rows gives each card enough width to hold a
+                             long currency string without wrapping. The previous 6-across grid
+                             squeezed Current Balance until "R 1 234 567,89" broke onto two lines. -->
+                        <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
                             <!-- Current Balance -->
                             <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm relative group">
                                 <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Current Balance
                                 </p>
-                                <div class="mt-1 flex items-center justify-between">
-                                    <span class="text-xl font-black tracking-tight"
+                                <div class="mt-1">
+                                    <span class="text-xl font-black tracking-tight whitespace-nowrap"
                                         :class="parseFloat(healthStats?.CurrentBalance) < 0 ? 'text-red-500' : 'text-slate-900'">
                                         {{ formatCurrency(parseFloat(healthStats?.CurrentBalance || 0)) }}
                                     </span>
-                                    <div
-                                        class="w-8 h-8 rounded-lg flex items-center justify-center text-lg bg-brand-50 text-brand-600">
-                                        💰</div>
                                 </div>
                                 <p class="text-[10px] text-slate-400 mt-1">Live from Investec</p>
                             </div>
@@ -492,8 +485,23 @@
                     <div v-if="activeTab === 's-rawdata'" class="space-y-6">
                         <div class="flex justify-between items-center">
                             <h2 class="text-xl font-bold">Raw Database Ledger</h2>
-                            <button @click="loadRawData"
-                                class="bg-slate-200 text-slate-800 px-4 py-2 rounded-lg font-bold text-sm hover:bg-slate-300">Refresh</button>
+                            <div class="flex gap-2">
+                                <div class="flex items-center bg-white border border-slate-200 rounded-lg overflow-hidden shadow-sm">
+                                    <button @click="prevPage" :disabled="rawDataOffset === 0"
+                                        class="px-3 py-2 hover:bg-slate-50 disabled:opacity-30 border-r border-slate-200 transition-colors">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                                    </button>
+                                    <div class="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-50/50">
+                                        Rows {{ rawDataOffset }} - {{ rawDataOffset + rawTransactions.length }}
+                                    </div>
+                                    <button @click="nextPage" :disabled="rawTransactions.length < rawDataLimit"
+                                        class="px-3 py-2 hover:bg-slate-50 disabled:opacity-30 border-l border-slate-200 transition-colors">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                    </button>
+                                </div>
+                                <button @click="loadRawData"
+                                    class="bg-slate-200 text-slate-800 px-4 py-2 rounded-lg font-bold text-sm hover:bg-slate-300 transition-all">Refresh</button>
+                            </div>
                         </div>
                         <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-auto max-h-[70vh]">
                             <table class="w-full text-left text-sm whitespace-nowrap">
@@ -1250,8 +1258,7 @@
                                         </div>
                                         <div>
                                             <label
-                                                class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Amount
-                                                (ZAR)</label>
+                                                class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Amount</label>
                                             <input v-model.number="newAdjustment.amount" type="number" step="0.01"
                                                 class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 transition-all font-bold">
                                         </div>
@@ -1577,13 +1584,14 @@
 
         <!-- TOAST NOTIFICATION -->
         <div v-if="toast.show"
-            class="fixed top-4 right-4 z-[200] bg-slate-800 text-white px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-pulse">
+            class="fixed top-4 right-4 z-[200] bg-slate-800 text-white px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3"
+            role="alert" aria-live="polite">
             <span class="text-xl">🔔</span>
             <span class="font-bold text-sm">{{ toast.msg }}</span>
         </div>
 
         <!-- USER MODAL -->
-        <div v-if="isUserModalOpen" class="fixed inset-0 z-[150] bg-black/50 flex items-center justify-center p-4">
+        <div v-if="isUserModalOpen" class="fixed inset-0 z-[150] bg-black/50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="User form">
             <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
                 <h3 class="text-lg font-bold">{{ userForm.id ? 'Edit User' : 'New User' }}</h3>
                 <input v-if="!userForm.id" v-model="userForm.username" type="text" placeholder="Username"
@@ -1633,10 +1641,12 @@
                     categorizing: false,
                     categorizeResult: "",
                     authView: 'login',
-                    auth: { token: localStorage.getItem('token'), username: localStorage.getItem('username'), role: localStorage.getItem('role') || 'User' },
+                    auth: { token: null, username: localStorage.getItem('username'), role: localStorage.getItem('role') || 'User' },
                     loginForm: { username: '', password: '' },
                     registerForm: { username: '', password: '' },
                     activeTab: 'dashboard',
+                    rawDataOffset: 0,
+                    rawDataLimit: 100,
                     users: [],
                     userForm: { id: 0, username: '', password: '', role: 'User' },
                     isUserModalOpen: false,
@@ -1691,6 +1701,9 @@
                     logFileDates: {},
                     logFileContent: '',
                     logFileLoading: false,
+                    rawTransactions: [],
+                    categoryChart: null,
+                    balanceChart: null,
                     simulationAdjustments: [],
                     newAdjustment: { type: 'MonthlyExpense', amount: 0, description: '' },
                     simulationResult: null,
@@ -1725,12 +1738,13 @@
                     }
                 }
             },
-            mounted() {
-                if (this.auth.token) {
+            async mounted() {
+                // Attempt silent refresh first. If successful, it populates this.auth.token
+                // from the httpOnly refresh cookie.
+                const refreshed = await this.tryRefreshToken();
+                if (refreshed || this.auth.token) {
                     this.loadData();
                     if (this.auth.role === 'Admin') this.loadUsers();
-                    // Give it a moment to render the dashboard before loading charts
-                    setTimeout(() => { this.loadCharts(); }, 1000);
                 }
             },
             methods: {
@@ -1775,7 +1789,12 @@
                             if (!res.ok) return false;
                             const data = await res.json();
                             this.auth.token = data.token;
-                            localStorage.setItem('token', data.token);
+                            // Decrypt payload to get role
+                            const payload = JSON.parse(atob(data.token.split('.')[1]));
+                            this.auth.role = payload.role || 'User';
+                            this.auth.username = data.username;
+                            localStorage.setItem('username', data.username);
+                            localStorage.setItem('role', this.auth.role);
                             return true;
                         } catch { return false; }
                         finally { this._refreshPromise = null; }
@@ -1783,6 +1802,10 @@
                     return this._refreshPromise;
                 },
                 async login() {
+                    if (!this.loginForm.username || !this.loginForm.password) {
+                        this.showToast("Username and password are required.");
+                        return;
+                    }
                     this.loading = true;
                     try {
                         const res = await fetch('/api/auth/login', {
@@ -1797,7 +1820,6 @@
                             const role = payload.role || 'User';
 
                             this.auth = { token: data.token, username: data.username, role: role };
-                            localStorage.setItem('token', data.token);
                             localStorage.setItem('username', data.username);
                             localStorage.setItem('role', role);
 
@@ -1808,11 +1830,16 @@
                     finally { this.loading = false; }
                 },
                 async register() {
+                    if (!this.registerForm.username || !this.registerForm.password) {
+                        this.showToast("Username and password are required.");
+                        return;
+                    }
                     this.loading = true;
                     try {
                         const res = await fetch('/api/auth/register', {
                             method: 'POST', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(this.registerForm)
+                            body: JSON.stringify(this.registerForm),
+                            credentials: 'include'
                         });
                         if (res.ok) { this.showToast("Registered! Please login."); this.authView = 'login'; }
                         else this.showToast("Registration Failed");
@@ -1824,8 +1851,12 @@
                     try {
                         await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
                     } catch { /* ignore */ }
+                    this.stopLogPolling();
+                    if (this.categoryChart) { this.categoryChart.destroy(); this.categoryChart = null; }
+                    if (this.balanceChart) { this.balanceChart.destroy(); this.balanceChart = null; }
                     this.auth = { token: null, username: null, role: null };
-                    localStorage.clear();
+                    localStorage.removeItem('username');
+                    localStorage.removeItem('role');
                 },
                 async loadData() {
                     // Fire the four independent cold-load requests in parallel instead of
@@ -1864,7 +1895,7 @@
                 },
                 async loadRawData() {
                     try {
-                        const res = await this.api('/api/transactions?limit=100');
+                        const res = await this.api(`/api/transactions?limit=${this.rawDataLimit}&offset=${this.rawDataOffset}`);
                         if (res.ok) {
                             this.rawTransactions = await res.json();
                         } else {
@@ -1875,6 +1906,14 @@
                         console.error("Failed to load raw transactions", e);
                         this.rawTransactions = [];
                     }
+                },
+                nextPage() {
+                    this.rawDataOffset += this.rawDataLimit;
+                    this.loadRawData();
+                },
+                prevPage() {
+                    this.rawDataOffset = Math.max(0, this.rawDataOffset - this.rawDataLimit);
+                    this.loadRawData();
                 },
                 async loadUsers() {
                     const res = await this.api('/api/users');
@@ -1945,8 +1984,12 @@
                     this.categorizeResult = "";
                     try {
                         const res = await this.api('/api/transactions/categorize-all', 'POST');
+                        if (!res.ok) {
+                            let msg = "Categorization failed";
+                            try { const err = await res.json(); msg = err.error || msg; } catch {}
+                            throw new Error(msg);
+                        }
                         const data = await res.json();
-                        if (!res.ok) throw new Error(data.error || "Categorization failed");
                         this.categorizeResult = data.message;
                         this.showToast("History Categorized");
                         this.loadData();
@@ -1976,17 +2019,12 @@
                 },
                 async loadCharts() {
                     try {
-                        const resCat = await this.api('/api/chartdata/spending-by-category?days=30');
-                        if (resCat.ok) {
-                            const data = await resCat.json();
-                            this.renderCategoryChart(data);
-                        }
-
-                        const resBal = await this.api('/api/chartdata/daily-balance?days=30');
-                        if (resBal.ok) {
-                            const data = await resBal.json();
-                            this.renderBalanceChart(data);
-                        }
+                        const [resCat, resBal] = await Promise.all([
+                            this.api('/api/chartdata/spending-by-category?days=30'),
+                            this.api('/api/chartdata/daily-balance?days=30')
+                        ]);
+                        if (resCat.ok) this.renderCategoryChart(await resCat.json());
+                        if (resBal.ok) this.renderBalanceChart(await resBal.json());
                     } catch (err) {
                         console.error("Failed to load charts", err);
                     }
@@ -2035,10 +2073,6 @@
                             }
                         }
                     });
-                },
-                async saveSettings() {
-                    const res = await this.api('/api/settings', 'PUT', this.settings);
-                    if (res.ok) this.showToast("Settings Saved");
                 },
                 async testFallbackAi() {
                     await this.saveSettings();
@@ -2186,7 +2220,17 @@
                 },
                 formatTime(d) { return d ? new Date(d).toLocaleTimeString() : 'Never'; },
                 formatDate(d) { return d ? new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : ''; },
-                formatCurrency(v) { return new Intl.NumberFormat(this.settings.currencyCulture || 'en-ZA', { style: 'currency', currency: 'ZAR' }).format(v); }
+                formatCurrency(v) {
+                    const culture = this.settings.currencyCulture || 'en-ZA';
+                    const currencyMap = { 'en-ZA': 'ZAR', 'en-US': 'USD', 'en-GB': 'GBP' };
+                    const currency = currencyMap[culture] || 'ZAR';
+                    const key = `${culture}-${currency}`;
+                    if (!this._formatters) this._formatters = {};
+                    if (!this._formatters[key]) {
+                        this._formatters[key] = new Intl.NumberFormat(culture, { style: 'currency', currency });
+                    }
+                    return this._formatters[key].format(v);
+                }
             }
         }).mount('#app');
     </script>

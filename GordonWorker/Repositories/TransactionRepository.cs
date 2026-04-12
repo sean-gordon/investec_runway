@@ -27,18 +27,17 @@ public class TransactionRepository : ITransactionRepository
 
     public async Task<List<Transaction>> GetTransactionsByUserAsync(int userId)
     {
-        await using var connection = new NpgsqlConnection(_connectionString);
-        return (await connection.QueryAsync<Transaction>(
-            "SELECT * FROM transactions WHERE user_id = @UserId ORDER BY transaction_date DESC",
-            new { UserId = userId })).ToList();
+        // Unbounded return is a risk for long histories. Capping at 2000 for safety;
+        // callers requiring full history should use pagination or the date-bounded sister.
+        return await GetTransactionsByUserAsync(userId, 2000, 0);
     }
 
-    public async Task<List<Transaction>> GetTransactionsByUserAsync(int userId, int limit)
+    public async Task<List<Transaction>> GetTransactionsByUserAsync(int userId, int limit, int offset = 0)
     {
         await using var connection = new NpgsqlConnection(_connectionString);
         return (await connection.QueryAsync<Transaction>(
-            "SELECT * FROM transactions WHERE user_id = @UserId ORDER BY transaction_date DESC LIMIT @Limit",
-            new { UserId = userId, Limit = limit })).ToList();
+            "SELECT * FROM transactions WHERE user_id = @UserId ORDER BY transaction_date DESC LIMIT @Limit OFFSET @Offset",
+            new { UserId = userId, Limit = limit, Offset = offset })).ToList();
     }
 
     public async Task<List<Transaction>> GetTransactionsByUserSinceAsync(int userId, DateTime since)
@@ -313,11 +312,11 @@ public class TransactionRepository : ITransactionRepository
         return noLine;
     }
 
-    public async Task UpdateTransactionNoteAsync(Guid transactionId, string note)
+    public async Task UpdateTransactionNoteAsync(Guid transactionId, int userId, string note)
     {
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.ExecuteAsync(
-            "UPDATE transactions SET notes = @Note WHERE id = @Id",
-            new { Note = note, Id = transactionId });
+            "UPDATE transactions SET notes = @Note WHERE id = @Id AND user_id = @UserId",
+            new { Note = note, Id = transactionId, UserId = userId });
     }
 }

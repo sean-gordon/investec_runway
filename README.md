@@ -37,7 +37,7 @@ Gordon isn't a bloated monolith. It's a lean set of services managed by Docker:
 
 1.  **Gordon Worker (.NET 8):** The engine. It handles the banking API, runs the AI logic, and serves the dashboard.
 2.  **TimescaleDB:** A high-performance database built for time-series data (perfect for transaction history).
-3.  **Frontend (Vue.js 3):** A fast, "no-build" dashboard that works on desktop and mobile.
+3.  **Frontend (Vue.js 3):** A fast, "no-build" dashboard that works on desktop and mobile. The repository also includes standalone pages like pricing.html and side-hustle.html (specifically for the Investec API Side Hustle 2026).
 
 ---
 

@@ -11,6 +11,8 @@ using Dapper;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
+using Polly;
+using Polly.Extensions.Http;
 
 // Support legacy timestamp behavior for Npgsql
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
@@ -100,13 +102,22 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 
 // Service Registration
-builder.Services.AddHttpClient<IInvestecClient, InvestecClient>();
+builder.Services.AddHttpClient<IInvestecClient, InvestecClient>()
+    .AddTransientHttpErrorPolicy(p => p.WaitAndRetryAsync(3, _ => TimeSpan.FromMilliseconds(500)))
+    .AddTransientHttpErrorPolicy(p => p.CircuitBreakerAsync(5, TimeSpan.FromSeconds(30)));
+
 builder.Services.AddHttpClient<IAiService, AiService>()
     .SetHandlerLifetime(TimeSpan.FromMinutes(5))
-    .ConfigureHttpClient(client => client.Timeout = TimeSpan.FromMinutes(5));
+    .ConfigureHttpClient(client => client.Timeout = TimeSpan.FromMinutes(5))
+    .AddTransientHttpErrorPolicy(p => p.WaitAndRetryAsync(3, _ => TimeSpan.FromMilliseconds(500)))
+    .AddTransientHttpErrorPolicy(p => p.CircuitBreakerAsync(5, TimeSpan.FromSeconds(30)));
 
 builder.Services.AddHttpClient("TelegramBotClient")
-    .SetHandlerLifetime(TimeSpan.FromMinutes(5));
+    .SetHandlerLifetime(TimeSpan.FromMinutes(5))
+    .AddTransientHttpErrorPolicy(p => p.WaitAndRetryAsync(3, _ => TimeSpan.FromMilliseconds(500)))
+    .AddTransientHttpErrorPolicy(p => p.CircuitBreakerAsync(5, TimeSpan.FromSeconds(30)));
+
+builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(Program).Assembly));
 
 builder.Services.AddSingleton<ITelegramBotClientFactory, TelegramBotClientFactory>();
 builder.Services.AddSingleton<ISettingsService, SettingsService>();

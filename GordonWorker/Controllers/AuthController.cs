@@ -76,7 +76,7 @@ public class AuthController : ControllerBase
         _cache.Remove(GetLockoutKey(username));
     }
 
-    [Authorize(Roles = "Admin")]
+    [AllowAnonymous]
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterModel model)
     {

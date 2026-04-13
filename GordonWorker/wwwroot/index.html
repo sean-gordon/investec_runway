@@ -19,24 +19,136 @@
                 extend: {
                     fontFamily: { sans: ['Inter', 'sans-serif'], outfit: ['Outfit', 'sans-serif'] },
                     colors: {
-                        brand: { 50: '#f0f9ff', 100: '#e0f2fe', 500: '#0ea5e9', 600: '#0284c7', 900: '#0c4a6e' }
+                        brand: { 50: '#1A1400', 100: '#251B00', 200: '#3A2C00', 500: '#D4A931', 600: '#D4A931', 700: '#A87E20', 900: '#000000' }
                     }
                 }
             }
         }
     </script>
     <style>
-        body {
-            -webkit-tap-highlight-color: transparent;
+        /* ── GORDON × LAMBORGHINI DARK THEME ── */
+        :root {
+            --gold: #D4A931; --gold-lt: #E8C55A; --gold-dk: #A87E20;
+            --gold-glow: rgba(212,169,49,0.10);
+            --s0: #000000; --s1: #080808; --s2: #0E0E0E;
+            --s3: #141414; --s4: #1A1A1A; --s5: #212121; --s6: #2A2A2A;
+            --b1: #181818; --b2: #202020; --b3: #2C2C2C;
+        }
+        body { -webkit-tap-highlight-color: transparent; font-feature-settings: 'tnum' on; }
+        [v-cloak] { display: none; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: var(--s1); }
+        ::-webkit-scrollbar-thumb { background: var(--s5); border-radius: 2px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--gold-dk); }
+
+        /* ── Surfaces ── */
+        .bg-white           { background-color: var(--s3) !important; }
+        .bg-slate-50        { background-color: var(--s1) !important; }
+        .bg-slate-100       { background-color: var(--s2) !important; }
+        .bg-slate-200       { background-color: var(--s4) !important; }
+        .bg-slate-700,
+        .bg-slate-800,
+        .bg-slate-900       { background-color: var(--s0) !important; }
+
+        .hover\:bg-white:hover      { background-color: var(--s4) !important; }
+        .hover\:bg-slate-50:hover   { background-color: var(--s3) !important; }
+
+        /* ── Text ── */
+        .text-slate-900 { color: #F0EBE0 !important; }
+        .text-slate-800 { color: #D8D2C6 !important; }
+        .text-slate-700 { color: #B0AA9E !important; }
+        .text-slate-600 { color: #7A7670 !important; }
+        .text-slate-500 { color: #555250 !important; }
+        .text-slate-400 { color: #3C3A38 !important; }
+        .text-slate-300 { color: #2E2C2A !important; }
+
+        /* ── Borders ── */
+        .border-slate-50,
+        .border-slate-100   { border-color: var(--b1) !important; }
+        .border-slate-200   { border-color: var(--b2) !important; }
+        .border-slate-300   { border-color: var(--b3) !important; }
+
+        /* ── Brand → Gold ── */
+        .bg-brand-600                  { background-color: var(--gold) !important; }
+        .bg-brand-700                  { background-color: var(--gold-dk) !important; }
+        .bg-brand-50                   { background-color: var(--gold-glow) !important; }
+        .bg-brand-900                  { background-color: #000 !important; }
+        .text-brand-600                { color: var(--gold) !important; }
+        .text-brand-700                { color: var(--gold-dk) !important; }
+        .text-brand-400                { color: var(--gold-lt) !important; }
+        .border-brand-300              { border-color: rgba(212,169,49,.25) !important; }
+        .hover\:text-brand-600:hover   { color: var(--gold) !important; }
+        .hover\:bg-brand-700:hover     { background-color: var(--gold-dk) !important; }
+        .hover\:border-brand-300:hover { border-color: var(--gold) !important; }
+        .focus\:border-brand-500:focus { border-color: var(--gold) !important; }
+        .focus\:ring-2                 { --tw-ring-color: var(--gold-glow) !important; }
+
+        /* Active nav: gold left-bar */
+        .bg-brand-50.text-brand-700 {
+            background-color: var(--gold-glow) !important;
+            border-left: 2px solid var(--gold) !important;
+            color: var(--gold) !important;
+            padding-left: calc(0.75rem - 2px) !important;
         }
 
-        [v-cloak] {
-            display: none;
+        /* Gold buttons get black text */
+        button.bg-brand-600, a.bg-brand-600 { color: #000 !important; font-weight: 700 !important; letter-spacing: .04em; }
+        button.bg-brand-600:hover, a.bg-brand-600:hover { background-color: var(--gold-lt) !important; }
+
+        /* ── Inputs ── */
+        input:not([type=checkbox]):not([type=radio]), select, textarea {
+            background-color: var(--s2) !important;
+            border-color: var(--b2) !important;
+            color: #F0EBE0 !important;
         }
+        input::placeholder, textarea::placeholder { opacity: .35 !important; }
+        input:focus:not([type=checkbox]), select:focus, textarea:focus {
+            border-color: var(--gold) !important;
+            box-shadow: 0 0 0 2px var(--gold-glow) !important;
+        }
+        select option { background: var(--s3); color: #F0EBE0; }
+
+        /* ── Shadows → deep black ── */
+        .shadow-sm  { box-shadow: 0 1px 4px rgba(0,0,0,.7), 0 0 0 1px var(--b1) !important; }
+        .shadow     { box-shadow: 0 2px 8px rgba(0,0,0,.8), 0 0 0 1px var(--b1) !important; }
+        .shadow-lg  { box-shadow: 0 8px 20px rgba(0,0,0,.85), 0 0 0 1px var(--b2) !important; }
+        .shadow-xl  { box-shadow: 0 12px 32px rgba(0,0,0,.9),  0 0 0 1px rgba(212,169,49,.12) !important; }
+        .shadow-2xl { box-shadow: 0 20px 50px rgba(0,0,0,.95), 0 0 0 1px rgba(212,169,49,.18) !important; }
+
+        /* ── Status colours ── */
+        .text-green-600, .text-green-700  { color: #4ADE80 !important; }
+        .bg-green-50                       { background-color: rgba(74,222,128,.07) !important; }
+        .border-green-100                  { border-color: rgba(74,222,128,.14) !important; }
+        .text-red-500, .text-red-600       { color: #F87171 !important; }
+        .hover\:text-red-500:hover         { color: #F87171 !important; }
+        .bg-red-50                         { background-color: rgba(248,113,113,.07) !important; }
+        .border-red-100                    { border-color: rgba(248,113,113,.14) !important; }
+        .text-amber-600                    { color: #FCD34D !important; }
+        .bg-amber-50                       { background-color: rgba(252,211,77,.07) !important; }
+        .text-blue-600, .text-blue-700     { color: #60A5FA !important; }
+        .bg-blue-50                        { background-color: rgba(96,165,250,.07) !important; }
+        .text-indigo-700, .text-indigo-600 { color: var(--gold) !important; }
+        .bg-indigo-100                     { background-color: var(--gold-glow) !important; }
+        .text-emerald-600                  { color: #34D399 !important; }
+        .bg-emerald-50                     { background-color: rgba(52,211,153,.07) !important; }
+
+        /* ── Mobile bottom nav ── */
+        .md\:hidden.fixed.bottom-0 {
+            background-color: var(--s2) !important;
+            border-top-color: var(--b2) !important;
+        }
+        .md\:hidden.fixed.bottom-0 .text-slate-400 { color: var(--s5) !important; }
+
+        /* ── Misc ── */
+        .bg-slate-800.text-slate-400  { color: #4A4740 !important; }
+        .bg-slate-800.text-slate-200  { color: #7A7670 !important; }
+        .divide-slate-100 > * + *     { border-color: var(--b1) !important; }
     </style>
 </head>
 
-<body class="bg-slate-50 text-slate-900 h-screen overflow-hidden flex flex-col">
+<body class="h-screen overflow-hidden flex flex-col" style="background:#080808;color:#F0EBE0">
 
     <div id="app" v-cloak class="flex-1 flex flex-col h-full overflow-hidden relative">
 
@@ -123,7 +235,8 @@
                             v-show="!item.adminOnly || auth.role === 'Admin'"
                             class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all"
                             :class="activeTab === item.id ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-50'">
-                            <span>{{ item.icon }}</span> {{ item.name }}
+                            <span class="w-7 h-7 rounded-md flex items-center justify-center text-[10px] font-black shrink-0 transition-colors"
+                                :class="activeTab === item.id ? 'bg-brand-600 text-black' : 'bg-slate-100 text-slate-500'">{{ item.icon }}</span> {{ item.name }}
                         </button>
                         <button @click="activeTab = 's-rawdata'"
                             class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all"
@@ -131,13 +244,15 @@
                             <span>raw</span> Raw Data
                         </button>
                     </nav>
-                    <div class="p-4 border-t border-slate-100 bg-slate-50/50">
+                    <div class="p-4 border-t border-slate-100 bg-slate-50/50 space-y-2">
                         <button @click="sendReportNow" :disabled="sendingReport"
                             class="w-full flex items-center justify-center gap-2 py-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:border-brand-300 hover:text-brand-600 shadow-sm transition-all active:scale-95">
-                            <span v-if="sendingReport" class="animate-spin">⏳</span>
-                            <span v-else>📊</span>
                             {{ sendingReport ? 'Processing...' : 'Run Report' }}
                         </button>
+                        <a href="/pricing.html" target="_blank"
+                            class="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-brand-600 to-indigo-600 text-white rounded-lg text-xs font-bold shadow-sm hover:opacity-90 transition-all active:scale-95">
+                            View Plans
+                        </a>
                     </div>
                 </aside>
 
@@ -190,9 +305,9 @@
                                         :class="systemStatus.investecOnline ? 'text-green-600' : 'text-red-600'">
                                         {{ systemStatus.investecOnline ? 'Online' : 'Offline' }}
                                     </span>
-                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-lg"
+                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-black"
                                         :class="systemStatus.investecOnline ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'">
-                                        🏦</div>
+                                        IN</div>
                                 </div>
                                 <p class="text-[10px] text-slate-400 mt-1">Last seen: {{
                                     formatTime(systemStatus.lastInvestecCheck) }}</p>
@@ -206,9 +321,9 @@
                                         :class="systemStatus.databaseOnline ? 'text-green-600' : 'text-red-600'">
                                         {{ systemStatus.databaseOnline ? 'Active' : 'Down' }}
                                     </span>
-                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-lg"
+                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-black"
                                         :class="systemStatus.databaseOnline ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'">
-                                        💾</div>
+                                        DB</div>
                                 </div>
                                 <p class="text-[10px] text-slate-400 mt-1">TimescaleDB Hypertable</p>
                             </div>
@@ -223,9 +338,9 @@
                                         (systemStatus.aiPrimaryError?.includes('Rate Limited') ? 'Throttled' :
                                         'Offline') }}
                                     </span>
-                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-lg"
+                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-black"
                                         :class="systemStatus.aiPrimaryOnline ? 'bg-green-50 text-green-600' : (systemStatus.aiPrimaryError?.includes('Rate Limited') ? 'bg-amber-50 text-amber-500' : 'bg-red-50 text-red-600')">
-                                        🧠</div>
+                                        AI</div>
                                 </div>
                                 <p v-if="!systemStatus.aiPrimaryOnline && systemStatus.aiPrimaryError"
                                     class="text-[9px] text-red-400 mt-1 italic truncate"
@@ -248,9 +363,9 @@
                                         (systemStatus.aiFallbackError?.includes('Rate Limited') ? 'Throttled' :
                                         'Offline')) : 'Disabled' }}
                                     </span>
-                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-lg"
+                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-black"
                                         :class="systemStatus.aiFallbackOnline ? 'bg-green-50 text-green-600' : (systemStatus.aiFallbackError?.includes('Rate Limited') ? 'bg-amber-50 text-amber-500' : 'bg-amber-50 text-amber-600')">
-                                        🛡️</div>
+                                        FB</div>
                                 </div>
                                 <p v-if="settings.enableAiFallback && !systemStatus.aiFallbackOnline && systemStatus.aiFallbackError"
                                     class="text-[9px] text-amber-500 mt-1 italic truncate"
@@ -275,14 +390,14 @@
                                         healthStats.YoYChangePercentage }}%
                                     </span>
                                     <div
-                                        class="w-8 h-8 rounded-lg flex items-center justify-center text-lg bg-indigo-50 text-indigo-600">
-                                        🗓️</div>
+                                        class="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-black bg-indigo-50 text-indigo-600">
+                                        YY</div>
                                 </div>
                                 <div v-else class="mt-1 flex items-center justify-between">
                                     <span class="text-lg font-bold text-slate-300 italic">No Data</span>
                                     <div
-                                        class="w-8 h-8 rounded-lg flex items-center justify-center text-lg bg-slate-50 text-slate-300">
-                                        🗓️</div>
+                                        class="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-black bg-slate-50 text-slate-300">
+                                        YY</div>
                                 </div>
                                 <p class="text-[10px] text-slate-400 mt-1">Vs. Same Month 2025</p>
                             </div>
@@ -622,7 +737,7 @@
                                     <h3 class="font-bold text-slate-800 text-sm">Classification</h3>
                                     <button @click="categorizeHistory" :disabled="categorizing"
                                         class="text-[10px] font-bold px-3 py-1 bg-brand-50 text-brand-700 rounded-full border border-brand-100 hover:bg-brand-100 transition-all disabled:opacity-50">
-                                        {{ categorizing ? '🏷️ CATEGORIZING...' : '🏷️ CATEGORIZE HISTORY' }}
+                                        {{ categorizing ? 'CATEGORIZING...' : 'CATEGORIZE HISTORY' }}
                                     </button>
                                 </div>
                                 <div v-if="categorizeResult"
@@ -752,8 +867,7 @@
                                 <div class="bg-indigo-50 px-6 py-4 border-t border-slate-100">
                                     <div class="flex items-center justify-between mb-4">
                                         <div>
-                                            <h4 class="font-bold text-indigo-900 text-sm">⚡ Programmable Banking: Auto
-                                                Top-Up</h4>
+                                            <h4 class="font-bold text-indigo-900 text-sm">Programmable Banking: Auto Top-Up</h4>
                                             <p class="text-xs text-indigo-700 mt-0.5">Automated Investec money movement
                                             </p>
                                         </div>
@@ -1315,8 +1429,6 @@
 
                                     <button @click="runSimulation" :disabled="simLoading"
                                         class="w-full bg-slate-900 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-slate-800 active:scale-[0.98] transition-all flex items-center justify-center gap-2">
-                                        <span v-if="simLoading" class="animate-spin">⏳</span>
-                                        <span v-else>🔮</span>
                                         {{ simLoading ? 'Calculating...' : 'Run Simulation' }}
                                     </button>
                                 </div>
@@ -1327,7 +1439,7 @@
                                 <div v-if="!simulationResult"
                                     class="h-full min-h-[400px] flex items-center justify-center bg-white/50 border border-slate-200 border-dashed rounded-3xl p-12 text-center">
                                     <div>
-                                        <div class="text-6xl mb-4 opacity-50 animate-pulse">🔮</div>
+                                        <div class="w-16 h-16 rounded-2xl bg-brand-50 border border-brand-200 flex items-center justify-center text-brand-600 font-black text-sm mx-auto mb-4 opacity-60">WI</div>
                                         <h3 class="text-xl font-bold text-slate-800">Ready to simulate</h3>
                                         <p class="text-slate-500 mt-2 max-w-sm mx-auto text-sm">Add adjustments on the
                                             left and run the simulation to instantly see how it affects your financial
@@ -1546,7 +1658,7 @@
                                 </div>
                                 <div v-if="filteredLogs.length === 0"
                                     class="flex flex-col items-center justify-center h-full text-slate-500 py-20 opacity-50">
-                                    <span class="text-5xl mb-4">🧊</span>
+                                    <div class="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-400 mx-auto mb-4">LG</div>
                                     <p class="font-bold">No logs found matching criteria.</p>
                                 </div>
                             </div>
@@ -1570,13 +1682,14 @@
                     v-show="!item.adminOnly || auth.role === 'Admin'"
                     class="flex flex-col items-center gap-1 p-2 flex-1 rounded-xl transition-all"
                     :class="activeTab === item.id ? 'text-brand-600 bg-brand-50' : 'text-slate-400'">
-                    <span class="text-xl">{{ item.icon }}</span>
+                    <span class="w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-black"
+                        :class="activeTab === item.id ? 'bg-brand-600 text-black' : 'bg-slate-100 text-slate-500'">{{ item.icon }}</span>
                     <span class="text-[9px] font-bold uppercase tracking-tight">{{ item.name }}</span>
                 </button>
                 <button @click="activeTab = 's-ai'"
                     class="flex flex-col items-center gap-1 p-2 flex-1 rounded-xl transition-all"
                     :class="activeTab.startsWith('s-') ? 'text-brand-600 bg-brand-50' : 'text-slate-400'">
-                    <span class="text-xl">⚙️</span>
+                    <span class="w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-black bg-current/10">ST</span>
                     <span class="text-[9px] font-bold uppercase tracking-tight">Setup</span>
                 </button>
             </div>
@@ -1586,7 +1699,6 @@
         <div v-if="toast.show"
             class="fixed top-4 right-4 z-[200] bg-slate-800 text-white px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3"
             role="alert" aria-live="polite">
-            <span class="text-xl">🔔</span>
             <span class="font-bold text-sm">{{ toast.msg }}</span>
         </div>
 
@@ -1651,15 +1763,15 @@
                     userForm: { id: 0, username: '', password: '', role: 'User' },
                     isUserModalOpen: false,
                     menuItems: [
-                        { id: 'dashboard', name: 'Dashboard', icon: '🏠' },
-                        { id: 's-simulation', name: 'What-If Analysis', icon: '🔮' },
-                        { id: 's-identity', name: 'Identity', icon: '👤' },
-                        { id: 's-connections', name: 'Connections', icon: '🔗' },
-                        { id: 's-ai', name: 'Brain', icon: '🧠' },
-                        { id: 's-math', name: 'Math & Logic', icon: '🧪' },
-                        { id: 's-delivery', name: 'Email & Schedule', icon: '✉️' },
-                        { id: 'logs', name: 'System Logs', icon: '📋' },
-                        { id: 'admin-users', name: 'User Mgmt', icon: '🛡️', adminOnly: true }
+                        { id: 'dashboard', name: 'Dashboard', icon: 'DB' },
+                        { id: 's-simulation', name: 'What-If Analysis', icon: 'WI' },
+                        { id: 's-identity', name: 'Identity', icon: 'ID' },
+                        { id: 's-connections', name: 'Connections', icon: 'CN' },
+                        { id: 's-ai', name: 'Brain', icon: 'AI' },
+                        { id: 's-math', name: 'Math & Logic', icon: 'ML' },
+                        { id: 's-delivery', name: 'Email & Schedule', icon: 'ES' },
+                        { id: 'logs', name: 'System Logs', icon: 'LG' },
+                        { id: 'admin-users', name: 'User Mgmt', icon: 'UM', adminOnly: true }
                     ],
                     settings: {
                         userName: 'User', currencyCulture: 'en-ZA', investecBaseUrl: 'https://openapi.investec.com/',
@@ -2039,10 +2151,21 @@
                             labels: data.map(d => d.label),
                             datasets: [{
                                 data: data.map(d => d.value),
-                                backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16']
+                                backgroundColor: ['#D4A931','#A87E20','#E8C55A','#7A5C11','#F5D76E','#5E4610','#C4952A','#EDD770'],
+                                borderColor: '#141414',
+                                borderWidth: 2
                             }]
                         },
-                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 10 } } } } }
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    position: 'right',
+                                    labels: { boxWidth: 10, font: { size: 10 }, color: '#7A7670' }
+                                }
+                            }
+                        }
                     });
                 },
                 renderBalanceChart(data) {
@@ -2056,9 +2179,9 @@
                             datasets: [{
                                 label: 'Balance',
                                 data: data.map(d => d.balance),
-                                borderColor: '#6366f1',
+                                borderColor: '#D4A931',
                                 fill: true,
-                                backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                                backgroundColor: 'rgba(212,169,49,0.08)',
                                 tension: 0.4,
                                 pointRadius: 0
                             }]
@@ -2068,8 +2191,15 @@
                             maintainAspectRatio: false,
                             plugins: { legend: { display: false } },
                             scales: {
-                                y: { beginAtZero: false, ticks: { font: { size: 10 } } },
-                                x: { ticks: { font: { size: 10 }, maxRotation: 45, minRotation: 45 } }
+                                y: {
+                                    beginAtZero: false,
+                                    grid: { color: 'rgba(255,255,255,0.04)' },
+                                    ticks: { font: { size: 10 }, color: '#555250' }
+                                },
+                                x: {
+                                    grid: { color: 'rgba(255,255,255,0.04)' },
+                                    ticks: { font: { size: 10 }, color: '#555250', maxRotation: 45, minRotation: 45 }
+                                }
                             }
                         }
                     });

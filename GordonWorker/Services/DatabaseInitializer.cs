@@ -270,6 +270,37 @@ public class DatabaseInitializer
                     _logger.LogWarning("Continuous aggregate note: {Message}", ex.Message);
             }
 
+            // 4c. Row-Level Security — transactions table
+            // Enables a per-user isolation policy keyed on the 'app.current_user_id' session
+            // parameter. The table owner bypasses RLS by default in PostgreSQL; to fully enforce
+            // it for the application role, create a dedicated least-privilege role and grant it
+            // SELECT/INSERT/UPDATE/DELETE on transactions, then connect with that role.
+            try
+            {
+                await connection.ExecuteAsync("ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;");
+
+                await connection.ExecuteAsync(@"
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM pg_policies
+                            WHERE tablename = 'transactions'
+                              AND policyname = 'transactions_user_isolation'
+                        ) THEN
+                            CREATE POLICY transactions_user_isolation ON transactions
+                                USING      (user_id = current_setting('app.current_user_id', TRUE)::INT)
+                                WITH CHECK (user_id = current_setting('app.current_user_id', TRUE)::INT);
+                        END IF;
+                    END $$;");
+
+                _logger.LogInformation("Row-Level Security policy 'transactions_user_isolation' ensured.");
+            }
+            catch (Exception ex)
+            {
+                if (!ex.Message.Contains("already", StringComparison.OrdinalIgnoreCase))
+                    _logger.LogWarning("RLS policy note: {Message}", ex.Message);
+            }
+
             // Cleanup old config table
             try { await connection.ExecuteAsync("DROP TABLE IF EXISTS system_config;"); } catch {}
 

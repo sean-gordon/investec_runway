@@ -68,8 +68,33 @@ public class TransactionsBackgroundService : BackgroundService
         {
             // Create a NEW scope for each user to ensure fresh Scoped services (like InvestecClient)
             using var userScope = _serviceProvider.CreateScope();
-            var syncService = userScope.ServiceProvider.GetRequiredService<ITransactionSyncService>();
-            await syncService.SyncTransactionsAsync(userId, token: token);
+            var configuration = userScope.ServiceProvider.GetRequiredService<IConfiguration>();
+
+            // Acquire a non-blocking Postgres advisory lock keyed to this user.
+            // If another instance (or a previous slow sync cycle) already holds the lock,
+            // we skip rather than pile up — the next 60-second tick will try again.
+            await using var lockConn = new NpgsqlConnection(configuration.GetConnectionString("DefaultConnection"));
+            await lockConn.OpenAsync(token);
+
+            var lockKey = (long)HashCode.Combine("txsync", userId);
+            var acquired = await lockConn.ExecuteScalarAsync<bool>(
+                "SELECT pg_try_advisory_lock(@Key)", new { Key = lockKey });
+
+            if (!acquired)
+            {
+                _logger.LogDebug("Skipping sync for user {UserId} — advisory lock held by another instance.", userId);
+                return;
+            }
+
+            try
+            {
+                var syncService = userScope.ServiceProvider.GetRequiredService<ITransactionSyncService>();
+                await syncService.SyncTransactionsAsync(userId, token: token);
+            }
+            finally
+            {
+                await lockConn.ExecuteAsync("SELECT pg_advisory_unlock(@Key)", new { Key = lockKey });
+            }
         }
         catch (Exception ex)
         {

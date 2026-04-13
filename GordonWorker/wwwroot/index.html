@@ -19,24 +19,154 @@
                 extend: {
                     fontFamily: { sans: ['Inter', 'sans-serif'], outfit: ['Outfit', 'sans-serif'] },
                     colors: {
-                        brand: { 50: '#f0f9ff', 100: '#e0f2fe', 500: '#0ea5e9', 600: '#0284c7', 900: '#0c4a6e' }
+                        brand: {
+                            50: '#1A1400', 100: '#251B00', 200: '#3A2C00',
+                            500: '#D4A931', 600: '#D4A931', 700: '#A87E20', 900: '#000000'
+                        }
                     }
                 }
             }
         }
     </script>
     <style>
-        body {
-            -webkit-tap-highlight-color: transparent;
+        /* ── GORDON × LAMBORGHINI DARK THEME ── */
+        :root {
+            --gold: #D4A931; --gold-lt: #E8C55A; --gold-dk: #A87E20;
+            --gold-glow: rgba(212,169,49,0.10);
+            --s0: #000; --s1: #080808; --s2: #0E0E0E;
+            --s3: #141414; --s4: #1A1A1A; --s5: #212121; --s6: #2A2A2A;
+            --b1: #181818; --b2: #202020; --b3: #2C2C2C;
         }
+        html { background: #080808; }
+        body { -webkit-tap-highlight-color: transparent; }
+        [v-cloak] { display: none; }
 
-        [v-cloak] {
-            display: none;
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: var(--s1); }
+        ::-webkit-scrollbar-thumb { background: var(--s5); border-radius: 2px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--gold-dk); }
+
+        /* ── Surface overrides ── */
+        .bg-white      { background-color: var(--s3) !important; }
+        .bg-slate-50   { background-color: var(--s2) !important; }
+        .bg-slate-50\/50 { background-color: rgba(14,14,14,0.5) !important; }
+        .bg-slate-100  { background-color: var(--s2) !important; }
+        .bg-slate-200  { background-color: var(--s4) !important; }
+        .bg-slate-800, .bg-slate-900 { background-color: var(--s0) !important; }
+        .bg-slate-800\/15, .bg-white\/10 { background-color: rgba(255,255,255,0.05) !important; }
+        .bg-indigo-50  { background-color: rgba(99,102,241,0.06) !important; }
+        .bg-blue-50    { background-color: rgba(59,130,246,0.06) !important; }
+        .bg-green-50   { background-color: rgba(34,197,94,0.06) !important; }
+        .bg-red-50     { background-color: rgba(239,68,68,0.06) !important; }
+        .bg-amber-50   { background-color: rgba(245,158,11,0.06) !important; }
+        .bg-purple-50  { background-color: rgba(168,85,247,0.06) !important; }
+        .bg-emerald-50 { background-color: var(--gold-glow) !important; }
+        .bg-yellow-50  { background-color: rgba(234,179,8,0.06) !important; }
+
+        /* ── Text ── */
+        .text-slate-900, .text-slate-800 { color: #F0EBE0 !important; }
+        .text-slate-700 { color: #B0AA9E !important; }
+        .text-slate-600 { color: #8A8480 !important; }
+        .text-slate-500 { color: #6A6660 !important; }
+        .text-slate-400 { color: #4A4845 !important; }
+        .text-slate-300 { color: #3A3835 !important; }
+        .text-indigo-900, .text-indigo-800, .text-indigo-700 { color: #A5B4FC !important; }
+        .text-emerald-700, .text-emerald-600 { color: var(--gold) !important; }
+        .text-green-600 { color: #4ade80 !important; }
+        .text-green-500 { color: #4ade80 !important; }
+        .text-amber-700 { color: var(--gold-lt) !important; }
+        .text-amber-500 { color: var(--gold) !important; }
+        .text-yellow-400 { color: var(--gold-lt) !important; }
+
+        /* ── Borders ── */
+        .border-slate-50, .border-slate-100 { border-color: var(--b1) !important; }
+        .border-slate-200 { border-color: var(--b2) !important; }
+        .border-slate-300 { border-color: var(--b3) !important; }
+        .border-slate-700 { border-color: var(--b3) !important; }
+        .divide-slate-100 > * { border-color: var(--b1) !important; }
+        .divide-slate-200 > * { border-color: var(--b2) !important; }
+        .border-emerald-200 { border-color: rgba(212,169,49,.25) !important; }
+        .border-indigo-600  { border-color: rgba(99,102,241,.4) !important; }
+        .border-red-100     { border-color: rgba(239,68,68,.15) !important; }
+        .border-green-100   { border-color: rgba(34,197,94,.2) !important; }
+        .border-amber-100   { border-color: rgba(245,158,11,.2) !important; }
+        .border-brand-100   { border-color: rgba(212,169,49,.2) !important; }
+
+        /* ── Brand → Gold ── */
+        .bg-brand-600 { background-color: var(--gold) !important; }
+        .bg-brand-700 { background-color: var(--gold-dk) !important; }
+        .bg-brand-50  { background-color: var(--gold-glow) !important; }
+        .bg-brand-900 { background-color: #000 !important; }
+        .text-brand-600 { color: var(--gold) !important; }
+        .text-brand-700, .text-brand-900 { color: var(--gold-dk) !important; }
+        .border-brand-600 { border-color: var(--gold) !important; }
+        .border-brand-200 { border-color: rgba(212,169,49,.3) !important; }
+        .border-brand-300 { border-color: rgba(212,169,49,.4) !important; }
+        .hover\:text-brand-600:hover { color: var(--gold) !important; }
+        .hover\:bg-brand-700:hover   { background-color: var(--gold-dk) !important; }
+        .hover\:border-brand-300:hover { border-color: rgba(212,169,49,.4) !important; }
+        a.bg-brand-600, button.bg-brand-600 { color: #000 !important; font-weight: 700 !important; }
+
+        /* ── Auth panel ── */
+        .bg-brand-600.p-8 { background-color: var(--s0) !important; border-bottom: 1px solid var(--b2); }
+
+        /* ── Inputs & selects ── */
+        input:not([type=range]):not([type=checkbox]):not([type=radio]),
+        select, textarea {
+            background: var(--s2) !important;
+            border-color: var(--b2) !important;
+            color: #F0EBE0 !important;
         }
+        input::placeholder, textarea::placeholder { color: #4A4845 !important; }
+        input[type=range] { accent-color: var(--gold); }
+
+        /* ── Hover states ── */
+        .hover\:bg-slate-50:hover  { background-color: var(--s3) !important; }
+        .hover\:bg-slate-200:hover { background-color: var(--s4) !important; }
+        .hover\:bg-slate-800:hover { background-color: var(--b1) !important; }
+        .hover\:bg-slate-900:hover { background-color: var(--s0) !important; }
+
+        /* ── Shadows ── */
+        .shadow-sm  { box-shadow: 0 1px 4px rgba(0,0,0,.8), 0 0 0 1px var(--b1) !important; }
+        .shadow     { box-shadow: 0 2px 8px rgba(0,0,0,.9), 0 0 0 1px var(--b1) !important; }
+        .shadow-md  { box-shadow: 0 4px 12px rgba(0,0,0,.9), 0 0 0 1px var(--b2) !important; }
+        .shadow-lg  { box-shadow: 0 8px 20px rgba(0,0,0,.95), 0 0 0 1px rgba(212,169,49,.08) !important; }
+        .shadow-xl  { box-shadow: 0 12px 32px rgba(0,0,0,.95), 0 0 0 1px rgba(212,169,49,.12) !important; }
+        .shadow-2xl { box-shadow: 0 20px 50px rgba(0,0,0,.98), 0 0 0 1px rgba(212,169,49,.18) !important; }
+
+        /* ── Table ── */
+        thead tr { background-color: var(--s2) !important; }
+        tbody tr:hover { background-color: var(--s3) !important; }
+
+        /* ── Chart canvas — let Chart.js handle its own colors ── */
+        canvas { background: transparent !important; }
+
+        /* ── Gradients used in Health panel ── */
+        .from-brand-50.to-indigo-50,
+        .bg-gradient-to-r.from-brand-50 { background: linear-gradient(90deg, var(--gold-glow), rgba(99,102,241,0.06)) !important; }
+
+        /* ── Misc status ── */
+        .text-emerald-400 { color: #4ade80 !important; }
+        .bg-indigo-100 { background-color: rgba(99,102,241,0.12) !important; }
+        .text-indigo-600, .text-blue-600 { color: #818cf8 !important; }
+        .text-red-500, .text-red-600 { color: #f87171 !important; }
+        .text-orange-400 { color: #fb923c !important; }
+        .bg-orange-50 { background-color: rgba(249,115,22,0.06) !important; }
+        .text-purple-600 { color: #c084fc !important; }
+        .text-teal-600 { color: #2dd4bf !important; }
+
+        /* ── Log viewer ── */
+        .font-mono { color: #B0AA9E; }
+        .text-green-400 { color: #4ade80 !important; }
+        .text-red-400   { color: #f87171 !important; }
+        .text-yellow-400 { color: var(--gold-lt) !important; }
+        .text-blue-400   { color: #60a5fa !important; }
+        .text-slate-500.font-mono { color: #4A4845 !important; }
     </style>
 </head>
 
-<body class="bg-slate-50 text-slate-900 h-screen overflow-hidden flex flex-col">
+<body class="h-screen overflow-hidden flex flex-col" style="background:#080808;color:#F0EBE0">
 
     <!-- HELP TOOLTIP COMPONENT -->
     <script type="text/x-template" id="help-tooltip-template">
@@ -124,7 +254,11 @@
                     </div>
                     <button @click="logout"
                         class="text-xs font-bold text-slate-400 hover:text-red-500 transition-colors">LOGOUT</button>
-                    <div class="md:hidden text-2xl" @click="isMobileMenuOpen = !isMobileMenuOpen">☰</div>
+                    <div class="md:hidden w-8 h-8 flex flex-col justify-center gap-1.5 cursor-pointer" @click="isMobileMenuOpen = !isMobileMenuOpen">
+                        <span class="block h-0.5 w-5 rounded" style="background:var(--gold)"></span>
+                        <span class="block h-0.5 w-5 rounded" style="background:var(--gold)"></span>
+                        <span class="block h-0.5 w-3 rounded" style="background:var(--gold)"></span>
+                    </div>
                 </div>
             </header>
 
@@ -136,7 +270,8 @@
                             v-show="!item.adminOnly || auth.role === 'Admin'"
                             class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all"
                             :class="activeTab === item.id ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-50'">
-                            <span>{{ item.icon }}</span> {{ item.name }}
+                            <span class="w-7 h-7 rounded-md flex items-center justify-center text-[10px] font-black shrink-0 transition-colors"
+                                :class="activeTab === item.id ? 'bg-brand-600 text-black' : 'bg-[#1a1a1a] text-[#D4A931]'">{{ item.icon }}</span> {{ item.name }}
                         </button>
                         <button @click="activeTab = 's-rawdata'"
                             class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all"
@@ -147,8 +282,6 @@
                     <div class="p-4 border-t border-slate-100 bg-slate-50/50">
                         <button @click="sendReportNow" :disabled="sendingReport"
                             class="w-full flex items-center justify-center gap-2 py-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:border-brand-300 hover:text-brand-600 shadow-sm transition-all active:scale-95">
-                            <span v-if="sendingReport" class="animate-spin">⏳</span>
-                            <span v-else>📊</span>
                             {{ sendingReport ? 'Processing...' : 'Run Report' }}
                         </button>
                     </div>
@@ -164,11 +297,10 @@
                             <div class="flex gap-2">
                                 <button @click="categorizeExisting" :disabled="categorizing"
                                     class="text-xs bg-white border border-slate-200 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-50 disabled:opacity-50">
-                                    {{ categorizing ? '⏳ Processing...' : '🧠 Categorize' }}
+                                    {{ categorizing ? 'Processing...' : 'Categorize' }}
                                 </button>
                                 <button @click="forceRepull"
-                                    class="text-xs bg-white border border-slate-200 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-50">🔄
-                                    Sync</button>
+                                    class="text-xs bg-white border border-slate-200 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-50">Sync</button>
                             </div>
                         </div>
                         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
@@ -182,8 +314,8 @@
                                         {{ formatCurrency(parseFloat(healthStats?.CurrentBalance || 0)) }}
                                     </span>
                                     <div
-                                        class="w-8 h-8 rounded-lg flex items-center justify-center text-lg bg-brand-50 text-brand-600">
-                                        💰</div>
+                                        class="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-black bg-brand-50 text-brand-600">
+                                        R</div>
                                 </div>
                                 <p class="text-[10px] text-slate-400 mt-1">Live from Investec</p>
                             </div>
@@ -197,9 +329,9 @@
                                         :class="systemStatus.investecOnline ? 'text-green-600' : 'text-red-600'">
                                         {{ systemStatus.investecOnline ? 'Online' : 'Offline' }}
                                     </span>
-                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-lg"
+                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-black"
                                         :class="systemStatus.investecOnline ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'">
-                                        🏦</div>
+                                        IN</div>
                                 </div>
                                 <p class="text-[10px] text-slate-400 mt-1">Last seen: {{
                                     formatTime(systemStatus.lastInvestecCheck) }}</p>
@@ -213,9 +345,9 @@
                                         :class="systemStatus.databaseOnline ? 'text-green-600' : 'text-red-600'">
                                         {{ systemStatus.databaseOnline ? 'Active' : 'Down' }}
                                     </span>
-                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-lg"
+                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-black"
                                         :class="systemStatus.databaseOnline ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'">
-                                        💾</div>
+                                        DB</div>
                                 </div>
                                 <p class="text-[10px] text-slate-400 mt-1">TimescaleDB Hypertable</p>
                             </div>
@@ -230,9 +362,9 @@
                                         (systemStatus.aiPrimaryError?.includes('Rate Limited') ? 'Throttled' :
                                         'Offline') }}
                                     </span>
-                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-lg"
+                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-black"
                                         :class="systemStatus.aiPrimaryOnline ? 'bg-green-50 text-green-600' : (systemStatus.aiPrimaryError?.includes('Rate Limited') ? 'bg-amber-50 text-amber-500' : 'bg-red-50 text-red-600')">
-                                        🧠</div>
+                                        AI</div>
                                 </div>
                                 <p v-if="!systemStatus.aiPrimaryOnline && systemStatus.aiPrimaryError"
                                     class="text-[9px] text-red-400 mt-1 italic truncate"
@@ -255,9 +387,9 @@
                                         (systemStatus.aiFallbackError?.includes('Rate Limited') ? 'Throttled' :
                                         'Offline')) : 'Disabled' }}
                                     </span>
-                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-lg"
+                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-black"
                                         :class="systemStatus.aiFallbackOnline ? 'bg-green-50 text-green-600' : (systemStatus.aiFallbackError?.includes('Rate Limited') ? 'bg-amber-50 text-amber-500' : 'bg-amber-50 text-amber-600')">
-                                        🛡️</div>
+                                        FB</div>
                                 </div>
                                 <p v-if="settings.enableAiFallback && !systemStatus.aiFallbackOnline && systemStatus.aiFallbackError"
                                     class="text-[9px] text-amber-500 mt-1 italic truncate"
@@ -282,14 +414,14 @@
                                         healthStats.YoYChangePercentage }}%
                                     </span>
                                     <div
-                                        class="w-8 h-8 rounded-lg flex items-center justify-center text-lg bg-indigo-50 text-indigo-600">
-                                        🗓️</div>
+                                        class="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-black bg-indigo-50 text-indigo-600">
+                                        YY</div>
                                 </div>
                                 <div v-else class="mt-1 flex items-center justify-between">
                                     <span class="text-lg font-bold text-slate-300 italic">No Data</span>
                                     <div
-                                        class="w-8 h-8 rounded-lg flex items-center justify-center text-lg bg-slate-50 text-slate-300">
-                                        🗓️</div>
+                                        class="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-black bg-slate-50 text-slate-300">
+                                        YY</div>
                                 </div>
                                 <p class="text-[10px] text-slate-400 mt-1">Vs. Same Month 2025</p>
                             </div>
@@ -391,7 +523,7 @@
                                         <div v-for="cost in healthStats.UpcomingFixedCosts" :key="cost.Name"
                                             class="flex items-center justify-between bg-amber-50 border border-amber-100 rounded-lg px-4 py-2.5 group">
                                             <div class="flex items-center gap-2 overflow-hidden">
-                                                <span class="text-amber-500 text-xs">📅</span>
+                                                <span class="w-4 h-4 rounded text-[8px] font-black flex items-center justify-center" style="background:var(--gold-glow);color:var(--gold)">FC</span>
                                                 <span class="text-xs font-semibold text-slate-700 truncate"
                                                     :title="cost.Name">{{ cost.Name }}</span>
                                             </div>
@@ -414,7 +546,7 @@
                                     </div>
                                 </div>
                                 <div v-else class="text-center py-3 text-[10px] text-green-600 font-bold">
-                                    ✅ All expected fixed costs have been paid this cycle
+                                    All expected fixed costs have been paid this cycle
                                 </div>
                             </div>
                         </div>
@@ -427,10 +559,10 @@
                                         formatTime(systemStatus.lastTelegramHit) }}</span>
                                     <span v-if="systemStatus.lastTelegramError"
                                         class="block text-[10px] text-red-500 font-bold mt-1 truncate"
-                                        :title="systemStatus.lastTelegramError">⚠ {{ systemStatus.lastTelegramError
+                                        :title="systemStatus.lastTelegramError">{{ systemStatus.lastTelegramError
                                         }}</span>
                                     <span v-else-if="systemStatus.lastTelegramHit"
-                                        class="block text-[10px] text-green-500 font-bold mt-1">✔ Active</span>
+                                        class="block text-[10px] text-green-500 font-bold mt-1">Active</span>
                                 </div>
                             </div>
                             <div
@@ -444,8 +576,8 @@
                                     </div>
                                 </div>
                                 <div
-                                    class="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-lg">
-                                    🕒</div>
+                                    class="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-[10px] font-black">
+                                    SY</div>
                             </div>
                         </div>
 
@@ -531,7 +663,7 @@
                                         <td class="px-4 py-3 text-xs">{{ tx.category }}</td>
                                         <td class="px-4 py-3 text-slate-900 truncate max-w-xs">{{ tx.description }}</td>
                                         <td class="px-4 py-3 text-[10px]">{{ tx.accountId }}</td>
-                                        <td class="px-4 py-3 text-xs">{{ tx.isAiProcessed ? '✅' : '❌' }}</td>
+                                        <td class="px-4 py-3 text-xs font-bold" :class="tx.isAiProcessed ? 'text-green-500' : 'text-slate-500'">{{ tx.isAiProcessed ? 'YES' : 'NO' }}</td>
                                     </tr>
                                     <tr v-if="!rawTransactions || rawTransactions.length === 0">
                                         <td colspan="7" class="px-4 py-8 text-center text-slate-500">No raw data to
@@ -614,7 +746,7 @@
                                     <h3 class="font-bold text-slate-800 text-sm">Classification</h3>
                                     <button @click="categorizeHistory" :disabled="categorizing"
                                         class="text-[10px] font-bold px-3 py-1 bg-brand-50 text-brand-700 rounded-full border border-brand-100 hover:bg-brand-100 transition-all disabled:opacity-50">
-                                        {{ categorizing ? '🏷️ CATEGORIZING...' : '🏷️ CATEGORIZE HISTORY' }}
+                                        {{ categorizing ? 'CATEGORIZING...' : 'CATEGORIZE HISTORY' }}
                                     </button>
                                 </div>
                                 <div v-if="categorizeResult"
@@ -1308,8 +1440,6 @@
 
                                     <button @click="runSimulation" :disabled="simLoading"
                                         class="w-full bg-slate-900 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-slate-800 active:scale-[0.98] transition-all flex items-center justify-center gap-2">
-                                        <span v-if="simLoading" class="animate-spin">⏳</span>
-                                        <span v-else>🔮</span>
                                         {{ simLoading ? 'Calculating...' : 'Run Simulation' }}
                                     </button>
                                 </div>
@@ -1320,7 +1450,7 @@
                                 <div v-if="!simulationResult"
                                     class="h-full min-h-[400px] flex items-center justify-center bg-white/50 border border-slate-200 border-dashed rounded-3xl p-12 text-center">
                                     <div>
-                                        <div class="text-6xl mb-4 opacity-50 animate-pulse">🔮</div>
+                                        <div class="w-16 h-16 rounded-2xl bg-brand-50 border border-brand-200 flex items-center justify-center text-brand-600 font-black text-sm mx-auto mb-4 opacity-60">WI</div>
                                         <h3 class="text-xl font-bold text-slate-800">Ready to simulate</h3>
                                         <p class="text-slate-500 mt-2 max-w-sm mx-auto text-sm">Add adjustments on the
                                             left and run the simulation to instantly see how it affects your financial
@@ -1442,7 +1572,7 @@
                                 <div class="relative">
                                     <input v-model="logSearch" type="text" placeholder="Search logs..."
                                         class="pl-8 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 w-48 shadow-sm transition-all">
-                                    <span class="absolute left-2.5 top-2.5 text-slate-400 text-xs text-[10px]">🔍</span>
+                                    <span class="absolute left-2.5 top-2.5 text-slate-400 text-[10px] font-bold">S</span>
                                 </div>
                                 <select v-model="logFilter"
                                     class="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none font-bold text-slate-700 shadow-sm focus:border-brand-500 transition-all">
@@ -1452,7 +1582,7 @@
                                     <option value="ERROR">Errors</option>
                                 </select>
                                 <button @click="fetchLogs"
-                                    class="p-2 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all shadow-sm active:scale-95">🔄</button>
+                                    class="p-2 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-xs font-bold text-slate-600">Refresh</button>
                             </div>
                         </div>
 
@@ -1493,7 +1623,7 @@
                                     <div class="mt-5">
                                         <button @click="loadLogFileContent" :disabled="!logFileDate || logFileLoading"
                                             class="px-4 py-2 bg-brand-600 text-white rounded-lg text-xs font-bold disabled:opacity-40 hover:bg-brand-700 transition-all">
-                                            {{ logFileLoading ? '⏳ Loading...' : '📄 Load' }}
+                                            {{ logFileLoading ? 'Loading...' : 'Load' }}
                                         </button>
                                     </div>
                                     <div v-if="logFileContent" class="mt-5">
@@ -1539,7 +1669,7 @@
                                 </div>
                                 <div v-if="filteredLogs.length === 0"
                                     class="flex flex-col items-center justify-center h-full text-slate-500 py-20 opacity-50">
-                                    <span class="text-5xl mb-4">🧊</span>
+                                    <div class="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-400 mx-auto mb-4">LG</div>
                                     <p class="font-bold">No logs found matching criteria.</p>
                                 </div>
                             </div>
@@ -1563,13 +1693,15 @@
                     v-show="!item.adminOnly || auth.role === 'Admin'"
                     class="flex flex-col items-center gap-1 p-2 flex-1 rounded-xl transition-all"
                     :class="activeTab === item.id ? 'text-brand-600 bg-brand-50' : 'text-slate-400'">
-                    <span class="text-xl">{{ item.icon }}</span>
+                    <span class="w-7 h-7 rounded-md flex items-center justify-center text-[10px] font-black shrink-0 transition-colors"
+                        :class="activeTab === item.id ? 'bg-brand-600 text-black' : 'bg-[#1a1a1a] text-[#D4A931]'">{{ item.icon }}</span>
                     <span class="text-[9px] font-bold uppercase tracking-tight">{{ item.name }}</span>
                 </button>
                 <button @click="activeTab = 's-ai'"
                     class="flex flex-col items-center gap-1 p-2 flex-1 rounded-xl transition-all"
                     :class="activeTab.startsWith('s-') ? 'text-brand-600 bg-brand-50' : 'text-slate-400'">
-                    <span class="text-xl">⚙️</span>
+                    <span class="w-7 h-7 rounded-md flex items-center justify-center text-[10px] font-black shrink-0 transition-colors"
+                        :class="activeTab.startsWith('s-') ? 'bg-brand-600 text-black' : 'bg-[#1a1a1a] text-[#D4A931]'">CFG</span>
                     <span class="text-[9px] font-bold uppercase tracking-tight">Setup</span>
                 </button>
             </div>
@@ -1578,7 +1710,6 @@
         <!-- TOAST NOTIFICATION -->
         <div v-if="toast.show"
             class="fixed top-4 right-4 z-[200] bg-slate-800 text-white px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-pulse">
-            <span class="text-xl">🔔</span>
             <span class="font-bold text-sm">{{ toast.msg }}</span>
         </div>
 
@@ -1641,15 +1772,15 @@
                     userForm: { id: 0, username: '', password: '', role: 'User' },
                     isUserModalOpen: false,
                     menuItems: [
-                        { id: 'dashboard', name: 'Dashboard', icon: '🏠' },
-                        { id: 's-simulation', name: 'What-If Analysis', icon: '🔮' },
-                        { id: 's-identity', name: 'Identity', icon: '👤' },
-                        { id: 's-connections', name: 'Connections', icon: '🔗' },
-                        { id: 's-ai', name: 'Brain', icon: '🧠' },
-                        { id: 's-math', name: 'Math & Logic', icon: '🧪' },
-                        { id: 's-delivery', name: 'Email & Schedule', icon: '✉️' },
-                        { id: 'logs', name: 'System Logs', icon: '📋' },
-                        { id: 'admin-users', name: 'User Mgmt', icon: '🛡️', adminOnly: true }
+                        { id: 'dashboard', name: 'Dashboard', icon: 'DB' },
+                        { id: 's-simulation', name: 'What-If Analysis', icon: 'WI' },
+                        { id: 's-identity', name: 'Identity', icon: 'ID' },
+                        { id: 's-connections', name: 'Connections', icon: 'CN' },
+                        { id: 's-ai', name: 'Brain', icon: 'AI' },
+                        { id: 's-math', name: 'Math & Logic', icon: 'ML' },
+                        { id: 's-delivery', name: 'Email & Schedule', icon: 'ES' },
+                        { id: 'logs', name: 'System Logs', icon: 'LG' },
+                        { id: 'admin-users', name: 'User Mgmt', icon: 'UM', adminOnly: true }
                     ],
                     settings: {
                         userName: 'User', currencyCulture: 'en-ZA', investecBaseUrl: 'https://openapi.investec.com/',

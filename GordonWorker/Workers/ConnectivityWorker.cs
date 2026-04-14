@@ -1,0 +1,178 @@
+using GordonWorker.Services;
+
+namespace GordonWorker.Workers;
+
+public class ConnectivityWorker : BackgroundService
+{
+    private readonly IServiceProvider _serviceProvider;
+    private readonly ILogger<ConnectivityWorker> _logger;
+    private readonly ISystemStatusService _statusService;
+
+    private DateTime _lastAiPoll = DateTime.MinValue;
+
+    public ConnectivityWorker(IServiceProvider serviceProvider, ILogger<ConnectivityWorker> logger, ISystemStatusService statusService)
+    {
+        _serviceProvider = serviceProvider;
+        _logger = logger;
+        _statusService = statusService;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        _logger.LogInformation("Connectivity Worker starting.");
+
+        // Initial check on startup
+        await CheckConnectivityAsync();
+
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(5));
+        while (await timer.WaitForNextTickAsync(stoppingToken))
+        {
+            await CheckConnectivityAsync();
+        }
+    }
+
+    private async Task CheckConnectivityAsync()
+    {
+        // Outer scope is only used for the database checks and the user-list lookups; the
+        // per-user connectivity probes get their own scopes inside the parallel fan-out below
+        // so they don't share mutable client state.
+        using var scope = _serviceProvider.CreateScope();
+        var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+
+        try
+        {
+            // 1. Check Database
+            try
+            {
+                using var connection = new Npgsql.NpgsqlConnection(configuration.GetConnectionString("DefaultConnection"));
+                await connection.OpenAsync();
+                _statusService.IsDatabaseOnline = true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Database connectivity check failed.");
+                _statusService.IsDatabaseOnline = false;
+                return; // Can't proceed without DB
+            }
+
+            // Find the best user for global status reporting (prefer the first admin with settings)
+            int? statusUserId = null;
+            using (var connection = new Npgsql.NpgsqlConnection(configuration.GetConnectionString("DefaultConnection")))
+            {
+                statusUserId = await Dapper.SqlMapper.QueryFirstOrDefaultAsync<int?>(connection, 
+                    "SELECT u.id FROM users u JOIN user_settings s ON u.id = s.user_id WHERE u.role = 'Admin' ORDER BY u.is_system DESC, u.id ASC LIMIT 1");
+                
+                // Fallback to any system user if no admin settings found
+                if (statusUserId == null)
+                {
+                    statusUserId = await Dapper.SqlMapper.QueryFirstOrDefaultAsync<int?>(connection, "SELECT id FROM users WHERE is_system = TRUE LIMIT 1");
+                }
+            }
+
+            // Get all users for warming
+            var usersToCheck = new List<int>();
+            using (var connection = new Npgsql.NpgsqlConnection(configuration.GetConnectionString("DefaultConnection")))
+            {
+                usersToCheck = (await Dapper.SqlMapper.QueryAsync<int>(connection, "SELECT user_id FROM user_settings")).ToList();
+            }
+
+            if (!usersToCheck.Any())
+            {
+                _logger.LogInformation("Connectivity check skipped: No users found.");
+                return;
+            }
+
+            _logger.LogInformation("Checking connectivity for {Count} users. Global status reported for User ID: {StatusUserId}", usersToCheck.Count, statusUserId);
+
+            bool performAiCheck = (DateTime.UtcNow - _lastAiPoll).TotalHours >= 4;
+
+            // Fan the per-user checks out in parallel. The previous sequential foreach paid the
+            // full Investec + AI round-trip latency for every user one after another, so a
+            // 10-user deployment took ~10× as long as it needed to. Each iteration gets its OWN
+            // DI scope because IInvestecClient holds mutable per-user state via Configure() —
+            // sharing one client across parallel iterations would race on the credentials.
+            // SemaphoreSlim caps concurrency so we don't hammer Investec / Ollama with N parallel
+            // pings the moment a big tenant is on board.
+            using var throttle = new SemaphoreSlim(5);
+            var checkTasks = usersToCheck.Select(async userId =>
+            {
+                await throttle.WaitAsync();
+                try
+                {
+                    await using var userScope = _serviceProvider.CreateAsyncScope();
+                    var userSettingsService = userScope.ServiceProvider.GetRequiredService<ISettingsService>();
+                    var userClient = userScope.ServiceProvider.GetRequiredService<IInvestecClient>();
+                    var userAiService = userScope.ServiceProvider.GetRequiredService<IAiService>();
+
+                    var settings = await userSettingsService.GetSettingsAsync(userId);
+
+                    // 2. Check Investec
+                    if (!string.IsNullOrEmpty(settings.InvestecClientId))
+                    {
+                        userClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
+                        var (isOnline, error) = await userClient.TestConnectivityAsync();
+
+                        // Only the status user mutates the global status fields, so there's no
+                        // cross-task write contention even though we're running in parallel.
+                        if (userId == statusUserId)
+                        {
+                            _statusService.IsInvestecOnline = isOnline;
+                            _statusService.LastInvestecCheck = DateTime.UtcNow;
+                        }
+                        if (!isOnline) _logger.LogWarning("Investec API is OFFLINE for user {UserId}. Error: {Error}", userId, error);
+                    }
+
+                    // 3. Check AI Providers
+                    if (performAiCheck)
+                    {
+                        bool shouldTestPrimary = (settings.AiProvider == "Ollama") || (userId == statusUserId);
+                        bool shouldTestFallback = settings.EnableAiFallback && ((settings.FallbackAiProvider == "Ollama") || (userId == statusUserId));
+
+                        if (shouldTestPrimary)
+                        {
+                            var (primaryOk, error) = await userAiService.TestConnectionAsync(userId, useFallback: false);
+                            if (userId == statusUserId)
+                            {
+                                _statusService.IsAiPrimaryOnline = primaryOk;
+                                _statusService.PrimaryAiError = primaryOk ? string.Empty : error;
+                            }
+                        }
+
+                        if (shouldTestFallback)
+                        {
+                            var (fallbackOk, error) = await userAiService.TestConnectionAsync(userId, useFallback: true);
+                            if (userId == statusUserId)
+                            {
+                                _statusService.IsAiFallbackOnline = fallbackOk;
+                                _statusService.FallbackAiError = fallbackOk ? string.Empty : error;
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed connectivity check for user {UserId}", userId);
+                }
+                finally
+                {
+                    throttle.Release();
+                }
+            });
+
+            await Task.WhenAll(checkTasks);
+            
+            if (performAiCheck)
+            {
+                _statusService.LastAiCheck = DateTime.UtcNow;
+                _lastAiPoll = DateTime.UtcNow;
+            }
+
+            _logger.LogInformation("Connectivity check complete. DB: {Db}, Investec: {Inv}, AI Primary: {AiP}, AI Fallback: {AiF}",
+                _statusService.IsDatabaseOnline, _statusService.IsInvestecOnline, _statusService.IsAiPrimaryOnline, _statusService.IsAiFallbackOnline);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error occurred during connectivity check.");
+        }
+    }
+}

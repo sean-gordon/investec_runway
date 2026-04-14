@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gordon Finance — Investec API Side Hustle 2026</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>G</text></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        outfit: ['Outfit', 'sans-serif']
+                    },
+                    colors: {
+                        brand: {
+                            50: '#1A1400', 100: '#251B00', 200: '#3A2C00',
+                            500: '#D4A931', 600: '#D4A931', 700: '#A87E20', 900: '#000000'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* ── GORDON × LAMBORGHINI DARK THEME ── */
+        :root {
+            /* ── THEME CONFIG (Change these to re-theme) ── */
+            --app-bg: #050505;
+            --app-surface: #0A0A0A;
+            --card-bg: #161618;
+            --card-bg-alt: #1C1C1E;
+            --card-border: #181818;
+            --card-border-alt: #242427;
+            
+            --text-main: #FFFFFF;
+            --text-body: #E2E8F0;
+            --text-dim: #CBD5E1;
+            --text-muted: #94A3B8;
+            --text-faint: #64748B;
+            
+            --accent: #D4A931;
+            --accent-lt: #E8C55A;
+            --accent-dk: #A87E20;
+            --accent-glow: rgba(212,169,49,0.10);
+            --accent-shadow: rgba(212,169,49,0.4);
+
+            /* ── Technical Shorthands ── */
+            --gold: var(--accent); --gold-lt: var(--accent-lt); --gold-dk: var(--accent-dk);
+            --gold-glow: var(--accent-glow);
+            --s0: #000; --s1: var(--app-bg); --s2: var(--app-surface);
+            --s3: var(--card-bg); --s4: var(--card-bg-alt); --s5: #212121; --s6: #2A2A2A;
+            --b1: var(--card-border); --b2: var(--card-border-alt); --b3: #2C2C2C;
+        }
+        html { scroll-behavior: smooth; background: var(--app-bg); }
+        body { background: var(--app-bg); color: var(--text-body); }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: var(--app-bg); }
+        ::-webkit-scrollbar-thumb { background: var(--s5); border-radius: 2px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--accent-dk); }
+
+        .hero-gradient { background: linear-gradient(135deg, #000 0%, #0E0B00 50%, #1A1200 100%); }
+        .sticky-nav { backdrop-filter: blur(16px); background: rgba(0,0,0,0.85); border-bottom: 1px solid var(--card-border-alt); }
+        .card-hover { transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease; }
+        .card-hover:hover { 
+            transform: translateY(-2px); 
+            box-shadow: 0 16px 40px rgba(0,0,0,0.95), 0 0 0 1px rgba(212,169,49,0.15); 
+            border-color: rgba(212,169,49,0.3) !important;
+        }
+        .investec-gradient { background: linear-gradient(135deg, #001A3A 0%, #003070 100%); }
+        .tick { color: var(--accent); }
+        .divider { border-color: var(--card-border-alt); }
+
+        .bg-white      { background-color: var(--card-bg) !important; }
+        .bg-slate-50   { background-color: var(--app-surface) !important; }
+        .bg-slate-100  { background-color: var(--app-surface) !important; }
+        .bg-slate-200  { background-color: var(--card-bg-alt) !important; }
+        .bg-slate-800,
+        .bg-slate-900  { background-color: var(--s0) !important; }
+        .text-slate-900, .text-slate-800 { color: var(--text-main) !important; }
+        .text-slate-700 { color: var(--text-body) !important; }
+        .text-slate-600 { color: var(--text-dim) !important; }
+        .text-slate-500 { color: var(--text-muted) !important; }
+        .text-slate-400 { color: var(--text-faint) !important; }
+        .border-slate-100, .border-slate-50 { border-color: var(--card-border) !important; }
+        .border-slate-200 { border-color: var(--card-border-alt) !important; }
+        .bg-brand-600 { background-color: var(--accent) !important; }
+        .bg-brand-700 { background-color: var(--accent-dk) !important; }
+        .bg-brand-50  { background-color: var(--accent-glow) !important; }
+        .text-brand-600 { color: var(--accent) !important; }
+        .text-brand-700 { color: var(--accent-dk) !important; }
+        .border-brand-200 { border-color: rgba(212,169,49,.3) !important; }
+        .hover\:text-brand-600:hover { color: var(--accent) !important; }
+        a.bg-brand-600, button.bg-brand-600 { color: var(--s0) !important; font-weight: 700 !important; }
+        .shadow-sm  { box-shadow: 0 1px 4px rgba(0,0,0,.8), 0 0 0 1px var(--card-border) !important; }
+        .shadow-xl  { box-shadow: 0 12px 32px rgba(0,0,0,.95), 0 0 0 1px rgba(212,169,49,.12) !important; }
+    </style>
+</head>
+<body class="font-sans antialiased" style="background:var(--app-bg);color:var(--text-body)">
+
+    <!-- STICKY NAVBAR -->
+    <nav class="sticky-nav fixed top-0 left-0 right-0 z-50 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 bg-brand-600 rounded-xl flex items-center justify-center font-black text-lg shadow" style="color:var(--s0)">G</div>
+                <div>
+                    <span class="font-black text-lg font-outfit" style="color:var(--text-main)">Gordon</span>
+                    <span class="text-[10px] font-bold text-brand-600 bg-brand-50 px-1.5 py-0.5 rounded-full ml-1.5 uppercase tracking-wider">Finance</span>
+                </div>
+            </div>
+            <div class="flex items-center gap-4">
+                <a href="/pricing.html" class="text-sm font-semibold hover:text-brand-600 transition-colors" style="color:var(--text-muted)">Pricing</a>
+                <a href="/" class="bg-brand-600 text-sm font-bold px-5 py-2.5 rounded-xl shadow hover:bg-brand-700 transition-colors" style="color:var(--s0)">Open App</a>
+            </div>
+        </div>
+    </nav>
+
+
+    <div class="pt-16">
+
+        <!-- HERO -->
+        <section class="hero-gradient text-white pt-20 pb-20 px-4 text-center">
+            <div class="max-w-4xl mx-auto">
+                <div class="inline-flex items-center gap-2 border px-4 py-2 rounded-full text-xs font-bold mb-8 uppercase tracking-widest" style="background:var(--accent-glow);border-color:rgba(212,169,49,0.25);color:var(--accent)">
+                    Investec API Side Hustle 2026
+                </div>
+                <h1 class="font-outfit font-black text-5xl md:text-6xl leading-tight mb-6" style="color:var(--text-main)">
+                    Gordon Finance Engine
+                </h1>
+                <p class="text-xl max-w-2xl mx-auto mb-6 leading-relaxed" style="color:var(--text-body)">
+                    A working, self-hosted personal finance engine built entirely on Investec's Programmable Banking API — real data, real decisions, real product.
+                </p>
+                <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                    <a href="/" class="bg-brand-600 font-black text-base px-8 py-3.5 rounded-xl shadow-xl hover:-translate-y-0.5 transition-all" style="color:var(--s0)">
+                        Open the App
+                    </a>
+                    <a href="/pricing.html" class="border font-bold text-base px-8 py-3.5 rounded-xl hover:border-brand-200 transition-all" style="border-color:rgba(255,255,255,0.2);color:var(--text-dim)">
+                        See Pricing
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <!-- WHAT IT IS -->
+        <section class="py-20 px-4 bg-white" style="background:var(--card-bg) !important">
+            <div class="max-w-5xl mx-auto">
+                <div class="text-center mb-16">
+                    <span class="text-brand-600 font-bold text-sm uppercase tracking-widest">Vision</span>
+                    <h2 class="font-outfit font-black text-4xl mt-3" style="color:var(--text-main)">Not just another dashboard.</h2>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-12 items-center">
+                    <div class="space-y-6 text-lg leading-relaxed" style="color:var(--text-body)">
+                        <p>Gordon is designed for the <span class="text-brand-600 font-bold">Investec Developer</span> ecosystem. It's a complete C# .NET 8 backend with a Vue 3 frontend that turns raw transaction JSON into actionable actuarial runway modelling.</p>
+                        <p>Most budgeting apps are reactive. They tell you what happened last month. Gordon is <span class="italic">predictive</span>. It uses your real historical burn rates to forecast your survival date — updated every time you swipe your card.</p>
+                    </div>
+                    <div class="bg-slate-50 rounded-3xl p-8 border border-slate-100 card-hover" style="background:var(--app-surface) !important; border-color:var(--card-border) !important">
+                        <ul class="space-y-4">
+                            <li class="flex gap-3"><span class="tick font-bold">✓</span> Real-time OAuth 2.0 transaction sync</li>
+                            <li class="flex gap-3"><span class="tick font-bold">✓</span> TimescaleDB time-series data architecture</li>
+                            <li class="flex gap-3"><span class="tick font-bold">✓</span> Actuarial Value-at-Risk runway modelling</li>
+                            <li class="flex gap-3"><span class="tick font-bold">✓</span> Automated inter-account top-up transfers</li>
+                            <li class="flex gap-3"><span class="tick font-bold">✓</span> Streaming AI responses (Gemini / Claude / Ollama)</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- CORE FEATURES -->
+        <section class="py-20 px-4 bg-slate-50" style="background:var(--app-surface) !important">
+            <div class="max-w-6xl mx-auto">
+                <div class="grid md:grid-cols-3 gap-8">
+                    <div class="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm card-hover" style="background:var(--card-bg) !important; border-color:var(--card-border) !important">
+                        <div class="w-10 h-10 bg-brand-50 rounded-xl flex items-center justify-center text-brand-600 font-black text-sm mb-6">01</div>
+                        <h3 class="font-bold text-xl mb-3" style="color:var(--text-main)">Predictive Analytics</h3>
+                        <p style="color:var(--text-body)">Custom actuarial models calculate your "Expected" and "Safe" runway days based on 24 months of historical volatility.</p>
+                    </div>
+                    <div class="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm card-hover" style="background:var(--card-bg) !important; border-color:var(--card-border) !important">
+                        <div class="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 font-black text-sm mb-6">02</div>
+                        <h3 class="font-bold text-xl mb-3" style="color:var(--text-main)">AI Classification</h3>
+                        <p style="color:var(--text-body)">Gordon uses Gemini 1.5 Pro to classify complex South African merchant strings with 94%+ accuracy out the box.</p>
+                    </div>
+                    <div class="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm card-hover" style="background:var(--card-bg) !important; border-color:var(--card-border) !important">
+                        <div class="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600 font-black text-sm mb-6">03</div>
+                        <h3 class="font-bold text-xl mb-3" style="color:var(--text-main)">Messaging Hooks</h3>
+                        <p style="color:var(--text-body)">Stay informed via Telegram morning briefings or WhatsApp alerts for low runway warnings.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- THE STACK -->
+        <section class="py-20 px-4 bg-white" style="background:var(--card-bg) !important">
+            <div class="max-w-4xl mx-auto">
+                <div class="bg-slate-900 rounded-3xl p-10 font-mono text-sm shadow-2xl relative overflow-hidden" style="background:var(--s0) !important; border:1px solid var(--card-border-alt)">
+                    <div class="absolute top-0 right-0 p-6 opacity-10">
+                        <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent)"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+                    </div>
+                    <p class="mb-1" style="color:var(--text-faint)">// Gordon Finance Engine — stack overview</p>
+                    <br>
+                    <p><span style="color:var(--gold)">runtime</span>       <span style="color:var(--text-dim)">.NET 8 Web API + Background Workers</span></p>
+                    <p><span style="color:var(--gold)">frontend</span>      <span style="color:var(--text-dim)">Vue 3 (Options API) — single file, no build step</span></p>
+                    <p><span style="color:var(--gold)">database</span>      <span style="color:var(--text-dim)">TimescaleDB (PostgreSQL 16) — hypertables for time-series</span></p>
+                    <p><span style="color:var(--gold)">orm</span>           <span style="color:var(--text-dim)">Dapper — lightweight, direct SQL</span></p>
+                    <p><span style="color:var(--gold)">auth</span>          <span style="color:var(--text-dim)">JWT Bearer + rotating httpOnly refresh cookies</span></p>
+                    <p><span style="color:var(--gold)">encryption</span>    <span style="color:var(--text-dim)">AES-256 via .NET Data Protection for stored keys</span></p>
+                    <p><span style="color:var(--gold)">ai</span>            <span style="color:var(--text-dim)">Gemini / Claude / Ollama — configurable, user-keyed</span></p>
+                    <p><span style="color:var(--gold)">messaging</span>     <span style="color:var(--text-dim)">Telegram Bot API + Twilio WhatsApp + SMTP</span></p>
+                    <p><span style="color:var(--gold)">deployment</span>    <span style="color:var(--text-dim)">Docker Compose — single command, self-hosted</span></p>
+                    <p><span style="color:var(--gold)">banking</span>       <span style="color:var(--text-dim)">Investec Programmable Banking API (OAuth 2.0)</span></p>
+                    <br>
+                    <div class="flex items-center gap-3 pt-2" style="border-top:1px solid var(--card-border-alt)">
+                        <span style="color:var(--accent)">✓</span>
+                        <span style="color:var(--text-muted)">Deployed and running — not a prototype</span>
+                        <span class="ml-auto" style="color:var(--gold)">v2.9.0</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- CTA -->
+        <section class="py-20 px-4 hero-gradient text-center">
+            <div class="max-w-2xl mx-auto">
+                <h2 class="font-outfit font-black text-4xl md:text-5xl mb-6" style="color:var(--text-main)">See it running.</h2>
+                <p class="text-lg mb-10" style="color:var(--text-body)">Gordon is live, open-source, and connects to real Investec accounts. You can run it yourself today.</p>
+                <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                    <a href="/" class="bg-brand-600 font-black text-base px-8 py-3.5 rounded-xl shadow-xl hover:-translate-y-0.5 transition-all" style="color:var(--s0)">
+                        Open the App
+                    </a>
+                    <a href="/pricing.html" class="border font-bold text-base px-8 py-3.5 rounded-xl transition-all" style="border-color:rgba(255,255,255,0.2);color:var(--text-dim)">
+                        View Pricing
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <!-- FOOTER -->
+        <footer class="py-10 px-4 text-center text-xs" style="background:var(--s0);border-top:1px solid var(--card-border-alt);color:var(--text-faint)">
+            <p>© 2026 Gordon Finance Engine &nbsp;·&nbsp; <a href="/pricing.html" class="hover:text-brand-600 transition-colors">Pricing</a> &nbsp;·&nbsp; <a href="/" class="hover:text-brand-600 transition-colors">Open App</a></p>
+            <p class="mt-2">Gordon is not affiliated with Investec Bank Limited. Investec® is a registered trademark.</p>
+        </footer>
+
+    </div>
+
+    <script>
+        // Theme Persistence Script
+        (function() {
+            const savedThemeId = localStorage.getItem('selectedThemeId');
+            const savedThemes = localStorage.getItem('saved_themes');
+            if (savedThemeId && savedThemes) {
+                const themes = JSON.parse(savedThemes);
+                const theme = themes.find(t => t.id === savedThemeId);
+                if (theme && theme.variables) {
+                    const root = document.documentElement;
+                    Object.entries(theme.variables).forEach(([key, val]) => {
+                        root.style.setProperty(key, val);
+                    });
+                }
+            }
+        })();
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0)';
+                }
+            });
+        }, { threshold: 0.1 });
+
+        document.querySelectorAll('.card-hover').forEach(el => {
+            el.style.opacity = '0';
+            el.style.transform = 'translateY(16px)';
+            el.style.transition = 'opacity 0.5s ease, transform 0.5s ease, box-shadow 0.2s ease';
+            observer.observe(el);
+        });
+    </script>
+</body>
+</html>

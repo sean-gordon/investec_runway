@@ -1,0 +1,105 @@
+using Dapper;
+using GordonWorker.Models;
+using GordonWorker.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Npgsql;
+using System.Security.Claims;
+using System.Linq;
+
+namespace GordonWorker.Controllers;
+
+[Authorize]
+[ApiController]
+[Route("api/[controller]")]
+public class ChartDataController : ControllerBase
+{
+    private readonly IConfiguration _configuration;
+    private readonly IActuarialService _actuarialService;
+    private readonly ISettingsService _settingsService;
+    private readonly IInvestecClient _investecClient;
+
+    public ChartDataController(IConfiguration configuration, IActuarialService actuarialService, ISettingsService settingsService, IInvestecClient investecClient)
+    {
+        _configuration = configuration;
+        _actuarialService = actuarialService;
+        _settingsService = settingsService;
+        _investecClient = investecClient;
+    }
+
+    [HttpGet("spending-by-category")]
+    public async Task<IActionResult> GetSpendingByCategory([FromQuery] int days = 30)
+    {
+        var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(userIdStr, out var userId)) return Unauthorized();
+
+        using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+
+        // Read from the `transactions_daily_category` continuous aggregate instead of scanning
+        // raw rows. The aggregate is pre-bucketed by (user_id, day, category), so a 30-day chart
+        // touches ~ (30 * unique_categories) rows instead of every transaction in the window.
+        // The refresh policy keeps the last hour's worth of buckets fresh enough for a dashboard.
+        // Spending = negative amounts only, so we negate the sum to get a positive "spent" value.
+        var sql = @"
+            SELECT category AS Label, SUM(-total_amount) AS Value
+            FROM transactions_daily_category
+            WHERE user_id = @userId
+              AND bucket >= NOW() - INTERVAL '1 day' * @days
+              AND total_amount < 0
+            GROUP BY category
+            ORDER BY Value DESC";
+
+        var data = await connection.QueryAsync(sql, new { userId, days });
+        return Ok(data);
+    }
+
+    [HttpGet("daily-balance")]
+    public async Task<IActionResult> GetDailyBalance([FromQuery] int days = 30)
+    {
+        var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(userIdStr, out var userId)) return Unauthorized();
+
+        var settings = await _settingsService.GetSettingsAsync(userId);
+        using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+        
+        var history = (await connection.QueryAsync<Transaction>(
+            "SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '1 day' * @days ORDER BY transaction_date DESC", 
+            new { userId, days })).ToList();
+
+        _investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
+        var accounts = await _investecClient.GetAccountsAsync();
+        var balances = await Task.WhenAll(accounts.Select(a => _investecClient.GetAccountBalanceAsync(a.AccountId)));
+        decimal currentBalance = balances.Sum();
+
+        var points = new List<DailyBalancePoint>();
+        decimal runner = currentBalance;
+        points.Add(new DailyBalancePoint { Date = DateTimeOffset.UtcNow, Balance = runner });
+
+        foreach (var tx in history)
+        {
+            points.Add(new DailyBalancePoint { Date = tx.TransactionDate, Balance = runner });
+            runner -= tx.Amount; // Reverse the transaction to go back in time for the previous state
+        }
+
+        // Group by Date to provide exactly one point per day (End of Day balance)
+        var dailyPoints = points
+            .GroupBy(p => p.Date.Date)
+            .Select(g => new DailyBalancePoint 
+            { 
+                Date = g.Key, 
+                // The points are recorded backwards in time, so the FIRST point in the group 
+                // is the newest transaction of that day (i.e. the End of Day balance)
+                Balance = g.First().Balance 
+            })
+            .OrderBy(p => p.Date)
+            .ToList();
+
+        return Ok(dailyPoints);
+    }
+
+    public class DailyBalancePoint
+    {
+        public DateTimeOffset Date { get; set; }
+        public decimal Balance { get; set; }
+    }
+}

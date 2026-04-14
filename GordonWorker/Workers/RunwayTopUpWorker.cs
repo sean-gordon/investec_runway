@@ -1,0 +1,147 @@
+using GordonWorker.Repositories;
+using GordonWorker.Services;
+
+namespace GordonWorker.Workers;
+
+public class RunwayTopUpWorker : BackgroundService
+{
+    private readonly IServiceProvider _serviceProvider;
+    private readonly ILogger<RunwayTopUpWorker> _logger;
+    private readonly ITelegramChatService _telegramChatService;
+
+    public RunwayTopUpWorker(IServiceProvider serviceProvider, ILogger<RunwayTopUpWorker> logger, ITelegramChatService telegramChatService)
+    {
+        _serviceProvider = serviceProvider;
+        _logger = logger;
+        _telegramChatService = telegramChatService;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        _logger.LogInformation("Runway Top-Up Worker starting.");
+        
+        // Initial delay to allow DB and other services to start up
+        await Task.Delay(TimeSpan.FromMinutes(2), stoppingToken);
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await CheckAndTopUpAsync(stoppingToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in Runway Top-Up Worker.");
+            }
+
+            // Run daily
+            await Task.Delay(TimeSpan.FromDays(1), stoppingToken);
+        }
+    }
+
+    private async Task CheckAndTopUpAsync(CancellationToken token)
+    {
+        IEnumerable<int> users;
+        await using (var scope = _serviceProvider.CreateAsyncScope())
+        {
+            var repo = scope.ServiceProvider.GetRequiredService<ITransactionRepository>();
+            users = await repo.GetAllUserIdsAsync();
+        }
+
+        foreach (var userId in users)
+        {
+            if (token.IsCancellationRequested) break;
+
+            await using var userScope = _serviceProvider.CreateAsyncScope();
+            var settingsService = userScope.ServiceProvider.GetRequiredService<ISettingsService>();
+            var actuarial = userScope.ServiceProvider.GetRequiredService<IActuarialService>();
+            var investecClient = userScope.ServiceProvider.GetRequiredService<IInvestecClient>();
+            var repo = userScope.ServiceProvider.GetRequiredService<ITransactionRepository>();
+            var telegramChatService = userScope.ServiceProvider.GetRequiredService<ITelegramChatService>();
+
+            var settings = await settingsService.GetSettingsAsync(userId);
+            
+            // Skip if not enabled or accounts are missing
+            if (!settings.AutoTopUpEnabled || 
+                string.IsNullOrEmpty(settings.SavingsAccountId) || 
+                string.IsNullOrEmpty(settings.SpendingAccountId)) continue;
+
+            try
+            {
+                // Fetch a bounded slice of recent history — the actuarial maths only needs the
+                // last few months to project runway. Pulling the user's full ledger every tick
+                // wastes memory linearly with how long they've been on the app.
+                var history = await repo.GetTransactionsByUserSinceAsync(userId, DateTime.UtcNow.AddDays(-120));
+                decimal currentBalance = 0;
+                
+                if (history.Any())
+                {
+                    // Get latest balance of the spending account
+                    var latestTx = history.FirstOrDefault(t => t.AccountId == settings.SpendingAccountId);
+                    if (latestTx != null)
+                    {
+                        currentBalance = latestTx.Balance;
+                    }
+                    else
+                    {
+                        // Fallback to fetch from live if we have no history for spending account
+                        _logger.LogWarning("No history for spending account, fetching live balance.");
+                        investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey, settings.InvestecBaseUrl, settings.InvestecEnvironment);
+                        currentBalance = await investecClient.GetAccountBalanceAsync(settings.SpendingAccountId);
+                    }
+                }
+
+                if (!history.Any()) continue;
+
+                // Calculate Runway
+                var health = await actuarial.AnalyzeHealthAsync(history, currentBalance, settings);
+                
+                _logger.LogInformation("[Top-Up Check] User {Id}: Runway is {Runway:F1} days (Threshold: {Threshold} days)", 
+                    userId, health.ExpectedRunwayDays, settings.RunwayThresholdDays);
+
+                if (health.ExpectedRunwayDays < settings.RunwayThresholdDays)
+                {
+                    // Trigger top-up
+                    _logger.LogInformation("Triggering top-up of R{Amount} for User {Id}", settings.TopUpAmount, userId);
+                    
+                    investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey, settings.InvestecBaseUrl, settings.InvestecEnvironment);
+                    
+                    var (success, error) = await investecClient.ExecuteTransferAsync(
+                        fromAccountId: settings.SavingsAccountId,
+                        toAccountId: settings.SpendingAccountId,
+                        amount: settings.TopUpAmount,
+                        reference: "Gordon Runway Top-Up",
+                        isDryRun: settings.IsDryRunEnabled
+                    );
+
+                    string message = "";
+                    if (success)
+                    {
+                        if (settings.IsDryRunEnabled)
+                        {
+                            message = $"🛡️ *Runway Top-Up (Dry Run)*\nYour runway dropped to {health.ExpectedRunwayDays:F1} days.\nI would have transferred R{settings.TopUpAmount:F2} from your Savings to your Spending account, but Dry-Run mode is enabled.";
+                        }
+                        else
+                        {
+                            message = $"💸 *Runway Top-Up Executed*\nYour runway dropped to {health.ExpectedRunwayDays:F1} days.\nI have successfully transferred R{settings.TopUpAmount:F2} from your Savings account to your Spending account to keep you afloat.";
+                        }
+                    }
+                    else
+                    {
+                        message = $"⚠️ *Runway Top-Up Failed*\nAttempted to transfer R{settings.TopUpAmount:F2} because your runway is at {health.ExpectedRunwayDays:F1} days, but the transfer failed.\nError: {error}";
+                    }
+
+                    // Send Telegram notification if configured
+                    if (!string.IsNullOrEmpty(settings.TelegramChatId))
+                    {
+                        await telegramChatService.EnqueueMessageAsync(userId, settings.TelegramChatId, message);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to check or execute top-up for user {UserId}", userId);
+            }
+        }
+    }
+}

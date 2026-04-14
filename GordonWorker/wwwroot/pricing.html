@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gordon Finance — Pricing & Plans</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📈</text></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        outfit: ['Outfit', 'sans-serif']
+                    },
+                    colors: {
+                        brand: {
+                            50: '#1A1400', 100: '#251B00', 200: '#3A2C00',
+                            500: '#D4A931', 600: '#D4A931', 700: '#A87E20', 900: '#000000'
+                        }
+                    },
+                    animation: {
+                        'fade-up': 'fadeUp 0.6s ease-out forwards',
+                        'count-up': 'countUp 2s ease-out forwards'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* ── GORDON × LAMBORGHINI DARK THEME ── */
+        :root {
+            /* ── THEME CONFIG (Change these to re-theme) ── */
+            --app-bg: #050505;
+            --app-surface: #0A0A0A;
+            --card-bg: #161618;
+            --card-bg-alt: #1C1C1E;
+            --card-border: #181818;
+            --card-border-alt: #242427;
+            
+            --text-main: #FFFFFF;
+            --text-body: #E2E8F0;
+            --text-dim: #CBD5E1;
+            --text-muted: #94A3B8;
+            --text-faint: #64748B;
+            
+            --accent: #D4A931;
+            --accent-lt: #E8C55A;
+            --accent-dk: #A87E20;
+            --accent-glow: rgba(212,169,49,0.10);
+            --accent-shadow: rgba(212,169,49,0.4);
+
+            /* ── Technical Shorthands (Mappings for backward compatibility) ── */
+            --gold: var(--accent); --gold-lt: var(--accent-lt); --gold-dk: var(--accent-dk);
+            --gold-glow: var(--accent-glow);
+            --s0: #000; --s1: var(--app-bg); --s2: var(--app-surface);
+            --s3: var(--card-bg); --s4: var(--card-bg-alt); --s5: #212121; --s6: #2A2A2A;
+            --b1: var(--card-border); --b2: var(--card-border-alt); --b3: #2C2C2C;
+        }
+        html { scroll-behavior: smooth; background: var(--app-bg); }
+        body { background: var(--app-bg); color: var(--text-body); }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: var(--app-bg); }
+        ::-webkit-scrollbar-thumb { background: var(--s5); border-radius: 2px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--accent-dk); }
+
+        /* ── Updated hero + nav ── */
+        .hero-gradient { background: linear-gradient(135deg, #000 0%, #0E0B00 50%, #1A1200 100%); }
+        .sticky-nav    { backdrop-filter: blur(16px); background: rgba(0,0,0,0.85); border-bottom: 1px solid var(--card-border-alt); }
+
+        /* ── Cards ── */
+        .card-hover { transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease; }
+        .card-hover:hover { 
+            transform: translateY(-2px); 
+            box-shadow: 0 16px 40px rgba(0,0,0,0.95), 0 0 0 1px rgba(212,169,49,0.15); 
+            border-color: rgba(212,169,49,0.3) !important;
+        }
+        .pro-glow { box-shadow: 0 0 0 2px var(--accent), 0 16px 40px rgba(212,169,49,0.15); }
+
+        /* ── FAQ ── */
+        .faq-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+        .faq-content.open { max-height: 400px; }
+
+        /* ── Misc ── */
+        .badge-pulse { animation: pulse 2s cubic-bezier(0.4,0,0.6,1) infinite; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.65} }
+        .investec-gradient { background: linear-gradient(135deg, #001A3A 0%, #003070 100%); }
+        .tick  { color: var(--accent); }
+        .cross { color: #2A2A2A; }
+
+        /* ── Surface overrides ── */
+        .bg-white      { background-color: var(--card-bg) !important; }
+        .bg-slate-50   { background-color: var(--app-surface) !important; }
+        .bg-slate-100  { background-color: var(--app-surface) !important; }
+        .bg-slate-200  { background-color: var(--card-bg-alt) !important; }
+        .bg-slate-800,
+        .bg-slate-900  { background-color: var(--s0) !important; }
+        .bg-slate-800\/15, .bg-white\/10 { background-color: rgba(255,255,255,0.05) !important; }
+
+        /* ── Text ── */
+        .text-slate-900, .text-slate-800 { color: var(--text-main) !important; }
+        .text-slate-700 { color: var(--text-body) !important; }
+        .text-slate-600 { color: var(--text-dim) !important; }
+        .text-slate-500 { color: var(--text-muted) !important; }
+        .text-slate-400 { color: var(--text-faint) !important; }
+
+        /* ── Borders ── */
+        .border-slate-100, .border-slate-50 { border-color: var(--card-border) !important; }
+        .border-slate-200 { border-color: var(--card-border-alt) !important; }
+        .border-slate-300 { border-color: var(--b3) !important; }
+
+        /* ── Brand → Gold ── */
+        .bg-brand-600 { background-color: var(--accent) !important; }
+        .bg-brand-700 { background-color: var(--accent-dk) !important; }
+        .bg-brand-50  { background-color: var(--accent-glow) !important; }
+        .bg-brand-900 { background-color: #000 !important; }
+        .text-brand-600 { color: var(--accent) !important; }
+        .text-brand-700, .text-brand-900 { color: var(--accent-dk) !important; }
+        .border-brand-600 { border-color: var(--accent) !important; }
+        .border-brand-200 { border-color: rgba(212,169,49,.3) !important; }
+        .hover\:text-brand-600:hover { color: var(--accent) !important; }
+        .hover\:bg-brand-700:hover   { background-color: var(--accent-dk) !important; }
+
+        /* Gold buttons → black text */
+        a.bg-brand-600, button.bg-brand-600 { color: #000 !important; font-weight: 700 !important; letter-spacing: .04em; }
+
+        /* ── Feature table ── */
+        thead tr { background-color: var(--app-surface) !important; }
+        tbody tr:hover { background-color: var(--card-bg) !important; }
+        .bg-brand-50.text-brand-700 { background-color: var(--accent-glow) !important; color: var(--accent) !important; }
+
+        /* ── Status ── */
+        .text-emerald-700 { color: var(--accent) !important; }
+        .bg-emerald-50    { background-color: var(--accent-glow) !important; }
+        .border-emerald-200 { border-color: rgba(212,169,49,.25) !important; }
+        .text-yellow-400  { color: var(--accent-lt) !important; }
+        .text-yellow-300  { color: var(--accent-lt) !important; }
+        .bg-yellow-400    { background-color: var(--accent) !important; }
+        .text-yellow-900  { color: #000 !important; }
+
+        /* ── Inputs ── */
+        input, select { background: var(--app-surface) !important; border-color: var(--card-border-alt) !important; color: var(--text-body) !important; }
+
+        /* ── Shadows ── */
+        .shadow-sm  { box-shadow: 0 1px 4px rgba(0,0,0,.8), 0 0 0 1px var(--card-border) !important; }
+        .shadow     { box-shadow: 0 2px 8px rgba(0,0,0,.9), 0 0 0 1px var(--card-border) !important; }
+        .shadow-xl  { box-shadow: 0 12px 32px rgba(0,0,0,0.95), 0 0 0 1px rgba(212,169,49,0.12) !important; }
+        .shadow-2xl { box-shadow: 0 20px 50px rgba(0,0,0,0.98), 0 0 0 1px rgba(212,169,49,0.18) !important; }
+    </style>
+</head>
+<body class="font-sans antialiased" style="background:var(--app-bg);color:var(--text-body)">
+        .shadow-xl  { box-shadow: 0 12px 32px rgba(0,0,0,.95), 0 0 0 1px rgba(212,169,49,.12) !important; }
+        .shadow-2xl { box-shadow: 0 20px 50px rgba(0,0,0,.98), 0 0 0 1px rgba(212,169,49,.18) !important; }
+    </style>
+</head>
+<body class="font-sans antialiased" style="background:#050505;color:#E2E8F0">
+
+    <!-- STICKY NAVBAR -->
+    <nav class="sticky-nav border-b border-slate-100 fixed top-0 left-0 right-0 z-50 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 bg-brand-600 rounded-xl flex items-center justify-center text-white font-black text-lg shadow">G</div>
+                <div>
+                    <span class="font-black text-slate-900 text-lg font-outfit">Gordon</span>
+                    <span class="text-[10px] font-bold text-brand-600 bg-brand-50 px-1.5 py-0.5 rounded-full ml-1.5 uppercase tracking-wider">Finance</span>
+                </div>
+            </div>
+            <div class="hidden md:flex items-center gap-8 text-sm font-semibold text-slate-600">
+                <a href="#how-it-works" class="hover:text-brand-600 transition-colors">How It Works</a>
+                <a href="#pricing" class="hover:text-brand-600 transition-colors">Pricing</a>
+                <a href="#investec" class="hover:text-brand-600 transition-colors">Investec API</a>
+                <a href="#faq" class="hover:text-brand-600 transition-colors">FAQ</a>
+            </div>
+            <div class="flex items-center gap-3">
+                <a href="/" class="hidden sm:inline text-sm font-semibold text-slate-500 hover:text-brand-600 transition-colors">Sign In</a>
+                <a href="/" class="bg-brand-600 text-white text-sm font-bold px-5 py-2.5 rounded-xl shadow hover:bg-brand-700 transition-colors">
+                    Start Free Trial
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="pt-16">
+
+        <!-- HERO -->
+        <section class="hero-gradient text-white pt-20 pb-28 px-4 text-center relative overflow-hidden">
+            <div class="absolute inset-0 opacity-10" style="background-image: radial-gradient(circle at 25% 50%, white 1px, transparent 1px), radial-gradient(circle at 75% 50%, white 1px, transparent 1px); background-size: 60px 60px;"></div>
+
+            <h1 class="font-outfit font-black text-5xl md:text-7xl leading-tight mb-6 max-w-4xl mx-auto">
+                Your AI-Powered<br>
+                <span class="text-transparent bg-clip-text" style="background: linear-gradient(90deg, #bae6fd, #e0f2fe);">Personal CFO</span>
+            </h1>
+            <p class="text-xl md:text-2xl text-white/80 max-w-2xl mx-auto mb-10 leading-relaxed font-medium">
+                Gordon connects to your Investec account, runs actuarial maths on your spending, and tells you exactly how long your money will last — before you run out.
+            </p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center mb-16">
+                <a href="/" class="bg-white text-brand-700 font-black text-lg px-10 py-4 rounded-2xl shadow-xl hover:shadow-2xl hover:-translate-y-0.5 transition-all">
+                    Start Free Trial
+                </a>
+                <a href="#how-it-works" class="bg-white/15 backdrop-blur-sm border border-white/30 text-white font-bold text-lg px-10 py-4 rounded-2xl hover:bg-white/25 transition-all">
+                    See How It Works
+                </a>
+            </div>
+
+            <!-- Stats bar -->
+            <div class="grid grid-cols-3 gap-4 max-w-2xl mx-auto">
+                <div class="bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-4">
+                    <div class="font-black text-3xl font-outfit" id="stat-runway">127</div>
+                    <div class="text-white/70 text-xs font-semibold uppercase tracking-wider mt-1">Avg Days of Runway Tracked</div>
+                </div>
+                <div class="bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-4">
+                    <div class="font-black text-3xl font-outfit">R2.4m</div>
+                    <div class="text-white/70 text-xs font-semibold uppercase tracking-wider mt-1">Transactions Analysed Daily</div>
+                </div>
+                <div class="bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-4">
+                    <div class="font-black text-3xl font-outfit">94%</div>
+                    <div class="text-white/70 text-xs font-semibold uppercase tracking-wider mt-1">AI Categorisation Accuracy</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TRUST STRIP -->
+        <section class="bg-slate-50 border-b border-slate-100 py-8 px-4">
+            <div class="max-w-5xl mx-auto text-center">
+                <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6">Integrates with the tools you already use</p>
+                <div class="flex flex-wrap items-center justify-center gap-8 opacity-50 grayscale">
+                    <div class="flex items-center gap-2 font-bold text-slate-700">
+                        <div class="w-8 h-8 investec-gradient rounded-lg flex items-center justify-center text-white font-black text-xs">I</div>
+                        <span>Investec</span>
+                    </div>
+                    <div class="flex items-center gap-2 font-bold text-slate-700">
+                        <div class="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center text-white text-xs font-black">TG</div>
+                        <span>Telegram</span>
+                    </div>
+                    <div class="flex items-center gap-2 font-bold text-slate-700">
+                        <div class="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center text-white text-xs font-black">WA</div>
+                        <span>WhatsApp</span>
+                    </div>
+                    <div class="flex items-center gap-2 font-bold text-slate-700">
+                        <div class="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center text-white text-xs font-black">ML</div>
+                        <span>SMTP Email</span>
+                    </div>
+                    <div class="flex items-center gap-2 font-bold text-slate-700">
+                        <div class="w-8 h-8 bg-slate-800 rounded-lg flex items-center justify-center text-white text-xs font-black">AI</div>
+                        <span>Gemini / Claude / Ollama</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- PROBLEM -->
+        <section class="py-24 px-4 bg-white">
+            <div class="max-w-6xl mx-auto">
+                <div class="grid md:grid-cols-2 gap-16 items-center">
+                    <div>
+                        <span class="text-brand-600 font-bold text-sm uppercase tracking-widest">The Problem</span>
+                        <h2 class="font-outfit font-black text-4xl md:text-5xl mt-3 mb-6 leading-tight">Most South Africans are flying financially blind</h2>
+                        <p class="text-slate-600 text-lg leading-relaxed mb-8">
+                            You check your balance. It looks fine. Then rent hits, the car installment clears, and suddenly you're R3,000 short before month-end. Sound familiar?
+                        </p>
+                        <div class="space-y-4">
+                            <div class="flex items-start gap-3">
+                                <span class="text-red-400 font-bold mt-0.5">—</span>
+                                <div>
+                                    <p class="font-bold text-slate-800">No visibility into your real runway</p>
+                                    <p class="text-slate-500 text-sm">Your bank balance doesn't account for debit orders, subscriptions, and recurring costs.</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <span class="text-red-400 font-bold mt-0.5">—</span>
+                                <div>
+                                    <p class="font-bold text-slate-800">Variable income makes planning impossible</p>
+                                    <p class="text-slate-500 text-sm">Freelancers and commission earners can't predict when the next payment lands.</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <span class="text-red-400 font-bold mt-0.5">—</span>
+                                <div>
+                                    <p class="font-bold text-slate-800">You find out too late</p>
+                                    <p class="text-slate-500 text-sm">By the time your budgeting app flags a problem, the damage is already done.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="rounded-3xl p-8 border" style="background:linear-gradient(135deg,#140808,#0E0A00);border-color:#2A1A1A">
+                        <div class="text-center mb-6">
+                            <p class="font-bold text-slate-700 text-lg uppercase tracking-widest text-xs">Without Gordon</p>
+                        </div>
+                        <div class="space-y-3 text-sm">
+                            <div class="bg-white rounded-xl p-4 border border-red-100 flex items-center gap-3">
+                                <span class="text-red-400 font-bold text-base">×</span>
+                                <span class="text-slate-600">Manually checking Investec app daily</span>
+                            </div>
+                            <div class="bg-white rounded-xl p-4 border border-red-100 flex items-center gap-3">
+                                <span class="text-red-400 font-bold text-base">×</span>
+                                <span class="text-slate-600">Surprised by debit orders every month</span>
+                            </div>
+                            <div class="bg-white rounded-xl p-4 border border-red-100 flex items-center gap-3">
+                                <span class="text-red-400 font-bold text-base">×</span>
+                                <span class="text-slate-600">No idea what's eating your salary</span>
+                            </div>
+                            <div class="bg-white rounded-xl p-4 border border-red-100 flex items-center gap-3">
+                                <span class="text-red-400 font-bold text-base">×</span>
+                                <span class="text-slate-600">Reacting to problems instead of preventing them</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- HOW IT WORKS -->
+        <section id="how-it-works" class="py-24 px-4 bg-slate-50">
+            <div class="max-w-6xl mx-auto text-center">
+                <span class="text-brand-600 font-bold text-sm uppercase tracking-widest">How It Works</span>
+                <h2 class="font-outfit font-black text-4xl md:text-5xl mt-3 mb-4">Connect once. Understand everything.</h2>
+                <p class="text-slate-500 text-lg max-w-2xl mx-auto mb-16">Gordon plugs into Investec's Programmable Banking API and runs continuously in the background.</p>
+
+                <div class="grid md:grid-cols-3 gap-8 mb-16">
+                    <div class="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 card-hover text-left relative">
+                        <div class="w-12 h-12 bg-brand-600 rounded-2xl flex items-center justify-center text-white font-black text-xl mb-6 shadow-lg">1</div>
+                        <div class="investec-gradient w-10 h-10 rounded-xl flex items-center justify-center text-white font-black text-sm mb-4">I</div>
+                        <h3 class="font-bold text-xl mb-3">Connect Your Investec Account</h3>
+                        <p class="text-slate-500 leading-relaxed">Authenticate once via Investec's OAuth API. Gordon syncs all your accounts — cheque, savings, and credit — automatically every 60 seconds.</p>
+                        <div class="mt-6 flex flex-wrap gap-2">
+                            <span class="text-xs bg-brand-50 text-brand-700 font-semibold px-2.5 py-1 rounded-full">OAuth 2.0</span>
+                            <span class="text-xs bg-brand-50 text-brand-700 font-semibold px-2.5 py-1 rounded-full">Real-time sync</span>
+                            <span class="text-xs bg-brand-50 text-brand-700 font-semibold px-2.5 py-1 rounded-full">All accounts</span>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 card-hover text-left relative">
+                        <div class="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white font-black text-xl mb-6 shadow-lg">2</div>
+                        <h3 class="font-bold text-xl mb-3">Gordon Runs the Numbers</h3>
+                        <p class="text-slate-500 leading-relaxed">Actuarial burn-rate analysis, AI categorisation, salary detection, and Value-at-Risk calculations give you a precise financial health score — updated daily.</p>
+                        <div class="mt-6 flex flex-wrap gap-2">
+                            <span class="text-xs bg-indigo-50 text-indigo-700 font-semibold px-2.5 py-1 rounded-full">Burn rate</span>
+                            <span class="text-xs bg-indigo-50 text-indigo-700 font-semibold px-2.5 py-1 rounded-full">AI categorisation</span>
+                            <span class="text-xs bg-indigo-50 text-indigo-700 font-semibold px-2.5 py-1 rounded-full">VaR modelling</span>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 card-hover text-left relative">
+                        <div class="w-12 h-12 bg-emerald-600 rounded-2xl flex items-center justify-center text-white font-black text-xl mb-6 shadow-lg">3</div>
+                        <h3 class="font-bold text-xl mb-3">Get Proactive Alerts</h3>
+                        <p class="text-slate-500 leading-relaxed">Morning briefings, weekly reports, and instant Telegram/WhatsApp alerts before problems hit. Ask Gordon anything about your spending in plain English.</p>
+                        <div class="mt-6 flex flex-wrap gap-2">
+                            <span class="text-xs bg-emerald-50 text-emerald-700 font-semibold px-2.5 py-1 rounded-full">Telegram bot</span>
+                            <span class="text-xs bg-emerald-50 text-emerald-700 font-semibold px-2.5 py-1 rounded-full">WhatsApp</span>
+                            <span class="text-xs bg-emerald-50 text-emerald-700 font-semibold px-2.5 py-1 rounded-full">Weekly email</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Demo terminal mockup -->
+                <div class="bg-slate-900 rounded-3xl p-6 text-left max-w-3xl mx-auto shadow-2xl">
+                    <div class="flex items-center gap-2 mb-4">
+                        <div class="w-3 h-3 bg-red-400 rounded-full"></div>
+                        <div class="w-3 h-3 bg-yellow-400 rounded-full"></div>
+                        <div class="w-3 h-3 bg-green-400 rounded-full"></div>
+                        <span class="text-slate-500 text-xs ml-2 font-mono">Gordon Telegram Bot — Morning Briefing</span>
+                    </div>
+                    <div class="space-y-3 font-mono text-sm">
+                        <div class="flex gap-3">
+                            <span class="text-slate-500 shrink-0">08:00</span>
+                            <div class="bg-slate-800 rounded-xl px-4 py-2.5 text-slate-200">
+                                <span class="font-bold text-white">Morning Briefing</span><br>
+                                Balance: <span class="text-emerald-400 font-bold">R 24,350</span> | Days to payday: <span class="text-yellow-400 font-bold">12</span><br>
+                                Runway: <span class="text-emerald-400 font-bold">38 days</span> | Upcoming bills: <span class="text-orange-400 font-bold">R 6,200</span><br>
+                                <span class="text-slate-400 text-xs">Tip: Your Woolworths spend is 22% above your 3-month average.</span>
+                            </div>
+                        </div>
+                        <div class="flex gap-3 justify-end">
+                            <div class="bg-brand-700 rounded-xl px-4 py-2.5 text-white max-w-xs">
+                                What did I spend on fuel last month?
+                            </div>
+                        </div>
+                        <div class="flex gap-3">
+                            <span class="text-slate-500 shrink-0">08:02</span>
+                            <div class="bg-slate-800 rounded-xl px-4 py-2.5 text-slate-200 max-w-sm">
+                                You spent <span class="text-yellow-300 font-bold">R 1,842</span> on fuel in October across <span class="font-bold">6 transactions</span>. That's R 320 more than September.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- INVESTEC INTEGRATION -->
+        <section id="investec" class="py-24 px-4 bg-white">
+            <div class="max-w-6xl mx-auto">
+                <div class="grid md:grid-cols-2 gap-16 items-center">
+                    <div>
+                        <div class="flex items-center gap-3 mb-6">
+                            <div class="investec-gradient px-4 py-2 rounded-xl">
+                                <span class="text-white font-black text-sm tracking-wide">INVESTEC</span>
+                            </div>
+                            <span class="text-slate-400 font-bold">×</span>
+                            <div class="bg-brand-600 w-9 h-9 rounded-xl flex items-center justify-center text-white font-black">G</div>
+                        </div>
+                        <h2 class="font-outfit font-black text-4xl md:text-5xl mb-6 leading-tight">Built on Investec Programmable Banking</h2>
+                        <p class="text-slate-600 text-lg leading-relaxed mb-8">
+                            Gordon uses Investec's Open Banking API to do things no ordinary budgeting app can. Real account data, real-time — not screen scraping, not manual imports.
+                        </p>
+                        <div class="space-y-4">
+                            <div class="flex items-start gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                <div class="w-8 h-8 bg-brand-50 border border-brand-200 rounded-lg flex items-center justify-center text-brand-600 font-black text-xs shrink-0 mt-0.5">01</div>
+                                <div>
+                                    <p class="font-bold text-slate-800">Real-time transaction sync</p>
+                                    <p class="text-slate-500 text-sm">Every 60 seconds, Gordon fetches new transactions via the Investec Transactions API and deduplicates them into TimescaleDB.</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                <div class="w-8 h-8 bg-brand-50 border border-brand-200 rounded-lg flex items-center justify-center text-brand-600 font-black text-xs shrink-0 mt-0.5">02</div>
+                                <div>
+                                    <p class="font-bold text-slate-800">Multi-account balance monitoring</p>
+                                    <p class="text-slate-500 text-sm">Gordon aggregates balances across all your Investec accounts — cheque, savings, and money market — for an accurate net position.</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                <div class="w-8 h-8 bg-brand-50 border border-brand-200 rounded-lg flex items-center justify-center text-brand-600 font-black text-xs shrink-0 mt-0.5">03</div>
+                                <div>
+                                    <p class="font-bold text-slate-800">Automated runway top-ups</p>
+                                    <p class="text-slate-500 text-sm">When your runway drops below your threshold, Gordon can automatically trigger an inter-account transfer to keep you liquid.</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                <div class="w-8 h-8 bg-brand-50 border border-brand-200 rounded-lg flex items-center justify-center text-brand-600 font-black text-xs shrink-0 mt-0.5">04</div>
+                                <div>
+                                    <p class="font-bold text-slate-800">Bank-grade security</p>
+                                    <p class="text-slate-500 text-sm">OAuth 2.0 authentication. Your Investec credentials are never stored — only short-lived access tokens, AES-256 encrypted at rest.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="rounded-3xl p-8 text-white" style="background:linear-gradient(135deg,#080808,#0E0B00);border:1px solid #1E1E1E">
+                        <p class="text-slate-400 text-xs font-mono mb-4">// Gordon → Investec API — live data flow</p>
+                        <div class="space-y-3 text-sm font-mono">
+                            <div class="flex items-center gap-3">
+                                <span class="text-emerald-400">✓</span>
+                                <span class="text-slate-300">GET /accounts</span>
+                                <span class="text-slate-500 ml-auto text-xs">3 accounts found</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="text-emerald-400">✓</span>
+                                <span class="text-slate-300">GET /accounts/:id/balance</span>
+                                <span class="text-slate-500 ml-auto text-xs">R24,350 total</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="text-emerald-400">✓</span>
+                                <span class="text-slate-300">GET /accounts/:id/transactions</span>
+                                <span class="text-slate-500 ml-auto text-xs">47 new rows</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="text-blue-400">→</span>
+                                <span class="text-slate-300">AI categorisation batch</span>
+                                <span class="text-slate-500 ml-auto text-xs">47 classified</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="text-blue-400">→</span>
+                                <span class="text-slate-300">Actuarial runway calc</span>
+                                <span class="text-yellow-400 ml-auto text-xs font-bold">38 days</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="text-purple-400">→</span>
+                                <span class="text-slate-300">Telegram briefing sent</span>
+                                <span class="text-slate-500 ml-auto text-xs">08:00 SAST</span>
+                            </div>
+                        </div>
+                        <div class="mt-6 pt-6 border-t border-slate-700">
+                            <div class="grid grid-cols-3 gap-4 text-center">
+                                <div>
+                                    <div class="text-2xl font-black font-outfit text-emerald-400">60s</div>
+                                    <div class="text-slate-500 text-xs mt-1">Sync interval</div>
+                                </div>
+                                <div>
+                                    <div class="text-2xl font-black font-outfit text-blue-400">256</div>
+                                    <div class="text-slate-500 text-xs mt-1">AES-bit encryption</div>
+                                </div>
+                                <div>
+                                    <div class="text-2xl font-black font-outfit text-purple-400">0</div>
+                                    <div class="text-slate-500 text-xs mt-1">Stored passwords</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- WHO IT'S FOR -->
+        <section class="py-24 px-4 bg-slate-50">
+            <div class="max-w-6xl mx-auto text-center">
+                <span class="text-brand-600 font-bold text-sm uppercase tracking-widest">Your Habits</span>
+                <h2 class="font-outfit font-black text-4xl md:text-5xl mt-3 mb-4">Your money follows your habits.<br>Do you know yours?</h2>
+                <p class="text-slate-500 text-lg max-w-2xl mx-auto mb-16">Most people aren't bad with money — they just can't see their own patterns. Gordon makes your habits visible, shows you what they're costing you, and helps you build better ones over time.</p>
+                <div class="grid md:grid-cols-3 gap-8">
+
+                    <div class="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 card-hover text-left">
+                        <div class="w-12 h-12 bg-brand-50 border border-brand-200 rounded-2xl flex items-center justify-center text-brand-600 font-black text-sm mb-6">01</div>
+                        <h3 class="font-bold text-xl mb-3">See Your Patterns</h3>
+                        <p class="text-slate-500 leading-relaxed mb-5">You have spending patterns you haven't noticed yet. The Woolworths trip every Tuesday. The "quick lunch" that adds up to R2,400 a month. Gordon surfaces your habits from your real Investec transaction data — not guesses.</p>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex items-center gap-2 text-slate-600"><span class="tick">✓</span> Category-level habit tracking</div>
+                            <div class="flex items-center gap-2 text-slate-600"><span class="tick">✓</span> Month-over-month comparisons</div>
+                            <div class="flex items-center gap-2 text-slate-600"><span class="tick">✓</span> Anomaly detection on unusual spend</div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 card-hover text-left">
+                        <div class="w-12 h-12 bg-brand-50 border border-brand-200 rounded-2xl flex items-center justify-center text-brand-600 font-black text-sm mb-6">02</div>
+                        <h3 class="font-bold text-xl mb-3">Understand What They Cost You</h3>
+                        <p class="text-slate-500 leading-relaxed mb-5">Every habit has a price — not just in rands, but in runway days. Gordon translates your spending behaviours into tangible outcomes: what does eating out four times a week actually mean for how long your money lasts?</p>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex items-center gap-2 text-slate-600"><span class="tick">✓</span> Habit-to-runway impact analysis</div>
+                            <div class="flex items-center gap-2 text-slate-600"><span class="tick">✓</span> What-If scenario simulations</div>
+                            <div class="flex items-center gap-2 text-slate-600"><span class="tick">✓</span> Upcoming bill forecasting</div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 card-hover text-left">
+                        <div class="w-12 h-12 bg-brand-50 border border-brand-200 rounded-2xl flex items-center justify-center text-brand-600 font-black text-sm mb-6">03</div>
+                        <h3 class="font-bold text-xl mb-3">Build Better Ones</h3>
+                        <p class="text-slate-500 leading-relaxed mb-5">Awareness is step one. Gordon goes further — daily morning briefings, weekly financial reports, and AI-powered nudges give you the consistent feedback loop that turns one-off decisions into lasting financial habits.</p>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex items-center gap-2 text-slate-600"><span class="tick">✓</span> Daily Telegram / WhatsApp briefings</div>
+                            <div class="flex items-center gap-2 text-slate-600"><span class="tick">✓</span> Weekly progress reports via email</div>
+                            <div class="flex items-center gap-2 text-slate-600"><span class="tick">✓</span> Ask Gordon anything about your spending</div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <!-- PRICING -->
+        <section id="pricing" class="py-24 px-4 bg-white">
+            <div class="max-w-6xl mx-auto text-center">
+                <span class="text-brand-600 font-bold text-sm uppercase tracking-widest">Pricing</span>
+                <h2 class="font-outfit font-black text-4xl md:text-5xl mt-3 mb-4">Simple, honest pricing</h2>
+                <p class="text-slate-500 text-lg max-w-xl mx-auto mb-4">No per-transaction fees. No surprise charges. Self-host it yourself or let us run it.</p>
+                <div class="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-2 rounded-full text-sm font-bold mb-16">
+                    Launch offer: 3 months free on Pro — use code GORDON26
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-8 items-start">
+
+                    <!-- Starter -->
+                    <div class="bg-white rounded-3xl p-8 border-2 border-slate-200 card-hover text-left">
+                        <p class="font-bold text-slate-500 uppercase text-xs tracking-widest mb-4">Starter</p>
+                        <div class="mb-6">
+                            <span class="font-black text-5xl font-outfit">Free</span>
+                            <p class="text-slate-400 text-sm mt-2">Self-host on your own server. Always free.</p>
+                        </div>
+                        <a href="https://github.com" target="_blank" class="block w-full text-center bg-slate-100 text-slate-700 font-bold py-3.5 rounded-xl hover:bg-slate-200 transition-colors mb-8">
+                            Get the Code
+                        </a>
+                        <ul class="space-y-3 text-sm text-slate-600">
+                            <li class="flex items-center gap-2.5"><span class="tick">✓</span> 1 Investec account</li>
+                            <li class="flex items-center gap-2.5"><span class="tick">✓</span> 90-day transaction history</li>
+                            <li class="flex items-center gap-2.5"><span class="tick">✓</span> Basic runway calculation</li>
+                            <li class="flex items-center gap-2.5"><span class="tick">✓</span> Manual refresh</li>
+                            <li class="flex items-center gap-2.5"><span class="tick">✓</span> Ollama AI (local, free)</li>
+                            <li class="flex items-center gap-2.5"><span class="cross">–</span> <span class="text-slate-400">Telegram / WhatsApp alerts</span></li>
+                            <li class="flex items-center gap-2.5"><span class="cross">–</span> <span class="text-slate-400">What-If simulations</span></li>
+                            <li class="flex items-center gap-2.5"><span class="cross">–</span> <span class="text-slate-400">Weekly email reports</span></li>
+                            <li class="flex items-center gap-2.5"><span class="cross">–</span> <span class="text-slate-400">Cloud hosting</span></li>
+                        </ul>
+                    </div>
+
+                    <!-- Pro (popular) -->
+                    <div class="bg-white rounded-3xl p-8 border-2 border-brand-600 card-hover text-left pro-glow relative">
+                        <div class="absolute -top-4 left-1/2 -translate-x-1/2 bg-brand-600 text-white text-xs font-black px-4 py-1.5 rounded-full uppercase tracking-wider shadow">
+                            Most Popular
+                        </div>
+                        <p class="font-bold text-brand-600 uppercase text-xs tracking-widest mb-4">Pro</p>
+                        <div class="mb-6">
+                            <div class="flex items-end gap-2">
+                                <span class="font-black text-5xl font-outfit">R149</span>
+                                <span class="text-slate-400 mb-2">/month</span>
+                            </div>
+                            <p class="text-slate-400 text-sm mt-2">Cloud-hosted. Cancel anytime.</p>
+                        </div>
+                        <a href="/" class="block w-full text-center bg-brand-600 text-white font-bold py-3.5 rounded-xl hover:bg-brand-700 transition-colors mb-8 shadow-lg">
+                            Start Free Trial
+                        </a>
+                        <ul class="space-y-3 text-sm text-slate-600">
+                            <li class="flex items-center gap-2.5"><span class="tick font-bold">✓</span> <span class="font-semibold">Unlimited Investec accounts</span></li>
+                            <li class="flex items-center gap-2.5"><span class="tick">✓</span> 2-year transaction history</li>
+                            <li class="flex items-center gap-2.5"><span class="tick">✓</span> Live 60-second sync</li>
+                            <li class="flex items-center gap-2.5"><span class="tick">✓</span> AI categorisation (Gemini/Claude)</li>
+                            <li class="flex items-center gap-2.5"><span class="tick">✓</span> Telegram + WhatsApp alerts</li>
+                            <li class="flex items-center gap-2.5"><span class="tick">✓</span> Weekly email reports</li>
+                            <li class="flex items-center gap-2.5"><span class="tick">✓</span> What-If scenario simulations</li>
+                            <li class="flex items-center gap-2.5"><span class="tick">✓</span> Morning daily briefings</li>
+                            <li class="flex items-center gap-2.5"><span class="tick">✓</span> Automated runway top-ups</li>
+                        </ul>
+                    </div>
+
+                    <!-- Business -->
+                    <div class="bg-white rounded-3xl p-8 border-2 border-slate-200 card-hover text-left">
+                        <p class="font-bold text-slate-500 uppercase text-xs tracking-widest mb-4">Business</p>
+                        <div class="mb-6">
+                            <div class="flex items-end gap-2">
+                                <span class="font-black text-5xl font-outfit">R499</span>
+                                <span class="text-slate-400 mb-2">/month</span>
+                            </div>
+                            <p class="text-slate-400 text-sm mt-2">For teams and finance-forward businesses.</p>
+                        </div>
+                        <a href="mailto:hello@gordonfin.co.za" class="block w-full text-center bg-slate-900 text-white font-bold py-3.5 rounded-xl hover:bg-slate-800 transition-colors mb-8">
+                            Contact Sales
+                        </a>
+                        <ul class="space-y-3 text-sm text-slate-600">
+                            <li class="flex items-center gap-2.5"><span class="tick font-bold">✓</span> <span class="font-semibold">Everything in Pro</span></li>
+                            <li class="flex items-center gap-2.5"><span class="tick">✓</span> 5 user seats</li>
+                            <li class="flex items-center gap-2.5"><span class="tick">✓</span> Custom AI persona & name</li>
+                            <li class="flex items-center gap-2.5"><span class="tick">✓</span> REST API access</li>
+                            <li class="flex items-center gap-2.5"><span class="tick">✓</span> Custom webhook integrations</li>
+                            <li class="flex items-center gap-2.5"><span class="tick">✓</span> Dedicated Telegram bot</li>
+                            <li class="flex items-center gap-2.5"><span class="tick">✓</span> Priority support (4h SLA)</li>
+                            <li class="flex items-center gap-2.5"><span class="tick">✓</span> Custom report branding</li>
+                            <li class="flex items-center gap-2.5"><span class="tick">✓</span> On-premise deployment option</li>
+                        </ul>
+                    </div>
+
+                </div>
+
+                <p class="text-slate-400 text-sm mt-8">All plans include a 14-day free trial. No credit card required to start. Cancel anytime. Prices exclude VAT.</p>
+            </div>
+        </section>
+
+        <!-- FEATURE COMPARISON -->
+        <section class="py-16 px-4 bg-slate-50">
+            <div class="max-w-5xl mx-auto">
+                <h2 class="font-outfit font-black text-3xl mb-10 text-center">Full feature comparison</h2>
+                <div class="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="bg-slate-50 border-b border-slate-200">
+                                <th class="text-left px-6 py-4 font-bold text-slate-700 w-1/2">Feature</th>
+                                <th class="text-center px-4 py-4 font-bold text-slate-500">Starter</th>
+                                <th class="text-center px-4 py-4 font-bold text-brand-600 bg-brand-50">Pro</th>
+                                <th class="text-center px-4 py-4 font-bold text-slate-700">Business</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="border-b border-slate-100 bg-slate-50"><td colspan="4" class="px-6 py-2 text-xs font-bold text-slate-400 uppercase tracking-widest">Investec Integration</td></tr>
+                            <tr class="border-b border-slate-100 hover:bg-slate-50"><td class="px-6 py-3 text-slate-700">Investec account sync</td><td class="text-center px-4 py-3 text-slate-500">1 account</td><td class="text-center px-4 py-3 bg-brand-50 text-brand-700 font-semibold">Unlimited</td><td class="text-center px-4 py-3 text-slate-700 font-semibold">Unlimited</td></tr>
+                            <tr class="border-b border-slate-100 hover:bg-slate-50"><td class="px-6 py-3 text-slate-700">Sync frequency</td><td class="text-center px-4 py-3 text-slate-500">Manual</td><td class="text-center px-4 py-3 bg-brand-50 text-brand-700 font-semibold">60 seconds</td><td class="text-center px-4 py-3 text-slate-700 font-semibold">60 seconds</td></tr>
+                            <tr class="border-b border-slate-100 hover:bg-slate-50"><td class="px-6 py-3 text-slate-700">Transaction history</td><td class="text-center px-4 py-3 text-slate-500">90 days</td><td class="text-center px-4 py-3 bg-brand-50 text-brand-700 font-semibold">2 years</td><td class="text-center px-4 py-3 text-slate-700 font-semibold">Unlimited</td></tr>
+                            <tr class="border-b border-slate-100 hover:bg-slate-50"><td class="px-6 py-3 text-slate-700">Automated top-ups</td><td class="text-center px-4 py-3 text-slate-400">–</td><td class="text-center px-4 py-3 bg-brand-50 tick font-bold">✓</td><td class="text-center px-4 py-3 tick font-bold">✓</td></tr>
+
+                            <tr class="border-b border-slate-100 bg-slate-50"><td colspan="4" class="px-6 py-2 text-xs font-bold text-slate-400 uppercase tracking-widest">Analytics & AI</td></tr>
+                            <tr class="border-b border-slate-100 hover:bg-slate-50"><td class="px-6 py-3 text-slate-700">Runway calculation</td><td class="text-center px-4 py-3 tick">✓</td><td class="text-center px-4 py-3 bg-brand-50 tick font-bold">✓</td><td class="text-center px-4 py-3 tick font-bold">✓</td></tr>
+                            <tr class="border-b border-slate-100 hover:bg-slate-50"><td class="px-6 py-3 text-slate-700">AI transaction categorisation</td><td class="text-center px-4 py-3 text-slate-400">Local only</td><td class="text-center px-4 py-3 bg-brand-50 text-brand-700 font-semibold">Gemini / Claude</td><td class="text-center px-4 py-3 text-slate-700 font-semibold">Gemini / Claude</td></tr>
+                            <tr class="border-b border-slate-100 hover:bg-slate-50"><td class="px-6 py-3 text-slate-700">What-If simulations</td><td class="text-center px-4 py-3 text-slate-400">–</td><td class="text-center px-4 py-3 bg-brand-50 tick font-bold">✓</td><td class="text-center px-4 py-3 tick font-bold">✓</td></tr>
+                            <tr class="border-b border-slate-100 hover:bg-slate-50"><td class="px-6 py-3 text-slate-700">Natural language Q&A</td><td class="text-center px-4 py-3 text-slate-400">–</td><td class="text-center px-4 py-3 bg-brand-50 tick font-bold">✓</td><td class="text-center px-4 py-3 tick font-bold">✓</td></tr>
+                            <tr class="border-b border-slate-100 hover:bg-slate-50"><td class="px-6 py-3 text-slate-700">Salary auto-detection</td><td class="text-center px-4 py-3 tick">✓</td><td class="text-center px-4 py-3 bg-brand-50 tick font-bold">✓</td><td class="text-center px-4 py-3 tick font-bold">✓</td></tr>
+
+                            <tr class="border-b border-slate-100 bg-slate-50"><td colspan="4" class="px-6 py-2 text-xs font-bold text-slate-400 uppercase tracking-widest">Alerts & Reports</td></tr>
+                            <tr class="border-b border-slate-100 hover:bg-slate-50"><td class="px-6 py-3 text-slate-700">Telegram bot</td><td class="text-center px-4 py-3 text-slate-400">–</td><td class="text-center px-4 py-3 bg-brand-50 tick font-bold">✓</td><td class="text-center px-4 py-3 tick font-bold">✓</td></tr>
+                            <tr class="border-b border-slate-100 hover:bg-slate-50"><td class="px-6 py-3 text-slate-700">WhatsApp alerts</td><td class="text-center px-4 py-3 text-slate-400">–</td><td class="text-center px-4 py-3 bg-brand-50 tick font-bold">✓</td><td class="text-center px-4 py-3 tick font-bold">✓</td></tr>
+                            <tr class="border-b border-slate-100 hover:bg-slate-50"><td class="px-6 py-3 text-slate-700">Weekly email report</td><td class="text-center px-4 py-3 text-slate-400">–</td><td class="text-center px-4 py-3 bg-brand-50 tick font-bold">✓</td><td class="text-center px-4 py-3 tick font-bold">✓</td></tr>
+                            <tr class="border-b border-slate-100 hover:bg-slate-50"><td class="px-6 py-3 text-slate-700">Daily morning briefings</td><td class="text-center px-4 py-3 text-slate-400">–</td><td class="text-center px-4 py-3 bg-brand-50 tick font-bold">✓</td><td class="text-center px-4 py-3 tick font-bold">✓</td></tr>
+
+                            <tr class="border-b border-slate-100 bg-slate-50"><td colspan="4" class="px-6 py-2 text-xs font-bold text-slate-400 uppercase tracking-widest">Team & Platform</td></tr>
+                            <tr class="border-b border-slate-100 hover:bg-slate-50"><td class="px-6 py-3 text-slate-700">User seats</td><td class="text-center px-4 py-3 text-slate-500">1</td><td class="text-center px-4 py-3 bg-brand-50 text-brand-700 font-semibold">1</td><td class="text-center px-4 py-3 text-slate-700 font-semibold">5</td></tr>
+                            <tr class="border-b border-slate-100 hover:bg-slate-50"><td class="px-6 py-3 text-slate-700">Custom AI persona</td><td class="text-center px-4 py-3 text-slate-400">–</td><td class="text-center px-4 py-3 text-slate-400 bg-brand-50">–</td><td class="text-center px-4 py-3 tick font-bold">✓</td></tr>
+                            <tr class="hover:bg-slate-50"><td class="px-6 py-3 text-slate-700">API access</td><td class="text-center px-4 py-3 text-slate-400">–</td><td class="text-center px-4 py-3 text-slate-400 bg-brand-50">–</td><td class="text-center px-4 py-3 tick font-bold">✓</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- FAQ -->
+        <section id="faq" class="py-24 px-4 bg-slate-50">
+            <div class="max-w-3xl mx-auto">
+                <div class="text-center mb-16">
+                    <span class="text-brand-600 font-bold text-sm uppercase tracking-widest">FAQ</span>
+                    <h2 class="font-outfit font-black text-4xl md:text-5xl mt-3">Questions, answered</h2>
+                </div>
+                <div class="space-y-4" id="faq-list">
+
+                    <div class="faq-item bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                        <button class="faq-trigger w-full text-left px-6 py-5 font-bold text-slate-800 flex items-center justify-between hover:bg-slate-50 transition-colors" onclick="toggleFaq(this)">
+                            Does Gordon work with any Investec account?
+                            <span class="faq-icon text-brand-600 font-black text-xl transition-transform">+</span>
+                        </button>
+                        <div class="faq-content px-6 text-slate-600 leading-relaxed">
+                            <div class="pb-5">Yes. Gordon connects to any personal or business account accessible via Investec's Programmable Banking API — including Private Bank, Business Current, Savings, and Money Market accounts. You authenticate via OAuth 2.0, so Gordon never sees your username or password.</div>
+                        </div>
+                    </div>
+
+                    <div class="faq-item bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                        <button class="faq-trigger w-full text-left px-6 py-5 font-bold text-slate-800 flex items-center justify-between hover:bg-slate-50 transition-colors" onclick="toggleFaq(this)">
+                            Is my financial data safe?
+                            <span class="faq-icon text-brand-600 font-black text-xl transition-transform">+</span>
+                        </button>
+                        <div class="faq-content px-6 text-slate-600 leading-relaxed">
+                            <div class="pb-5">Your data is encrypted at rest with AES-256 and in transit with TLS 1.3. Gordon stores transaction data in a private TimescaleDB instance — either yours (self-hosted) or ours (cloud). We never share or sell your data. On the Pro cloud plan, data is stored in South African data centres. You can request a full data export or deletion at any time.</div>
+                        </div>
+                    </div>
+
+                    <div class="faq-item bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                        <button class="faq-trigger w-full text-left px-6 py-5 font-bold text-slate-800 flex items-center justify-between hover:bg-slate-50 transition-colors" onclick="toggleFaq(this)">
+                            What AI providers does Gordon use?
+                            <span class="faq-icon text-brand-600 font-black text-xl transition-transform">+</span>
+                        </button>
+                        <div class="faq-content px-6 text-slate-600 leading-relaxed">
+                            <div class="pb-5">Gordon supports Google Gemini, Anthropic Claude, OpenAI, and Ollama (local/private). You provide your own API keys, meaning your conversations with Gordon are never processed by us — they go directly from your server to the AI provider. Starter users can run Ollama locally for completely private, free AI.</div>
+                        </div>
+                    </div>
+
+                    <div class="faq-item bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                        <button class="faq-trigger w-full text-left px-6 py-5 font-bold text-slate-800 flex items-center justify-between hover:bg-slate-50 transition-colors" onclick="toggleFaq(this)">
+                            Can Gordon move money between my accounts?
+                            <span class="faq-icon text-brand-600 font-black text-xl transition-transform">+</span>
+                        </button>
+                        <div class="faq-content px-6 text-slate-600 leading-relaxed">
+                            <div class="pb-5">Yes — on Pro and Business plans, Gordon's Runway Top-Up feature can automatically transfer funds between your Investec accounts when your runway drops below a configurable threshold. This uses the Investec Transfers API and requires explicit setup and consent in your settings. It is disabled by default and every transfer is logged.</div>
+                        </div>
+                    </div>
+
+                    <div class="faq-item bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                        <button class="faq-trigger w-full text-left px-6 py-5 font-bold text-slate-800 flex items-center justify-between hover:bg-slate-50 transition-colors" onclick="toggleFaq(this)">
+                            Can I cancel at any time?
+                            <span class="faq-icon text-brand-600 font-black text-xl transition-transform">+</span>
+                        </button>
+                        <div class="faq-content px-6 text-slate-600 leading-relaxed">
+                            <div class="pb-5">Yes. Cancel from your account settings at any time. Your plan stays active until the end of your billing period. After that, you revert to Starter (self-hosted free tier). Your data is retained for 90 days after cancellation, after which it is permanently deleted unless you export it first.</div>
+                        </div>
+                    </div>
+
+                    <div class="faq-item bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                        <button class="faq-trigger w-full text-left px-6 py-5 font-bold text-slate-800 flex items-center justify-between hover:bg-slate-50 transition-colors" onclick="toggleFaq(this)">
+                            How is this different from Investec's own app?
+                            <span class="faq-icon text-brand-600 font-black text-xl transition-transform">+</span>
+                        </button>
+                        <div class="faq-content px-6 text-slate-600 leading-relaxed">
+                            <div class="pb-5">Investec's app shows you where your money has been. Gordon tells you where it's going and whether you'll run out before payday. Gordon adds actuarial runway modelling, AI-powered categorisation, natural language queries, proactive Telegram/WhatsApp briefings, automated alerts, and What-If simulations — none of which are in Investec's native app.</div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <!-- FINAL CTA -->
+        <section class="py-24 px-4 hero-gradient text-white text-center">
+            <div class="max-w-3xl mx-auto">
+                <h2 class="font-outfit font-black text-4xl md:text-6xl mb-6">Know your runway.<br>Own your money.</h2>
+                <p class="text-xl text-white/80 mb-10 leading-relaxed">Start your free 14-day trial today. No credit card required. Connect your Investec account in under 2 minutes.</p>
+                <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                    <a href="/" class="bg-white text-brand-700 font-black text-lg px-10 py-4 rounded-2xl shadow-xl hover:shadow-2xl hover:-translate-y-0.5 transition-all">
+                        Start Free Trial
+                    </a>
+                    <a href="mailto:hello@gordonfin.co.za" class="bg-white/15 backdrop-blur-sm border border-white/30 text-white font-bold text-lg px-10 py-4 rounded-2xl hover:bg-white/25 transition-all">
+                        Talk to Sales
+                    </a>
+                </div>
+                <p class="text-white/50 text-sm mt-6">14-day free trial · No credit card required · Cancel anytime</p>
+            </div>
+        </section>
+
+        <!-- FOOTER -->
+        <footer class="bg-slate-900 text-slate-400 py-16 px-4">
+            <div class="max-w-6xl mx-auto">
+                <div class="grid md:grid-cols-4 gap-10 mb-12">
+                    <div>
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-9 h-9 bg-brand-600 rounded-xl flex items-center justify-center text-white font-black text-lg">G</div>
+                            <span class="font-black text-white text-lg font-outfit">Gordon Finance</span>
+                        </div>
+                        <p class="text-sm leading-relaxed mb-4">Your AI-powered personal CFO, built on Investec Programmable Banking.</p>
+                        <div class="flex items-center gap-2 bg-blue-950 border border-blue-800 px-3 py-2 rounded-xl text-xs">
+                            <div class="w-4 h-4 investec-gradient rounded flex items-center justify-center text-white font-black text-[8px]">I</div>
+                            <span class="text-blue-300 font-semibold">Powered by Investec Programmable Banking</span>
+                        </div>
+                    </div>
+                    <div>
+                        <p class="font-bold text-white text-sm mb-4 uppercase tracking-wider">Product</p>
+                        <ul class="space-y-2 text-sm">
+                            <li><a href="#how-it-works" class="hover:text-white transition-colors">How It Works</a></li>
+                            <li><a href="#pricing" class="hover:text-white transition-colors">Pricing</a></li>
+                            <li><a href="#investec" class="hover:text-white transition-colors">Investec Integration</a></li>
+                            <li><a href="/" class="hover:text-white transition-colors">Open App</a></li>
+                        </ul>
+                    </div>
+                    <div>
+                        <p class="font-bold text-white text-sm mb-4 uppercase tracking-wider">Resources</p>
+                        <ul class="space-y-2 text-sm">
+                            <li><a href="#faq" class="hover:text-white transition-colors">FAQ</a></li>
+                            <li><a href="https://developer.investec.com" target="_blank" class="hover:text-white transition-colors">Investec Developer Docs ↗</a></li>
+                            <li><a href="https://github.com" target="_blank" class="hover:text-white transition-colors">GitHub (Open Source) ↗</a></li>
+                        </ul>
+                    </div>
+                    <div>
+                        <p class="font-bold text-white text-sm mb-4 uppercase tracking-wider">Legal</p>
+                        <ul class="space-y-2 text-sm">
+                            <li><a href="#" class="hover:text-white transition-colors">Privacy Policy</a></li>
+                            <li><a href="#" class="hover:text-white transition-colors">Terms of Service</a></li>
+                            <li><a href="#" class="hover:text-white transition-colors">Security</a></li>
+                            <li><a href="mailto:hello@gordonfin.co.za" class="hover:text-white transition-colors">Contact</a></li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="border-t border-slate-800 pt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs">
+                    <p>© 2026 Gordon Finance Engine. <a href="/side-hustle.html" class="hover:text-white transition-colors underline underline-offset-2">Investec API Side Hustle 2026 submission</a></p>
+                    <p class="text-slate-600">Gordon is not affiliated with Investec Bank Limited. Investec® is a registered trademark.</p>
+                </div>
+            </div>
+        </footer>
+
+    </div>
+
+    <script>
+        // Theme Persistence Script
+        (function() {
+            const savedThemeId = localStorage.getItem('selectedThemeId');
+            const savedThemes = localStorage.getItem('saved_themes');
+            if (savedThemeId && savedThemes) {
+                const themes = JSON.parse(savedThemes);
+                const theme = themes.find(t => t.id === savedThemeId);
+                if (theme && theme.variables) {
+                    const root = document.documentElement;
+                    Object.entries(theme.variables).forEach(([key, val]) => {
+                        root.style.setProperty(key, val);
+                    });
+                }
+            }
+        })();
+
+        function toggleFaq(trigger) {
+            const item = trigger.closest('.faq-item');
+            const content = item.querySelector('.faq-content');
+            const icon = trigger.querySelector('.faq-icon');
+            const isOpen = content.classList.contains('open');
+
+            // Close all
+            document.querySelectorAll('.faq-content').forEach(c => c.classList.remove('open'));
+            document.querySelectorAll('.faq-icon').forEach(i => { i.textContent = '+'; i.style.transform = ''; });
+
+            if (!isOpen) {
+                content.classList.add('open');
+                icon.textContent = '×';
+                icon.style.transform = 'rotate(0deg)';
+            }
+        }
+
+        // Animate stats on scroll
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0)';
+                }
+            });
+        }, { threshold: 0.1 });
+
+        document.querySelectorAll('.card-hover').forEach(el => {
+            el.style.opacity = '0';
+            el.style.transform = 'translateY(20px)';
+            el.style.transition = 'opacity 0.5s ease, transform 0.5s ease, box-shadow 0.2s ease';
+            observer.observe(el);
+        });
+    </script>
+</body>
+</html>

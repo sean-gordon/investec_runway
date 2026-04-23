@@ -38,7 +38,7 @@ if (jwtSecret.Length < 32)
         "CRITICAL SECURITY ERROR: JWT Secret must be at least 32 characters long for adequate security.");
 }
 
-var key = Encoding.ASCII.GetBytes(jwtSecret);
+var key = Encoding.UTF8.GetBytes(jwtSecret);
 
 builder.Services.AddAuthentication(x =>
 {
@@ -84,6 +84,20 @@ builder.Services.AddRateLimiter(options =>
         {
             AutoReplenishment = true,
             PermitLimit = 100,
+            Window = TimeSpan.FromMinutes(1)
+        });
+    });
+
+    // Stricter policy for auth endpoints (login / register) to slow credential
+    // stuffing and mass-account creation. Keyed by remote IP so a single user
+    // retrying cannot be starved by another sharing the same account.
+    options.AddPolicy("auth", httpContext =>
+    {
+        var key = httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
+        return RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
+        {
+            AutoReplenishment = true,
+            PermitLimit = 10,
             Window = TimeSpan.FromMinutes(1)
         });
     });
@@ -154,8 +168,35 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+else
+{
+    // Tell browsers to stay on HTTPS for the next year.
+    app.UseHsts();
+}
 
 app.UseForwardedHeaders();
+
+// Baseline security response headers. CSP allows the three CDN origins the
+// SPA currently loads from (Vue/unpkg, Chart.js/jsdelivr, Tailwind runtime);
+// tighten further once those assets are vendored locally.
+app.Use(async (context, next) =>
+{
+    var headers = context.Response.Headers;
+    headers["X-Content-Type-Options"] = "nosniff";
+    headers["X-Frame-Options"] = "DENY";
+    headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()";
+    headers["Content-Security-Policy"] =
+        "default-src 'self'; " +
+        "script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://cdn.tailwindcss.com; " +
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; " +
+        "img-src 'self' data:; " +
+        "connect-src 'self'; " +
+        "font-src 'self' data: https://cdn.jsdelivr.net https://fonts.gstatic.com; " +
+        "frame-ancestors 'none'; " +
+        "base-uri 'self'";
+    await next();
+});
 
 // Global Request Logger
 app.Use(async (context, next) =>

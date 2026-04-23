@@ -133,7 +133,7 @@ public class SettingsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to update settings for user {UserId}", UserId);
-            return StatusCode(500, new { Error = ex.Message });
+            return StatusCode(500, new { Error = "Failed to update settings." });
         }
     }
 
@@ -375,7 +375,8 @@ public class SettingsController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, $"Failed to send report: {ex.Message}");
+            _logger.LogError(ex, "Failed to send report for user {UserId}", UserId);
+            return StatusCode(500, "Failed to send report.");
         }
     }
 
@@ -389,7 +390,8 @@ public class SettingsController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, $"Failed to repull data: {ex.Message}");
+            _logger.LogError(ex, "Failed to repull data for user {UserId}", UserId);
+            return StatusCode(500, "Failed to repull data.");
         }
     }
 
@@ -419,7 +421,8 @@ public class SettingsController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, $"Failed to categorize: {ex.Message}");
+            _logger.LogError(ex, "Failed to categorize transactions for user {UserId}", UserId);
+            return StatusCode(500, "Failed to categorize transactions.");
         }
     }
 
@@ -442,7 +445,8 @@ public class SettingsController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { Error = ex.Message });
+            _logger.LogError(ex, "Failed to get stats for user {UserId}", UserId);
+            return StatusCode(500, new { Error = "Failed to load stats." });
         }
     }
 }

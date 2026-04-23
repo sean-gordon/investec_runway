@@ -36,11 +36,12 @@ public class SimulationController : ControllerBase
 
         var settings = await _settingsService.GetSettingsAsync(userId);
         var historyDays = settings.HistoryDaysBack > 0 ? settings.HistoryDaysBack : 180;
-        
+        var cutoff = DateTime.UtcNow.AddDays(-historyDays);
+
         using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
         var history = (await connection.QueryAsync<Transaction>(
-            $"SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '{historyDays} days'", 
-            new { userId })).ToList();
+            "SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= @cutoff",
+            new { userId, cutoff })).ToList();
         
         _investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
         var accounts = await _investecClient.GetAccountsAsync();

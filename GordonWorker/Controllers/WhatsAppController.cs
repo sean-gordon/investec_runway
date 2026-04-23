@@ -60,8 +60,15 @@ public class WhatsAppController : ControllerBase
             return Ok();
         }
 
-        // 1.5 Validate Twilio Signature
-        if (!string.IsNullOrWhiteSpace(userSettings.TwilioAuthToken))
+        // 1.5 Validate Twilio Signature. Fail-closed: if the user hasn't set
+        // a Twilio auth token, reject the webhook (we cannot trust the payload).
+        // If a token is set, enforce signature validation and reject on mismatch.
+        if (string.IsNullOrWhiteSpace(userSettings.TwilioAuthToken))
+        {
+            _logger.LogWarning("Rejected WhatsApp webhook for user {UserId}: Twilio auth token not configured.", matchedUserId);
+            return Unauthorized();
+        }
+
         {
             var signature = Request.Headers["X-Twilio-Signature"].ToString();
             var requestUrl = $"{Request.Scheme}://{Request.Host}{Request.Path}{Request.QueryString}";
@@ -72,6 +79,7 @@ public class WhatsAppController : ControllerBase
             if (!validator.Validate(requestUrl, parameters, signature))
             {
                 _logger.LogWarning("Twilio signature validation failed for user {UserId}", matchedUserId);
+                return Unauthorized();
             }
         }
 

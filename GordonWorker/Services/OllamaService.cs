@@ -26,7 +26,7 @@ public class OllamaService : IOllamaService
 
     private async Task<(string Url, string Model)> GetConnectionDetailsAsync()
     {
-        var settings = await _settingsService.GetSettingsAsync(1); // Default to admin user for legacy
+        var settings = await _settingsService.GetSettingsAsync();
         return (settings.OllamaBaseUrl, settings.OllamaModelName);
     }
 
@@ -70,7 +70,7 @@ Return ONLY the SQL query. Do not include markdown formatting or explanations.";
 
     public async Task<string> FormatResponseAsync(string userPrompt, string dataContext)
     {
-        var settings = await _settingsService.GetSettingsAsync(1); // Default to admin user
+        var settings = await _settingsService.GetSettingsAsync();
         var persona = settings.SystemPersona;
 
         var systemPrompt = $@"You are a Senior Financial Analyst and Actuary named '{persona}'. 
@@ -97,7 +97,7 @@ Do not explicitly mention 'JSON' or 'fields', just speak naturally about the fig
 
     public async Task<string> GenerateSimpleReportAsync(string statsJson)
     {
-        var settings = await _settingsService.GetSettingsAsync(1); // Default to admin user
+        var settings = await _settingsService.GetSettingsAsync();
         var persona = settings.SystemPersona;
         var userName = settings.UserName;
 

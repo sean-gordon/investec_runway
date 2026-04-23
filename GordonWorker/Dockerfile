@@ -1,10 +1,6 @@
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
 USER root
-RUN apt-get update && apt-get install -y curl && \
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt-get install -y nodejs libfontconfig1 fonts-dejavu-core && \
-    npm install -g @anthropic-ai/claude-code && \
-    rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y libfontconfig1 fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
 USER app
 WORKDIR /app
 EXPOSE 8080

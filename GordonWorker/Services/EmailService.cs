@@ -39,7 +39,7 @@ public class EmailService : IEmailService
     {
         var config = await GetEmailConfigAsync(userId);
 
-        if (string.IsNullOrEmpty(config.Host) || string.IsNullOrEmpty(config.To) || string.IsNullOrEmpty(config.User))
+        if (string.IsNullOrEmpty(config.Host) || string.IsNullOrEmpty(config.To))
         {
             _logger.LogWarning("SMTP configuration missing for user {UserId}. Email not sent.", userId);
             return;
@@ -48,13 +48,12 @@ public class EmailService : IEmailService
         using var client = new SmtpClient(config.Host, config.Port)
         {
             Credentials = new NetworkCredential(config.User, config.Pass),
-            EnableSsl = true,
-            Timeout = 30000 // 30 second timeout to prevent blocking background workers
+            EnableSsl = true
         };
 
         var mailMessage = new MailMessage
         {
-            From = new MailAddress(config.User, "Gordon Finance"),
+            From = new MailAddress(config.User ?? "gordon@finance-engine.local", "Gordon Finance"),
             Subject = subject,
             Body = body,
             IsBodyHtml = true

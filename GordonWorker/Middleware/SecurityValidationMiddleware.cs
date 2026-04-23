@@ -24,9 +24,9 @@ public class SecurityValidationMiddleware
     {
         var path = context.Request.Path;
 
-        // Use the host that ASP.NET's ForwardedHeadersMiddleware has already sanitised
-        // rather than reading X-Forwarded-Host directly (which is client-controlled).
-        var effectiveHost = context.Request.Host.Host;
+        var effectiveHost = context.Request.Headers["X-Forwarded-Host"].ToString();
+        if (string.IsNullOrEmpty(effectiveHost)) effectiveHost = context.Request.Host.Host;
+        else effectiveHost = effectiveHost.Split(':')[0];
 
         // Allow Telegram webhook with secret token
         if (path.StartsWithSegments("/telegram/webhook"))

@@ -1,5 +1,4 @@
 using GordonWorker.Models;
-using GordonWorker.Repositories;
 using GordonWorker.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -24,9 +23,6 @@ public class SettingsController : ControllerBase
     private readonly IInvestecClient _investecClient;
     private readonly ITwilioService _twilioService;
     private readonly ITelegramService _telegramService;
-    private readonly ITransactionRepository _transactionRepository;
-    private readonly ITransactionClassifierService _classifierService;
-    private readonly ClaudeCliService _claudeCliService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<SettingsController> _logger;
 
@@ -40,9 +36,6 @@ public class SettingsController : ControllerBase
         IInvestecClient investecClient,
         ITwilioService twilioService,
         ITelegramService telegramService,
-        ITransactionRepository transactionRepository,
-        ITransactionClassifierService classifierService,
-        ClaudeCliService claudeCliService,
         IConfiguration configuration,
         ILogger<SettingsController> logger)
     {
@@ -55,27 +48,15 @@ public class SettingsController : ControllerBase
         _investecClient = investecClient;
         _twilioService = twilioService;
         _telegramService = telegramService;
-        _transactionRepository = transactionRepository;
-        _classifierService = classifierService;
-        _claudeCliService = claudeCliService;
         _configuration = configuration;
         _logger = logger;
     }
 
-    private int UserId
-    {
-        get
-        {
-            var claim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (int.TryParse(claim, out var id)) return id;
-            return 0;
-        }
-    }
+    private int UserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
     [HttpGet]
     public async Task<IActionResult> Get()
     {
-        if (UserId == 0) return Unauthorized();
         var settings = await _settingsService.GetSettingsAsync(UserId);
         
         // SECURITY FIX: Mask sensitive fields before sending to frontend
@@ -103,15 +84,12 @@ public class SettingsController : ControllerBase
         if (!string.IsNullOrEmpty(clone.GeminiApiKey)) clone.GeminiApiKey = mask;
         if (!string.IsNullOrEmpty(clone.OpenAiApiKey)) clone.OpenAiApiKey = mask;
         if (!string.IsNullOrEmpty(clone.AnthropicApiKey)) clone.AnthropicApiKey = mask;
-        if (!string.IsNullOrEmpty(clone.ClaudeCliOAuthToken)) clone.ClaudeCliOAuthToken = mask;
         if (!string.IsNullOrEmpty(clone.FallbackGeminiApiKey)) clone.FallbackGeminiApiKey = mask;
         if (!string.IsNullOrEmpty(clone.FallbackOpenAiApiKey)) clone.FallbackOpenAiApiKey = mask;
         if (!string.IsNullOrEmpty(clone.FallbackAnthropicApiKey)) clone.FallbackAnthropicApiKey = mask;
-        if (!string.IsNullOrEmpty(clone.FallbackClaudeCliOAuthToken)) clone.FallbackClaudeCliOAuthToken = mask;
         if (!string.IsNullOrEmpty(clone.ThinkingGeminiApiKey)) clone.ThinkingGeminiApiKey = mask;
         if (!string.IsNullOrEmpty(clone.ThinkingOpenAiApiKey)) clone.ThinkingOpenAiApiKey = mask;
         if (!string.IsNullOrEmpty(clone.ThinkingAnthropicApiKey)) clone.ThinkingAnthropicApiKey = mask;
-        if (!string.IsNullOrEmpty(clone.ThinkingClaudeCliOAuthToken)) clone.ThinkingClaudeCliOAuthToken = mask;
         if (!string.IsNullOrEmpty(clone.InvestecSecret)) clone.InvestecSecret = mask;
         if (!string.IsNullOrEmpty(clone.InvestecApiKey)) clone.InvestecApiKey = mask;
         if (!string.IsNullOrEmpty(clone.SmtpPass)) clone.SmtpPass = mask;
@@ -135,15 +113,12 @@ public class SettingsController : ControllerBase
             if (requestSettings.GeminiApiKey == mask) requestSettings.GeminiApiKey = existingSettings.GeminiApiKey;
             if (requestSettings.OpenAiApiKey == mask) requestSettings.OpenAiApiKey = existingSettings.OpenAiApiKey;
             if (requestSettings.AnthropicApiKey == mask) requestSettings.AnthropicApiKey = existingSettings.AnthropicApiKey;
-            if (requestSettings.ClaudeCliOAuthToken == mask) requestSettings.ClaudeCliOAuthToken = existingSettings.ClaudeCliOAuthToken;
             if (requestSettings.FallbackGeminiApiKey == mask) requestSettings.FallbackGeminiApiKey = existingSettings.FallbackGeminiApiKey;
             if (requestSettings.FallbackOpenAiApiKey == mask) requestSettings.FallbackOpenAiApiKey = existingSettings.FallbackOpenAiApiKey;
             if (requestSettings.FallbackAnthropicApiKey == mask) requestSettings.FallbackAnthropicApiKey = existingSettings.FallbackAnthropicApiKey;
-            if (requestSettings.FallbackClaudeCliOAuthToken == mask) requestSettings.FallbackClaudeCliOAuthToken = existingSettings.FallbackClaudeCliOAuthToken;
             if (requestSettings.ThinkingGeminiApiKey == mask) requestSettings.ThinkingGeminiApiKey = existingSettings.ThinkingGeminiApiKey;
             if (requestSettings.ThinkingOpenAiApiKey == mask) requestSettings.ThinkingOpenAiApiKey = existingSettings.ThinkingOpenAiApiKey;
             if (requestSettings.ThinkingAnthropicApiKey == mask) requestSettings.ThinkingAnthropicApiKey = existingSettings.ThinkingAnthropicApiKey;
-            if (requestSettings.ThinkingClaudeCliOAuthToken == mask) requestSettings.ThinkingClaudeCliOAuthToken = existingSettings.ThinkingClaudeCliOAuthToken;
             if (requestSettings.InvestecSecret == mask) requestSettings.InvestecSecret = existingSettings.InvestecSecret;
             if (requestSettings.InvestecApiKey == mask) requestSettings.InvestecApiKey = existingSettings.InvestecApiKey;
             if (requestSettings.SmtpPass == mask) requestSettings.SmtpPass = existingSettings.SmtpPass;
@@ -158,7 +133,7 @@ public class SettingsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to update settings for user {UserId}", UserId);
-            return StatusCode(500, new { Error = "Failed to update settings. Check logs for details." });
+            return StatusCode(500, new { Error = ex.Message });
         }
     }
 
@@ -177,11 +152,11 @@ public class SettingsController : ControllerBase
     }
 
     [HttpPost("test-ai")]
-    public async Task<IActionResult> TestAi([FromBody] AppSettings? requestSettings = null)
+    public async Task<IActionResult> TestAi()
     {
         try
         {
-            var result = await _aiService.TestConnectionAsync(UserId, useFallback: false, forceRefresh: true, overriddenSettings: requestSettings);
+            var result = await _aiService.TestConnectionAsync(UserId, useFallback: false, forceRefresh: true);
             _statusService.IsAiPrimaryOnline = result.Success;
             _statusService.PrimaryAiError = result.Success ? string.Empty : result.Error;
             
@@ -204,11 +179,11 @@ public class SettingsController : ControllerBase
     }
 
     [HttpPost("test-fallback-ai")]
-    public async Task<IActionResult> TestFallbackAi([FromBody] AppSettings? requestSettings = null)
+    public async Task<IActionResult> TestFallbackAi()
     {
         try
         {
-            var result = await _aiService.TestConnectionAsync(UserId, useFallback: true, forceRefresh: true, overriddenSettings: requestSettings);
+            var result = await _aiService.TestConnectionAsync(UserId, useFallback: true, forceRefresh: true);
             _statusService.IsAiFallbackOnline = result.Success;
             _statusService.FallbackAiError = result.Success ? string.Empty : result.Error;
 
@@ -231,11 +206,11 @@ public class SettingsController : ControllerBase
     }
 
     [HttpPost("test-thinking-ai")]
-    public async Task<IActionResult> TestThinkingAi([FromBody] AppSettings? requestSettings = null)
+    public async Task<IActionResult> TestThinkingAi()
     {
         try
         {
-            var result = await _aiService.TestConnectionAsync(UserId, useFallback: false, useThinking: true, forceRefresh: true, overriddenSettings: requestSettings);
+            var result = await _aiService.TestConnectionAsync(UserId, useFallback: false, useThinking: true, forceRefresh: true);
             if (result.Success)
             {
                 return Ok(new { Message = "Connected to Thinking AI successfully." });
@@ -314,7 +289,7 @@ public class SettingsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get models.");
-            return StatusCode(500, new { Error = "Failed to fetch models." });
+            return Ok(new List<string> { $"SettingsController Error: {ex.Message}" });
         }
     }
 
@@ -323,63 +298,52 @@ public class SettingsController : ControllerBase
     {
         // Check Investec status for THIS user on demand (lightweight check)
         var settings = await _settingsService.GetSettingsAsync(UserId);
+        var isInvestecOnline = false;
+        if (!string.IsNullOrEmpty(settings.InvestecClientId))
+        {
+            _investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
+            var (success, _) = await _investecClient.TestConnectivityAsync();
+            isInvestecOnline = success;
+        }
+
+        // Proactive AI check: if global status is offline, but THIS user might have a working connection,
+        // we check it now to provide immediate feedback on dashboard refresh.
+        // We only do this if it's currently offline to avoid overhead, and we add a cooldown for SUCCESSFUL checks.
+        // If it's currently offline, we ALWAYS allow one re-check to let the user "fix" it by refreshing.
         var canRetryCheck = (DateTime.UtcNow - _statusService.LastAiCheck).TotalMinutes > 1;
 
-        // Fire all connectivity checks in parallel with a 10-second timeout so the
-        // dashboard never blocks for more than ~10 s even if a service is unresponsive.
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-
-        // Investec check
-        var investecTask = Task.Run(async () =>
-        {
-            if (string.IsNullOrEmpty(settings.InvestecClientId)) return false;
-            _investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey, settings.InvestecBaseUrl, "Production");
-            var (success, _) = await _investecClient.TestConnectivityAsync();
-            return success;
-        }, cts.Token);
-
-        // Primary AI check
         var isPrimaryOnline = _statusService.IsAiPrimaryOnline;
         var primaryError = _statusService.PrimaryAiError;
-        var primaryTask = Task.Run(async () =>
+
+        if (!isPrimaryOnline || canRetryCheck)
         {
-            if (isPrimaryOnline && !canRetryCheck) return (isPrimaryOnline, primaryError);
             var (ok, err) = await _aiService.TestConnectionAsync(UserId, useFallback: false);
-            return (ok, ok ? string.Empty : err);
-        }, cts.Token);
+            isPrimaryOnline = ok;
+            primaryError = ok ? string.Empty : err;
 
-        // Fallback AI check
-        var isFallbackOnline = _statusService.IsAiFallbackOnline;
-        var fallbackError = _statusService.FallbackAiError;
-        var fallbackTask = Task.Run(async () =>
-        {
-            if (!settings.EnableAiFallback || (isFallbackOnline && !canRetryCheck)) return (isFallbackOnline, fallbackError);
-            var (ok, err) = await _aiService.TestConnectionAsync(UserId, useFallback: true);
-            return (ok, ok ? string.Empty : err);
-        }, cts.Token);
-
-        try { await Task.WhenAll(investecTask, primaryTask, fallbackTask); }
-        catch (OperationCanceledException) { /* one or more timed out — use cached values */ }
-
-        var isInvestecOnline = investecTask.IsCompletedSuccessfully && investecTask.Result;
-
-        if (primaryTask.IsCompletedSuccessfully)
-        {
-            (isPrimaryOnline, primaryError) = primaryTask.Result;
+            // Only update global status if the current user is an admin or the designated status user
             if (User.IsInRole("Admin"))
             {
-                _statusService.IsAiPrimaryOnline = isPrimaryOnline;
+                _statusService.IsAiPrimaryOnline = ok;
                 _statusService.PrimaryAiError = primaryError;
                 _statusService.LastAiCheck = DateTime.UtcNow;
             }
         }
 
-        if (fallbackTask.IsCompletedSuccessfully)
+        var isFallbackOnline = _statusService.IsAiFallbackOnline;
+        var fallbackError = _statusService.FallbackAiError;
+        var canRetryFallback = (DateTime.UtcNow - _statusService.LastAiCheck).TotalMinutes > 1;
+
+        if (settings.EnableAiFallback && (!isFallbackOnline || canRetryFallback))
         {
-            (isFallbackOnline, fallbackError) = fallbackTask.Result;
+            var (ok, err) = await _aiService.TestConnectionAsync(UserId, useFallback: true);
+            isFallbackOnline = ok;
+            fallbackError = ok ? string.Empty : err;
+
+            // Only update global status if the current user is an admin or the designated status user
             if (User.IsInRole("Admin"))
             {
-                _statusService.IsAiFallbackOnline = isFallbackOnline;
+                _statusService.IsAiFallbackOnline = ok;
                 _statusService.FallbackAiError = fallbackError;
                 _statusService.LastAiCheck = DateTime.UtcNow;
             }
@@ -434,12 +398,22 @@ public class SettingsController : ControllerBase
     {
         try
         {
-            var txs = (await _transactionRepository.GetTransactionsForCategorizationAsync(UserId)).Take(50).ToList();
+            using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+            await connection.OpenAsync();
+
+            var sql = "SELECT * FROM transactions WHERE user_id = @UserId AND is_ai_processed = FALSE LIMIT 50";
+            var txs = (await connection.QueryAsync<Transaction>(sql, new { UserId })).ToList();
 
             if (!txs.Any()) return Ok("No unprocessed transactions found.");
 
-            var categorized = await _classifierService.CategorizeTransactionsAsync(UserId, txs);
-            await _transactionRepository.UpdateTransactionsAsync(categorized);
+            var categorized = await _aiService.CategorizeTransactionsAsync(UserId, txs);
+
+            foreach (var tx in categorized)
+            {
+                await connection.ExecuteAsync(
+                    "UPDATE transactions SET category = @Category, is_ai_processed = TRUE WHERE id = @Id AND user_id = @UserId",
+                    new { tx.Category, tx.Id, UserId });
+            }
 
             return Ok($"Categorized {txs.Count} transactions.");
         }
@@ -452,16 +426,10 @@ public class SettingsController : ControllerBase
     [HttpGet("recent-transactions")]
     public async Task<IActionResult> GetRecentTransactions()
     {
-        try
-        {
-            var txs = await _transactionRepository.GetTransactionsByUserAsync(UserId, 10);
-            return Ok(txs);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to get recent transactions for user {UserId}", UserId);
-            return StatusCode(500, new { Error = ex.Message });
-        }
+        using var connection = new Npgsql.NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+        var sql = "SELECT * FROM transactions WHERE user_id = @UserId ORDER BY transaction_date DESC LIMIT 10";
+        var txs = await connection.QueryAsync<Transaction>(sql, new { UserId });
+        return Ok(txs);
     }
 
     [HttpGet("stats")]

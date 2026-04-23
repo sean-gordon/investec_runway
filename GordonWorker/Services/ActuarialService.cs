@@ -62,9 +62,6 @@ public class ActuarialService : IActuarialService
 
     public bool IsFixedCost(string categoryName, AppSettings settings)
     {
-        if (settings.IgnoredFixedCosts != null && settings.IgnoredFixedCosts.Any(i => categoryName.Contains(i, StringComparison.OrdinalIgnoreCase)))
-            return false;
-
         var keywords = settings.FixedCostKeywords.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         return keywords.Any(k => categoryName.Contains(k, StringComparison.OrdinalIgnoreCase));
     }
@@ -273,20 +270,13 @@ public class ActuarialService : IActuarialService
         var dailyVariableExpensesMap = validVariableExpenses.GroupBy(t => ToDate(t.TransactionDate)).ToDictionary(g => g.Key, g => (double)g.Sum(t => t.Amount));
 
         decimal alpha = settings.ActuarialAlpha > 0 ? settings.ActuarialAlpha : 0.15m;
-        double weightedMean = 0; double weightedVar = 0;
-        // Seed with first day, then update EMA starting from day 1 so every day contributes to variance
-        if (analysisWindowDays > 0)
-        {
-            var seedDate = windowStartDate;
-            weightedMean = dailyVariableExpensesMap.TryGetValue(seedDate, out var seedVal) ? seedVal : 0.0;
-        }
-        for (int i = 1; i < analysisWindowDays; i++)
+        double weightedMean = 0; double weightedVar = 0; bool initialized = false;
+        for (int i = 0; i < analysisWindowDays; i++)
         {
             var loopDate = windowStartDate.AddDays(i);
             double dailySpend = dailyVariableExpensesMap.TryGetValue(loopDate, out var value) ? value : 0.0;
-            double delta = dailySpend - weightedMean;
-            weightedMean += (double)alpha * delta;
-            weightedVar = (1 - (double)alpha) * (weightedVar + (double)alpha * Math.Pow(delta, 2));
+            if (!initialized) { weightedMean = dailySpend; initialized = true; }
+            else { double delta = dailySpend - weightedMean; weightedMean += (double)alpha * delta; weightedVar = (1 - (double)alpha) * (weightedVar + (double)alpha * Math.Pow(delta, 2)); }
         }
 
         var stdDev = Math.Sqrt(weightedVar);
@@ -323,26 +313,13 @@ public class ActuarialService : IActuarialService
         var lastSalaryAmount = salaryPayments.Any() ? Math.Abs(salaryPayments[0].Amount) : 0m;
 
         // ACTUARIAL REFINEMENT: Calculate Total Daily Burn by combining variable baseBurn and amortized fixed costs
-        // Derive actual frequency from transaction history rather than assuming a 30-day cycle
-        decimal dailyFixedBurn = 0m;
-        foreach (var group in historicalFixedExpenses)
-        {
-            var sorted = group.OrderByDescending(t => t.TransactionDate).ToList();
-            var avgAmount = sorted.Take(3).Average(t => t.Amount);
-            // Calculate average interval between occurrences; default to avgCycleDays if only one occurrence
-            double intervalDays = avgCycleDays;
-            if (sorted.Count >= 2)
-            {
-                var intervals = sorted.Zip(sorted.Skip(1), (a, b) => (a.TransactionDate - b.TransactionDate).TotalDays).ToList();
-                intervalDays = Math.Max(intervals.Average(), 1.0);
-            }
-            dailyFixedBurn += avgAmount / (decimal)intervalDays;
-        }
+        decimal totalMonthlyFixed = historicalFixedExpenses.Sum(g => g.OrderByDescending(t => t.TransactionDate).Take(3).Average(t => t.Amount));
+        decimal dailyFixedBurn = totalMonthlyFixed / 30m;
         decimal trueDailyBurn = baseBurn + dailyFixedBurn;
         if (trueDailyBurn < 1m) trueDailyBurn = 1m;
 
         var expectedRunway = (currentBalance - upcomingOverhead) / trueDailyBurn;
-        var safeRunway = (currentBalance - upcomingOverhead) / (decimal)Math.Max((double)trueDailyBurn + stdDev, 1.0);
+        var safeRunway = (currentBalance - upcomingOverhead) / (decimal)((double)trueDailyBurn + stdDev);
         _logger.LogInformation(
             "[Actuarial] Burn: base={BaseBurn:F2}/day, fixed={FixedBurn:F2}/day, total={TotalBurn:F2}/day | Runway: expected={ExpectedRunway:F1}d, safe={SafeRunway:F1}d | Survival: {SurvivalProb:F1}% | Trend: {Trend}",
             baseBurn, dailyFixedBurn, trueDailyBurn, expectedRunway, safeRunway, probSurvival, trendDirection);
@@ -355,7 +332,7 @@ public class ActuarialService : IActuarialService
             WeightedDailyBurn: trueDailyBurn,
             MonthlyBurnRate: trueDailyBurn * 30,
             BurnVolatility: stdDev,
-            SafeRunwayDays: (currentBalance - upcomingOverhead) / (decimal)Math.Max((double)trueDailyBurn + stdDev, 1.0),
+            SafeRunwayDays: (currentBalance - upcomingOverhead) / (decimal)((double)trueDailyBurn + stdDev),
             ExpectedRunwayDays: (currentBalance - upcomingOverhead) / trueDailyBurn,
             OptimisticRunwayDays: (currentBalance - upcomingOverhead) / (decimal)Math.Max((double)trueDailyBurn - stdDev, 1.0),
             ValueAtRisk95: (decimal)(weightedMean + (settings.VarConfidenceInterval * stdDev)),

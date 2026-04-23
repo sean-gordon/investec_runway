@@ -23,9 +23,7 @@ public class AppSettings
     public string OpenAiModelName { get; set; } = "gpt-4.1-mini";
     public string AnthropicApiKey { get; set; } = "";
     public string AnthropicModelName { get; set; } = "claude-3-5-sonnet-latest";
-    public string ClaudeCliOAuthToken { get; set; } = "";
-    public string ClaudeCliModelName { get; set; } = "sonnet";
-    public string AiProvider { get; set; } = "Ollama"; // "Ollama", "Gemini", "OpenAI", "Anthropic", or "Claude CLI"
+    public string AiProvider { get; set; } = "Ollama"; // "Ollama", "Gemini", "OpenAI", or "Anthropic"
     public string SystemPersona { get; set; } = "Gordon";
 
     // AI Fallback Settings
@@ -39,8 +37,6 @@ public class AppSettings
     public string FallbackOpenAiModelName { get; set; } = "gpt-4o-mini";
     public string FallbackAnthropicApiKey { get; set; } = "";
     public string FallbackAnthropicModelName { get; set; } = "claude-3-5-haiku-latest";
-    public string FallbackClaudeCliOAuthToken { get; set; } = "";
-    public string FallbackClaudeCliModelName { get; set; } = "haiku";
     public int AiTimeoutSeconds { get; set; } = 90;
     public int AiRetryAttempts { get; set; } = 2;
 
@@ -55,8 +51,6 @@ public class AppSettings
     public string ThinkingOpenAiModelName { get; set; } = "o3-mini";
     public string ThinkingAnthropicApiKey { get; set; } = "";
     public string ThinkingAnthropicModelName { get; set; } = "claude-3-7-sonnet-latest";
-    public string ThinkingClaudeCliOAuthToken { get; set; } = "";
-    public string ThinkingClaudeCliModelName { get; set; } = "sonnet";
     public string ThinkingModelInstructions { get; set; } = ""; // If empty, loads from Resources/thinking_model_instructions.md
     
     // Actuarial Keywords & Thresholds
@@ -104,20 +98,6 @@ public class AppSettings
     public string TelegramBotToken { get; set; } = "";
     public string TelegramChatId { get; set; } = "";
     public string TelegramAuthorizedChatIds { get; set; } = "";
-
-    // Programmable Banking Features
-    public bool AutoTopUpEnabled { get; set; } = false;
-    public int RunwayThresholdDays { get; set; } = 30;
-    public string SavingsAccountId { get; set; } = "";
-    public string SpendingAccountId { get; set; } = "";
-    public decimal TopUpAmount { get; set; } = 5000m;
-    public bool IsDryRunEnabled { get; set; } = true;
-    public string InvestecEnvironment { get; set; } = "Sandbox"; // "Live" or "Sandbox"
-    public List<string> IgnoredFixedCosts { get; set; } = new List<string>();
-
-    // Monetisation Angle
-    public bool IsPremiumUser { get; set; } = false;
-    public string StripeSubscriptionId { get; set; } = "";
 }
 
 public interface ISettingsService
@@ -232,11 +212,9 @@ public class SettingsService : ISettingsService
                     settings.FallbackGeminiApiKey = TryDecrypt(settings.FallbackGeminiApiKey);
                     settings.FallbackOpenAiApiKey = TryDecrypt(settings.FallbackOpenAiApiKey);
                     settings.FallbackAnthropicApiKey = TryDecrypt(settings.FallbackAnthropicApiKey);
-                    settings.FallbackClaudeCliOAuthToken = TryDecrypt(settings.FallbackClaudeCliOAuthToken);
                     settings.ThinkingGeminiApiKey = TryDecrypt(settings.ThinkingGeminiApiKey);
                     settings.ThinkingOpenAiApiKey = TryDecrypt(settings.ThinkingOpenAiApiKey);
                     settings.ThinkingAnthropicApiKey = TryDecrypt(settings.ThinkingAnthropicApiKey);
-                    settings.ThinkingClaudeCliOAuthToken = TryDecrypt(settings.ThinkingClaudeCliOAuthToken);
                     settings.InvestecSecret = TryDecrypt(settings.InvestecSecret);
                     settings.InvestecApiKey = TryDecrypt(settings.InvestecApiKey);
                     settings.SmtpPass = TryDecrypt(settings.SmtpPass);
@@ -244,7 +222,6 @@ public class SettingsService : ISettingsService
                     settings.InvestecClientId = TryDecrypt(settings.InvestecClientId);
                     settings.TwilioAccountSid = TryDecrypt(settings.TwilioAccountSid);
                     settings.TelegramBotToken = TryDecrypt(settings.TelegramBotToken);
-                    settings.ClaudeCliOAuthToken = TryDecrypt(settings.ClaudeCliOAuthToken);
                 }
 
                 return settings;
@@ -279,11 +256,9 @@ public class SettingsService : ISettingsService
             encryptedSettings.FallbackGeminiApiKey = TryEncrypt(settings.FallbackGeminiApiKey);
             encryptedSettings.FallbackOpenAiApiKey = TryEncrypt(settings.FallbackOpenAiApiKey);
             encryptedSettings.FallbackAnthropicApiKey = TryEncrypt(settings.FallbackAnthropicApiKey);
-            encryptedSettings.FallbackClaudeCliOAuthToken = TryEncrypt(settings.FallbackClaudeCliOAuthToken);
             encryptedSettings.ThinkingGeminiApiKey = TryEncrypt(settings.ThinkingGeminiApiKey);
             encryptedSettings.ThinkingOpenAiApiKey = TryEncrypt(settings.ThinkingOpenAiApiKey);
             encryptedSettings.ThinkingAnthropicApiKey = TryEncrypt(settings.ThinkingAnthropicApiKey);
-            encryptedSettings.ThinkingClaudeCliOAuthToken = TryEncrypt(settings.ThinkingClaudeCliOAuthToken);
             encryptedSettings.InvestecSecret = TryEncrypt(settings.InvestecSecret);
             encryptedSettings.InvestecApiKey = TryEncrypt(settings.InvestecApiKey);
             encryptedSettings.SmtpPass = TryEncrypt(settings.SmtpPass);
@@ -291,7 +266,6 @@ public class SettingsService : ISettingsService
             encryptedSettings.InvestecClientId = TryEncrypt(settings.InvestecClientId);
             encryptedSettings.TwilioAccountSid = TryEncrypt(settings.TwilioAccountSid);
             encryptedSettings.TelegramBotToken = TryEncrypt(settings.TelegramBotToken);
-            encryptedSettings.ClaudeCliOAuthToken = TryEncrypt(settings.ClaudeCliOAuthToken);
 
             var json = JsonSerializer.Serialize(encryptedSettings);
             

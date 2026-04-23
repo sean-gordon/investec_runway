@@ -1,12 +1,10 @@
+using Dapper;
 using GordonWorker.Models;
-using GordonWorker.Repositories;
-using System.Threading.Channels;
+using Npgsql;
 using System.Text.Json;
-using Microsoft.Extensions.Logging;
+using System.Threading.Channels;
 using Telegram.Bot;
 using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Configuration;
 
 namespace GordonWorker.Services;
 
@@ -58,16 +56,8 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
         }
     }
 
-    // Hard ceiling for the entire Telegram reply pipeline. Beyond this the user has lost patience
-    // and the AI provider is almost certainly stuck retrying — better to bail and tell them.
-    private static readonly TimeSpan TelegramProcessingBudget = TimeSpan.FromSeconds(90);
-
-    private async Task ProcessMessageAsync(TelegramRequest request, CancellationToken outerCt)
+    private async Task ProcessMessageAsync(TelegramRequest request, CancellationToken ct)
     {
-        using var budgetCts = CancellationTokenSource.CreateLinkedTokenSource(outerCt);
-        budgetCts.CancelAfter(TelegramProcessingBudget);
-        var ct = budgetCts.Token;
-
         using var scope = _serviceProvider.CreateScope();
         var settingsService = scope.ServiceProvider.GetRequiredService<ISettingsService>();
         var telegramService = scope.ServiceProvider.GetRequiredService<ITelegramService>();
@@ -75,142 +65,274 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
         var investecClient = scope.ServiceProvider.GetRequiredService<IInvestecClient>();
         var actuarialService = scope.ServiceProvider.GetRequiredService<IActuarialService>();
         var chartService = scope.ServiceProvider.GetRequiredService<IChartService>();
+        var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
         var botClientFactory = scope.ServiceProvider.GetRequiredService<ITelegramBotClientFactory>();
-        var memoryCache = scope.ServiceProvider.GetRequiredService<IMemoryCache>();
-        var repo = scope.ServiceProvider.GetRequiredService<ITransactionRepository>();
-        var commandRouter = scope.ServiceProvider.GetRequiredService<ITelegramCommandRouter>();
+        var memoryCache = scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>();
 
         int placeholderId = 0;
         CancellationTokenSource? ctsHeartbeat = null;
 
         try
         {
-            _logger.LogInformation("[Telegram] Fast-track processing for User {UserId}", request.UserId);
+            _logger.LogInformation("Processing Telegram message for user {UserId}", request.UserId);
 
             var settings = await settingsService.GetSettingsAsync(request.UserId);
-            
-            // 1. Handle Commands immediately (zero LLM overhead)
-            var commandResult = await commandRouter.RouteCommandAsync(request.UserId, request.MessageText, settings, ct);
-            if (commandResult != null) return;
-
-            // 2. Parallelize Data Fetching and Intent Detection
-            var intentTask = aiService.DetectIntentAsync(request.UserId, request.MessageText, ct);
-            var historyTask = repo.GetHistoryForAnalysisAsync(request.UserId, 90);
-            
             var botClient = botClientFactory.GetClient(settings.TelegramBotToken);
-            await botClient.SendChatAction(request.ChatId, Telegram.Bot.Types.Enums.ChatAction.Typing, cancellationToken: ct);
 
-            // Wait brief moment for instant results before showing progress UI
-            var completedTask = await Task.WhenAny(intentTask, Task.Delay(1500, ct));
-            
-            if (completedTask != intentTask)
+            // Handle Slash Commands
+            if (!string.IsNullOrWhiteSpace(request.MessageText) && request.MessageText.StartsWith("/"))
             {
-                placeholderId = await telegramService.SendMessageWithIdAsync(request.UserId,
-                    "<b>Analytical Engine Working</b>\n" +
-                    "<code>▱▱▱▱▱▱▱</code>\n" +
-                    "<i>Initializing financial analysis...</i>", request.ChatId);
+                var cmd = request.MessageText.Split(' ')[0].ToLower();
+                
+                // Log the command for debugging
+                _logger.LogDebug("Processing command '{Cmd}' for user {UserId}", cmd, request.UserId);
+                
+                if (cmd == "/clear")
+                {
+                    await telegramService.SendMessageWithButtonsAsync(request.UserId, 
+                        "⚠️ <b>Warning: Clear History</b>\n\nThis will permanently delete your entire conversation history with the AI. This action cannot be undone.\n\nAre you sure?",
+                        new List<(string Text, string CallbackData)> { ("Yes, Clear It", "/clear_confirmed"), ("No, Cancel", "/cancel") }, 
+                        request.ChatId);
+                    return;
+                }
+                if (cmd == "/clear_confirmed")
+                {
+                    try
+                    {
+                        using var dbConfirm = new NpgsqlConnection(config.GetConnectionString("DefaultConnection"));
+                        await dbConfirm.ExecuteAsync("DELETE FROM chat_history WHERE user_id = @UserId", new { UserId = request.UserId });
+                        await telegramService.SendMessageAsync(request.UserId, "✅ <b>Success:</b> Your conversation history has been cleared.", request.ChatId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to clear chat history for user {UserId}", request.UserId);
+                        await telegramService.SendMessageAsync(request.UserId, "❌ <b>Error:</b> Failed to clear history. Please try again.", request.ChatId);
+                    }
+                    return;
+                }
+                if (cmd == "/cancel")
+                {
+                    await telegramService.SendMessageAsync(request.UserId, "Action cancelled.", request.ChatId);
+                    return;
+                }
+                if (cmd == "/model")
+                {
+                    await telegramService.SendMessageWithButtonsAsync(request.UserId, 
+                        "⚙️ <b>AI Model Configuration</b>\n\nWhich provider would you like to configure?",
+                        new List<(string Text, string CallbackData)> { ("Primary AI", "/model_provider_primary"), ("Backup AI", "/model_provider_backup") }, 
+                        request.ChatId);
+                    return;
+                }
+                if (cmd == "/model_provider_primary" || cmd == "/model_provider_backup")
+                {
+                    try
+                    {
+                        bool isPrimary = cmd.EndsWith("primary");
+                        var provider = isPrimary ? settings.AiProvider : settings.FallbackAiProvider;
+                        await telegramService.SendMessageWithButtonsAsync(request.UserId, 
+                            $"⚙️ <b>Select Provider for {(isPrimary ? "Primary" : "Backup")}</b>\n\nCurrent: <i>{provider}</i>",
+                            new List<(string Text, string CallbackData)> { 
+                                ("Ollama", $"/model_select_{ (isPrimary ? "p" : "b") }_ollama"), 
+                                ("Gemini", $"/model_select_{ (isPrimary ? "p" : "b") }_gemini") 
+                            }, 
+                            request.ChatId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to show provider selection for user {UserId}", request.UserId);
+                        await telegramService.SendMessageAsync(request.UserId, "❌ <b>Error:</b> Failed to load provider selection.", request.ChatId);
+                    }
+                    return;
+                }
+                if (cmd.StartsWith("/model_select_")) // e.g. /model_select_p_ollama
+                {
+                    try
+                    {
+                        var parts = cmd.Split('_');
+                        // Validate we have enough parts: ["", "model", "select", "p", "ollama"] = 5 parts minimum
+                        if (parts.Length < 5)
+                        {
+                            _logger.LogWarning("Invalid model_select command format: {Cmd}", cmd);
+                            await telegramService.SendMessageAsync(request.UserId, "❌ <b>Error:</b> Invalid command format.", request.ChatId);
+                            return;
+                        }
+                        
+                        bool isPrimary = parts[3] == "p";
+                        var providerName = parts[4]; // "ollama" or "gemini"
+                        
+                        // Validate provider name
+                        if (providerName != "ollama" && providerName != "gemini")
+                        {
+                            _logger.LogWarning("Invalid provider in model_select command: {Provider}", providerName);
+                            await telegramService.SendMessageAsync(request.UserId, "❌ <b>Error:</b> Invalid provider.", request.ChatId);
+                            return;
+                        }
+                        
+                        string currentModel;
+                        if (isPrimary)
+                            currentModel = settings.AiProvider == "Gemini" ? settings.GeminiModelName : settings.OllamaModelName;
+                        else
+                            currentModel = settings.FallbackAiProvider == "Gemini" ? settings.FallbackGeminiModelName : settings.FallbackOllamaModelName;
+                        
+                        // Create temporary settings to fetch models for the SELECTED provider
+                        var tempSettings = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(settings))!;
+                        if (isPrimary) tempSettings.AiProvider = providerName == "ollama" ? "Ollama" : "Gemini";
+                        else tempSettings.FallbackAiProvider = providerName == "ollama" ? "Ollama" : "Gemini";
 
-                ctsHeartbeat = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                _ = StartHeartbeatAsync(request.UserId, placeholderId, request.ChatId, telegramService, ctsHeartbeat.Token);
+                        var models = await aiService.GetAvailableModelsAsync(request.UserId, !isPrimary, false, tempSettings);
+                        var buttons = models.Take(8).Select(m => (m, $"/model_set_{ (isPrimary ? "p" : "b") }_{providerName}_{m}")).ToList();
+                        buttons.Add(("Cancel", "/cancel"));
+
+                        await telegramService.SendMessageWithButtonsAsync(request.UserId, 
+                            $"⚙️ <b>Select Model ({(isPrimary ? "Primary" : "Backup")})</b>\n\nProvider: {providerName.ToUpper()}\nCurrent: {currentModel}",
+                            buttons, 
+                            request.ChatId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to show model selection for user {UserId}", request.UserId);
+                        await telegramService.SendMessageAsync(request.UserId, "❌ <b>Error:</b> Failed to load model selection.", request.ChatId);
+                    }
+                    return;
+                }
+                if (cmd.StartsWith("/model_set_")) // e.g. /model_set_p_ollama_llama3
+                {
+                    try
+                    {
+                        var parts = cmd.Split('_');
+                        // Validate we have enough parts: ["", "model", "set", "p", "ollama", "modelname"] = 6 parts minimum
+                        if (parts.Length < 6)
+                        {
+                            _logger.LogWarning("Invalid model_set command format: {Cmd}", cmd);
+                            await telegramService.SendMessageAsync(request.UserId, "❌ <b>Error:</b> Invalid command format.", request.ChatId);
+                            return;
+                        }
+                        
+                        bool isPrimary = parts[3] == "p";
+                        var provider = parts[4];
+                        
+                        // Validate provider
+                        if (provider != "ollama" && provider != "gemini")
+                        {
+                            _logger.LogWarning("Invalid provider in model_set command: {Provider}", provider);
+                            await telegramService.SendMessageAsync(request.UserId, "❌ <b>Error:</b> Invalid provider.", request.ChatId);
+                            return;
+                        }
+                        
+                        // Model name is everything after the 5th part (index 4), joined back with underscores
+                        // This handles model names that contain underscores like "gemini-1.5-pro"
+                        var modelName = string.Join("_", parts.Skip(5));
+                        
+                        if (string.IsNullOrWhiteSpace(modelName))
+                        {
+                            _logger.LogWarning("Empty model name in model_set command");
+                            await telegramService.SendMessageAsync(request.UserId, "❌ <b>Error:</b> Model name is required.", request.ChatId);
+                            return;
+                        }
+
+                        var current = await settingsService.GetSettingsAsync(request.UserId);
+                        if (isPrimary) {
+                            current.AiProvider = provider == "ollama" ? "Ollama" : "Gemini";
+                            if (provider == "ollama") current.OllamaModelName = modelName;
+                            else current.GeminiModelName = modelName;
+                        } else {
+                            current.FallbackAiProvider = provider == "ollama" ? "Ollama" : "Gemini";
+                            if (provider == "ollama") current.FallbackOllamaModelName = modelName;
+                            else current.FallbackGeminiModelName = modelName;
+                        }
+
+                        await settingsService.UpdateSettingsAsync(request.UserId, current);
+                        await telegramService.SendMessageAsync(request.UserId, $"✅ <b>Success:</b> {(isPrimary ? "Primary" : "Backup")} AI updated to <b>{modelName}</b> ({provider.ToUpper()}).", request.ChatId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to set model for user {UserId}", request.UserId);
+                        await telegramService.SendMessageAsync(request.UserId, "❌ <b>Error:</b> Failed to update model settings.", request.ChatId);
+                    }
+                    return;
+                }
             }
 
-            // 3. Resolve Parallel Tasks
-            var intentEl = await intentTask;
-            var history = (await historyTask).ToList();
+            // Send typing indicator
+            await botClient.SendChatAction(request.ChatId, Telegram.Bot.Types.Enums.ChatAction.Typing, cancellationToken: ct);
 
-            // 4. Get Balances (Cached)
+            // Send placeholder with progress
+            placeholderId = await telegramService.SendMessageWithIdAsync(request.UserId,
+                "<b>Analytical Engine Working</b>\n" +
+                "<code>▱▱▱▱▱▱▱</code>\n" +
+                "<i>Initializing financial analysis...</i>", request.ChatId);
+
+            // Start heartbeat
+            ctsHeartbeat = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            var heartbeatTask = StartHeartbeatAsync(request.UserId, placeholderId, request.ChatId, telegramService, ctsHeartbeat.Token);
+
+            // Configure Investec
+            investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
+
+            // Fetch data
+            using var db = new NpgsqlConnection(config.GetConnectionString("DefaultConnection"));
+            var history = (await db.QueryAsync<Transaction>(
+                "SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '90 days' ORDER BY transaction_date ASC",
+                new { userId = request.UserId })).ToList();
+
             var cacheKey = $"investec_balance_{request.UserId}";
             if (!memoryCache.TryGetValue(cacheKey, out decimal currentBalance))
             {
-                investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);
                 var accounts = await investecClient.GetAccountsAsync();
-                // Parallel balance fetches — was sequential foreach (N round-trips against the
-                // Investec API), now fan out and join. Cuts Telegram first-byte by ~N×latency.
-                var balances = await Task.WhenAll(accounts.Select(acc => investecClient.GetAccountBalanceAsync(acc.AccountId)));
-                currentBalance = balances.Sum();
+                currentBalance = 0;
+                foreach (var acc in accounts) currentBalance += await investecClient.GetAccountBalanceAsync(acc.AccountId);
+                
                 memoryCache.Set(cacheKey, currentBalance, TimeSpan.FromMinutes(15));
             }
 
-            // 5. Kick off actuarial analysis as a deferred task. We won't await it here — branches
-            //    that need it will await as late as possible. AFFORD specifically can fan out the
-            //    simulated analysis alongside this one, halving total actuarial wall-clock.
-            var summaryTask = actuarialService.AnalyzeHealthAsync(history, currentBalance, settings);
+            var summary = await actuarialService.AnalyzeHealthAsync(history, currentBalance, settings);
+            var summaryJson = JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true });
 
-            // 6. Execute Intent
-            var intent = intentEl?.TryGetProperty("intent", out var p) == true ? p.GetString() : "QUERY";
+            // Check for chart request
+            var (isChart, chartType, chartSql, chartTitle) = await aiService.AnalyzeChartRequestAsync(request.UserId, request.MessageText);
 
-            if (intent == "CHART" && intentEl.Value.TryGetProperty("chart", out var chartObj))
+            if (isChart && !string.IsNullOrWhiteSpace(chartSql))
             {
-                var chartType = chartObj.TryGetProperty("type", out var ctEl) ? ctEl.GetString() : "bar";
-                var chartSql = chartObj.TryGetProperty("sql", out var sqlEl) ? sqlEl.GetString() : null;
-                var chartTitle = chartObj.TryGetProperty("title", out var titleEl) ? titleEl.GetString() : "Spending Chart";
-
-                if (!string.IsNullOrWhiteSpace(chartSql))
-                {
-                    await HandleChartRequestAsync(request.UserId, chartSql, chartType!, chartTitle!, request.ChatId,
-                        repo, aiService, chartService, telegramService, placeholderId, ctsHeartbeat, ct);
-                    return;
-                }
-            }
-            else if (intent == "EXPLAIN")
-            {
-                var explanationResult = await aiService.AnalyzeExpenseExplanationAsync(request.UserId, request.MessageText, history, ct);
-                if (explanationResult.TransactionId != null)
-                {
-                    await HandleTransactionExplanationAsync(request.UserId, explanationResult.TransactionId.Value, explanationResult.Note!, request.MessageText,
-                        request.ChatId, repo, history, telegramService, placeholderId, ctsHeartbeat);
-                    return;
-                }
-            }
-            else if (intent == "AFFORD" && intentEl.Value.TryGetProperty("afford", out var affordObj))
-            {
-                var amount = affordObj.TryGetProperty("amount", out var amtEl) && amtEl.ValueKind == JsonValueKind.Number ? amtEl.GetDecimal() : 0;
-                var desc = affordObj.TryGetProperty("desc", out var descEl) ? descEl.GetString() : "this purchase";
-
-                if (amount > 0)
-                {
-                    // Fan out the simulated-balance analysis ALONGSIDE the in-flight summaryTask.
-                    // Both run on the same in-memory history list and are CPU-bound, so this nearly
-                    // halves the actuarial wall-clock time before the AI verdict prompt fires.
-                    var simulatedBalance = currentBalance - amount;
-                    var simSummaryTask = actuarialService.AnalyzeHealthAsync(history, simulatedBalance, settings);
-                    await Task.WhenAll(summaryTask, simSummaryTask);
-                    var summaryForAfford = await summaryTask;
-                    var simSummary = await simSummaryTask;
-
-                    await HandleAffordabilityCheckAsync(request.UserId, amount, desc!, request.ChatId,
-                        history, currentBalance, simulatedBalance, summaryForAfford, simSummary, settings,
-                        aiService, chartService, telegramService, placeholderId, ctsHeartbeat, ct);
-                    return;
-                }
+                await HandleChartRequestAsync(request.UserId, chartSql!, chartType ?? "bar", chartTitle!, request.ChatId,
+                    db, aiService, chartService, telegramService, placeholderId, ctsHeartbeat);
+                return;
             }
 
-            // Default path (QUERY, fall-through from CHART without sql, EXPLAIN without match):
-            // we now need the summary, so await it here.
-            var summary = await summaryTask;
-            var summaryJson = JsonSerializer.Serialize(summary);
-            await HandleStandardQueryAsync(request.UserId, request.MessageText, request.ChatId, currentBalance, summary,
-                summaryJson, repo, aiService, telegramService, placeholderId, ctsHeartbeat, ct);
-        }
-        catch (OperationCanceledException) when (budgetCts.IsCancellationRequested && !outerCt.IsCancellationRequested)
-        {
-            // Hit our own 90s budget — almost always means the AI provider is overloaded and the
-            // retry loop has been spinning. Tell the user clearly instead of leaving them staring
-            // at a frozen progress bar.
-            _logger.LogWarning("Telegram processing exceeded {Budget}s budget for user {UserId}",
-                TelegramProcessingBudget.TotalSeconds, request.UserId);
-            ctsHeartbeat?.Cancel();
-            try
+            // Check for runway chart
+            if (!string.IsNullOrWhiteSpace(request.MessageText) && 
+                request.MessageText.ToLower().Contains("runway") &&
+                (request.MessageText.ToLower().Contains("chart") || request.MessageText.ToLower().Contains("graph")))
             {
-                var telegramSvc = scope.ServiceProvider.GetRequiredService<ITelegramService>();
-                var timeoutMessage =
-                    "⏳ <b>Taking longer than expected</b>\n\n" +
-                    "My analytical engine is under heavy load right now (the AI provider is " +
-                    "throttling requests). Please try again in a minute or two.";
-                if (placeholderId > 0) await telegramSvc.EditMessageAsync(request.UserId, placeholderId, timeoutMessage, request.ChatId);
-                else await telegramSvc.SendMessageAsync(request.UserId, timeoutMessage, request.ChatId);
+                var chartBytes = chartService.GenerateRunwayChart(history, currentBalance, (double)summary.WeightedDailyBurn);
+                ctsHeartbeat.Cancel();
+                await telegramService.SendImageAsync(request.UserId, chartBytes, "<b>📉 Financial Runway Projection</b>", request.ChatId);
+                await telegramService.EditMessageAsync(request.UserId, placeholderId, "Visual runway projection generated.", request.ChatId);
+                return;
             }
-            catch (Exception ex2) { _logger.LogError(ex2, "Failed to send timeout message."); }
+
+            // Check for transaction explanation
+            var (explainedTxId, explanationNote) = await aiService.AnalyzeExpenseExplanationAsync(request.UserId, request.MessageText ?? "", history);
+
+            if (explainedTxId != null)
+            {
+                await HandleTransactionExplanationAsync(request.UserId, explainedTxId.Value, explanationNote!, request.MessageText ?? "",
+                    request.ChatId, db, history, telegramService, placeholderId, ctsHeartbeat);
+                return;
+            }
+
+            // Check for affordability question
+            var (isAffordability, affordAmount, affordDesc) = await aiService.AnalyzeAffordabilityAsync(request.UserId, request.MessageText ?? "");
+
+            if (isAffordability && affordAmount > 0)
+            {
+                await HandleAffordabilityCheckAsync(request.UserId, affordAmount!.Value, affordDesc!, request.ChatId,
+                    history, currentBalance, summary, settings, actuarialService, chartService, telegramService, placeholderId, ctsHeartbeat);
+                return;
+            }
+
+            // Standard financial query
+            await HandleStandardQueryAsync(request.UserId, request.MessageText ?? "", request.ChatId, currentBalance, summary,
+                summaryJson, db, aiService, telegramService, placeholderId, ctsHeartbeat);
         }
         catch (OperationCanceledException)
         {
@@ -219,19 +341,21 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing Telegram message for user {UserId}", request.UserId);
-            ctsHeartbeat?.Cancel();
+
             try
             {
                 var telegramSvc = scope.ServiceProvider.GetRequiredService<ITelegramService>();
-                // User-facing copy stays calm and actionable; the raw exception is in the logs above.
-                var errorMessage =
-                    "⚠️ <b>Analytical engine hiccup</b>\n\n" +
-                    "I couldn't complete that analysis just now. Please try again in a moment — " +
-                    "if it keeps happening, check the worker logs for details.";
-                if (placeholderId > 0) await telegramSvc.EditMessageAsync(request.UserId, placeholderId, errorMessage, request.ChatId);
-                else await telegramSvc.SendMessageAsync(request.UserId, errorMessage, request.ChatId);
+                var errorMessage = "⚠️ <b>Analytical Error</b>\n\nI encountered an unexpected issue while processing your request. Your data is safe. Please try again in a moment.";
+
+                if (placeholderId > 0)
+                    await telegramSvc.EditMessageAsync(request.UserId, placeholderId, errorMessage, request.ChatId);
+                else
+                    await telegramSvc.SendMessageAsync(request.UserId, errorMessage, request.ChatId);
             }
-            catch (Exception ex2) { _logger.LogError(ex2, "Failed to send error message."); }
+            catch (Exception ex2)
+            {
+                _logger.LogError(ex2, "Failed to send error message to user {UserId}", request.UserId);
+            }
         }
         finally
         {
@@ -242,61 +366,47 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
 
     private async Task StartHeartbeatAsync(int userId, int placeholderId, string chatId, ITelegramService telegramService, CancellationToken ct)
     {
-        // Deterministic rotation — must NOT pick at random, otherwise consecutive editMessageText
-        // calls collide and Telegram returns "message is not modified" 400s.
         var wittyComments = new[]
         {
-            "Stress-testing liquidity buffers",
-            "Assessing variance in expenditure",
-            "Optimizing capital projections",
-            "Benchmarking salary cycles",
-            "Recalibrating risk parameters",
-            "Synthesizing transaction metadata",
-            "Running runway simulations",
-            "Auditing ledger fingerprints"
+            "Stress-testing current liquidity buffers...",
+            "Assessing variance in discretionary expenditure...",
+            "Optimizing capital allocation projections...",
+            "Benchmarking against historical salary cycles...",
+            "Recalibrating actuarial risk parameters...",
+            "Synthesizing transaction metadata...",
+            "Running Monte-Carlo runway simulations...",
+            "Auditing ledger for deterministic fingerprints...",
+            "Evaluating solvency relative to next payday...",
+            "Analyzing burn-rate velocity trends..."
         };
-        string[] progressStages = { "▰▱▱▱▱▱▱", "▰▰▱▱▱▱▱", "▰▰▰▱▱▱▱", "▰▰▰▰▱▱▱", "▰▰▰▰▰▱▱", "▰▰▰▰▰▰▱", "▰▰▰▰▰▰▰" };
 
-        // Heartbeat caps itself well inside the overall processing budget so it never out-lives
-        // a stuck AI call. After this point we leave a calm "still working" message in place.
-        var heartbeatBudget = TimeSpan.FromSeconds(45);
-        var startedAt = DateTime.UtcNow;
-        int tick = 0;
+        int stageIndex = 0;
+        string[] progressStages = { "▰▱▱▱▱▱▱", "▰▰▱▱▱▱▱", "▰▰▰▱▱▱▱", "▰▰▰▰▱▱▱", "▰▰▰▰▰▱▱", "▰▰▰▰▰▰▱", "▰▰▰▰▰▰▰" };
 
         while (!ct.IsCancellationRequested)
         {
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(3), ct);
-                if (ct.IsCancellationRequested) break;
+                await Task.Delay(TimeSpan.FromSeconds(2.5), ct);
 
-                var elapsed = DateTime.UtcNow - startedAt;
-                if (elapsed > heartbeatBudget)
+                var bar = progressStages[Math.Min(stageIndex, progressStages.Length - 1)];
+                var nextWitty = stageIndex switch
                 {
-                    // Final state — written exactly once, then the heartbeat goes quiet.
-                    if (placeholderId > 0)
-                    {
-                        await telegramService.EditMessageAsync(userId, placeholderId,
-                            "<b>Analytical Engine Working</b>\n" +
-                            "<code>▰▰▰▰▰▰▰</code>\n" +
-                            "<i>Still crunching — the AI provider is taking its time…</i>", chatId);
-                    }
-                    return;
-                }
+                    0 => "Synchronizing Investec ledger data...",
+                    1 => "Running actuarial burn-rate simulations...",
+                    2 => "Generating strategic CFO commentary...",
+                    3 => "Finalizing liquidity risk assessment...",
+                    _ => wittyComments[Random.Shared.Next(wittyComments.Length)]
+                };
 
-                var bar = progressStages[Math.Min(tick, progressStages.Length - 1)];
-                var witty = wittyComments[tick % wittyComments.Length];
-                // Rotating dot count guarantees the rendered string changes every tick even after
-                // the bar maxes out, so Telegram never rejects an edit as "not modified".
-                var dots = new string('.', (tick % 3) + 1);
+                stageIndex++;
 
-                tick++;
                 if (placeholderId > 0)
                 {
                     await telegramService.EditMessageAsync(userId, placeholderId,
                         $"<b>Analytical Engine Working</b>\n" +
                         $"<code>{bar}</code>\n" +
-                        $"<i>{TelegramService.EscapeHtml(witty)}{dots}</i>", chatId);
+                        $"<i>{TelegramService.EscapeHtml(nextWitty)}</i>", chatId);
                 }
             }
             catch (TaskCanceledException) { break; }
@@ -305,100 +415,85 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
     }
 
     private async Task HandleChartRequestAsync(int userId, string chartSql, string chartType, string chartTitle, string chatId,
-        ITransactionRepository repo, IAiService aiService, IChartService chartService, ITelegramService telegramService,
-        int placeholderId, CancellationTokenSource? ctsHeartbeat, CancellationToken ct)
+        NpgsqlConnection db, IAiService aiService, IChartService chartService, ITelegramService telegramService,
+        int placeholderId, CancellationTokenSource ctsHeartbeat)
     {
-        var rawChartData = (await repo.GetChartDataAsync(userId, chartSql)).ToList();
-        if (rawChartData.Any())
+        try
         {
-            var chartData = rawChartData.Select(r => {
-                var dict = (IDictionary<string, object>)r;
-                var label = dict.Values.ElementAtOrDefault(0)?.ToString() ?? "";
-                var rawVal = dict.Values.ElementAtOrDefault(1);
-                var value = rawVal != null ? Convert.ToDouble(rawVal) : 0.0;
-                return (Label: label, Value: value);
+            var chartDataRaw = await db.QueryAsync<dynamic>(chartSql, new { userId });
+            var chartData = chartDataRaw.Select(d =>
+            {
+                var dict = (IDictionary<string, object>)d;
+                return (Label: dict["label"]?.ToString() ?? "", Value: Convert.ToDouble(dict["value"] ?? 0.0));
             }).ToList();
 
-            var chartBytes = chartService.GenerateGenericChart(chartTitle, chartType, chartData);
-            var commentaryPrompt = GordonWorker.Prompts.SystemPrompts.GetChartCommentaryPrompt(chartTitle, JsonSerializer.Serialize(rawChartData));
-            var caption = await aiService.FormatResponseAsync(userId, commentaryPrompt, "", isWhatsApp: false, ct: ct);
+            if (chartData.Any())
+            {
+                var chartBytes = chartService.GenerateGenericChart(chartTitle, chartType, chartData);
+                var dataJson = JsonSerializer.Serialize(chartData);
+                var commentaryPrompt = $@"You are the user's Personal CFO.
+The user requested a chart: '{chartTitle}'.
+DATA RETRIEVED: {dataJson}
 
-            ctsHeartbeat?.Cancel();
-            await telegramService.SendImageAsync(userId, chartBytes, $"<b>📊 {TelegramService.EscapeHtml(chartTitle)}</b>\n\n{caption}", chatId);
-            if (placeholderId > 0) await telegramService.EditMessageAsync(userId, placeholderId, "Analytical visualization complete.", chatId);
+INSTRUCTIONS:
+- Provide a 2-sentence strategic observation about this specific data.
+- Mention any concerning trends or positive patterns.
+- Maintain a highly professional, boardroom tone.";
+
+                var caption = await aiService.FormatResponseAsync(userId, commentaryPrompt, "", isWhatsApp: false);
+
+                ctsHeartbeat.Cancel();
+                await telegramService.SendImageAsync(userId, chartBytes, $"<b>📊 {TelegramService.EscapeHtml(chartTitle)}</b>\n\n{caption}", chatId);
+                if (placeholderId > 0) await telegramService.EditMessageAsync(userId, placeholderId, "Analytical visualization complete.", chatId);
+            }
         }
-        else
+        catch (Exception ex)
         {
-            ctsHeartbeat?.Cancel();
-            if (placeholderId > 0) await telegramService.EditMessageAsync(userId, placeholderId, "I couldn't find any data to chart for that request.", chatId);
+            _logger.LogWarning(ex, "Failed to generate chart for user {UserId}", userId);
         }
     }
 
     private async Task HandleTransactionExplanationAsync(int userId, Guid txId, string note, string messageText, string chatId,
-        ITransactionRepository repo, List<Transaction> history, ITelegramService telegramService, int placeholderId, CancellationTokenSource? ctsHeartbeat)
+        NpgsqlConnection db, List<Transaction> history, ITelegramService telegramService, int placeholderId, CancellationTokenSource ctsHeartbeat)
     {
-        await repo.UpdateTransactionNoteAsync(txId, userId, note);
+        await db.ExecuteAsync("UPDATE transactions SET notes = @Note WHERE id = @Id AND user_id = @UserId",
+            new { Note = note, Id = txId, UserId = userId });
+
         var tx = history.FirstOrDefault(t => t.Id == txId);
         var confirmation = $"✅ <b>Noted.</b> I've updated the ledger:\n<i>{TelegramService.EscapeHtml(tx?.Description ?? "Transaction")}</i>: {TelegramService.EscapeHtml(note)}";
-        
-        await repo.InsertChatHistoryAsync(userId, messageText, true);
-        await repo.InsertChatHistoryAsync(userId, confirmation, false);
 
-        ctsHeartbeat?.Cancel();
+        await db.ExecuteAsync("INSERT INTO chat_history (user_id, message_text, is_user) VALUES (@UserId, @Text, TRUE)",
+            new { UserId = userId, Text = messageText });
+        await db.ExecuteAsync("INSERT INTO chat_history (user_id, message_text, is_user) VALUES (@UserId, @Text, FALSE)",
+            new { UserId = userId, Text = confirmation });
+
+        ctsHeartbeat.Cancel();
         if (placeholderId > 0) await telegramService.EditMessageAsync(userId, placeholderId, confirmation, chatId);
         else await telegramService.SendMessageAsync(userId, confirmation, chatId);
     }
 
     private async Task HandleAffordabilityCheckAsync(int userId, decimal amount, string description, string chatId,
-        List<Transaction> history, decimal currentBalance, decimal simulatedBalance,
-        FinancialHealthReport summary, FinancialHealthReport simSummary, AppSettings settings,
-        IAiService aiService, IChartService chartService, ITelegramService telegramService,
-        int placeholderId, CancellationTokenSource? ctsHeartbeat, CancellationToken ct)
+        List<Transaction> history, decimal currentBalance, FinancialHealthReport summary, AppSettings settings,
+        IActuarialService actuarialService, IChartService chartService, ITelegramService telegramService,
+        int placeholderId, CancellationTokenSource ctsHeartbeat)
     {
+        var simulatedBalance = currentBalance - amount;
+        var simSummary = await actuarialService.AnalyzeHealthAsync(history, simulatedBalance, settings);
+
         var runwayImpact = summary.ExpectedRunwayDays - simSummary.ExpectedRunwayDays;
         var riskLevel = simSummary.ExpectedRunwayDays < 10 ? "High" : runwayImpact > 5 ? "Medium" : "Low";
 
-        // Ask the AI to act as the user's personal banker and give a clear verdict.
-        // Best-effort: if the AI is unavailable, fall back to a deterministic rule-based verdict
-        // so the user always gets actionable guidance, never just a numbers dump.
-        string verdict;
-        try
-        {
-            var verdictPrompt = GordonWorker.Prompts.SystemPrompts.GetAffordabilityVerdictPrompt(
-                description, amount, currentBalance, simulatedBalance,
-                summary.ExpectedRunwayDays, simSummary.ExpectedRunwayDays, runwayImpact,
-                summary.DaysUntilNextSalary, riskLevel);
-            verdict = await aiService.FormatResponseAsync(userId, verdictPrompt, "", isWhatsApp: false, ct: ct);
-            if (string.IsNullOrWhiteSpace(verdict) || verdict.Contains("I'm sorry") || verdict.Contains("difficulties connecting"))
-            {
-                verdict = BuildFallbackAffordabilityVerdict(description, amount, simulatedBalance,
-                    simSummary.ExpectedRunwayDays, summary.DaysUntilNextSalary, riskLevel);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Affordability AI verdict failed for user {UserId}; using rule-based fallback.", userId);
-            verdict = BuildFallbackAffordabilityVerdict(description, amount, simulatedBalance,
-                simSummary.ExpectedRunwayDays, summary.DaysUntilNextSalary, riskLevel);
-        }
-
-        var riskBadge = riskLevel switch
-        {
-            "High" => "🛑",
-            "Medium" => "⚠️",
-            _ => "✅"
-        };
-
-        var response = $"<b>{riskBadge} Affordability Check: {TelegramService.EscapeHtml(description)}</b>\n" +
+        var response = $"<b>Affordability Analysis: {TelegramService.EscapeHtml(description)}</b>\n" +
                        $"-----------------------------\n" +
                        $"<b>Price:</b> R{amount:N2}\n" +
                        $"<b>New Balance:</b> R{simulatedBalance:N2}\n" +
-                       $"<b>New Runway:</b> {simSummary.ExpectedRunwayDays:F0} days (was {summary.ExpectedRunwayDays:F0})\n" +
-                       $"<b>Days to Payday:</b> {summary.DaysUntilNextSalary}\n" +
-                       $"-----------------------------\n\n" +
-                       TelegramService.EscapeHtml(verdict);
+                       $"<b>Runway Impact:</b> -{runwayImpact:F1} days\n" +
+                       $"<b>New Runway:</b> {simSummary.ExpectedRunwayDays:F1} days\n" +
+                       $"<b>Risk Level:</b> {riskLevel}\n\n" +
+                       (riskLevel == "High" ? "🛑 <b>ADVISORY:</b> This purchase puts you in a dangerous liquidity position." :
+                        "✅ <b>ADVISORY:</b> You have sufficient buffer for this.");
 
-        ctsHeartbeat?.Cancel();
+        ctsHeartbeat.Cancel();
         if (placeholderId > 0) await telegramService.EditMessageAsync(userId, placeholderId, response, chatId);
         else await telegramService.SendMessageAsync(userId, response, chatId);
 
@@ -409,39 +504,9 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
         }
     }
 
-    // Deterministic backstop: when the AI is unavailable we still owe the user a clear yes/no
-    // verdict instead of a wall of numbers. Phrasing mirrors the AI prompt's tone.
-    private static string BuildFallbackAffordabilityVerdict(string description, decimal amount,
-        decimal simulatedBalance, decimal newRunwayDays, int daysUntilNextSalary, string riskLevel)
-    {
-        if (simulatedBalance < 0)
-        {
-            return $"No, I'd strongly advise against buying {description} right now — it would push your balance below zero, " +
-                   $"which means dipping into overdraft or missing essentials. The smart move is to wait until after payday in {daysUntilNextSalary} days, " +
-                   $"or set aside a portion of each paycheck until you've saved the R{amount:N2}. You've got this — patience now means peace of mind later.";
-        }
-
-        if (riskLevel == "High" || newRunwayDays < daysUntilNextSalary)
-        {
-            return $"I'd hold off on {description} for now. After this purchase your runway drops to roughly {newRunwayDays:F0} days, " +
-                   $"but payday is {daysUntilNextSalary} days away — that's cutting it dangerously close. Wait until your next salary lands and revisit it then; " +
-                   $"a few weeks of patience will turn this from a risk into a comfortable yes.";
-        }
-
-        if (riskLevel == "Medium")
-        {
-            return $"Yes, you can afford {description} — but with caution. It noticeably trims your safety buffer, so I'd only go ahead if you're confident " +
-                   $"no surprise expenses are coming this month. If you can wait until just after payday, you'll feel a lot more relaxed about it. Either way, " +
-                   $"you're in control here.";
-        }
-
-        return $"Yes, you can comfortably afford {description}. Your buffer stays healthy and your runway easily covers the gap to payday, " +
-               $"so this won't put any strain on your finances. Enjoy it — you've earned it.";
-    }
-
     private async Task HandleStandardQueryAsync(int userId, string messageText, string chatId, decimal currentBalance,
-        FinancialHealthReport summary, string summaryJson, ITransactionRepository repo, IAiService aiService,
-        ITelegramService telegramService, int placeholderId, CancellationTokenSource? ctsHeartbeat, CancellationToken ct)
+        FinancialHealthReport summary, string summaryJson, NpgsqlConnection db, IAiService aiService,
+        ITelegramService telegramService, int placeholderId, CancellationTokenSource ctsHeartbeat)
     {
         var culture = (System.Globalization.CultureInfo)System.Globalization.CultureInfo.InvariantCulture.Clone();
         culture.NumberFormat.CurrencySymbol = "R";
@@ -450,37 +515,53 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
                          $"<b>Current Balance:</b> {TelegramService.EscapeHtml(currentBalance.ToString("C", culture))}\n" +
                          $"<b>Projected Runway:</b> {(summary.ExpectedRunwayDays < 0 ? "0" : TelegramService.EscapeHtml(summary.ExpectedRunwayDays.ToString("F0")))} Days\n" +
                          $"<b>Next Salary:</b> In {summary.DaysUntilNextSalary} Days\n" +
+                         $"<b>Burn Trend:</b> {TelegramService.EscapeHtml(summary.TrendDirection)}\n" +
                          $"---------------------------\n\n";
 
-        // Chat history is best-effort context — never fail the whole reply because we couldn't load it.
-        var historyContext = string.Empty;
-        try
-        {
-            var recentHistory = (await repo.GetRecentChatHistoryAsync(userId, 5)).Reverse().ToList();
-            historyContext = string.Join("\n", recentHistory.Select(h => h.IsUser ? $"User: {h.MessageText}" : $"CFO: {h.MessageText}"));
-        }
-        catch (Exception histEx)
-        {
-            _logger.LogWarning(histEx, "Could not load recent chat history for user {UserId}; continuing without context.", userId);
-        }
+        var recentHistory = (await db.QueryAsync<(string Text, bool IsUser)>(
+            "SELECT message_text, is_user FROM chat_history WHERE user_id = @userId ORDER BY timestamp DESC LIMIT 10",
+            new { userId })).Reverse().ToList();
 
-        var promptForSummary = GordonWorker.Prompts.SystemPrompts.GetStandardQuerySummaryPrompt(historyContext, messageText);
-        var aiResponse = await aiService.FormatResponseAsync(userId, promptForSummary, summaryJson, isWhatsApp: false, ct: ct);
+        var historyContext = string.Join("\n", recentHistory.Select(h => h.IsUser ? $"User: {h.Text}" : $"CFO: {h.Text}"));
+
+        var promptForSummary = $@"You are acting as the user's Personal CFO.
+
+**PREVIOUS CONVERSATION:**
+{historyContext}
+
+**CURRENT REQUEST:**
+User: {messageText}
+
+**INSTRUCTIONS:**
+- Provide a direct, data-driven answer based *only* on the provided financial summary and previous conversation context.
+- If the user's question implies financial stress, provide a path to stability.
+- If the user's question implies good health, suggest how to optimize or invest.
+- Maintain a tone of calm, professional competence.
+- Do NOT repeat the header stats (Balance, Runway, etc.) as they are already displayed above your message.
+
+**YOUR GOAL:**
+Demonstrate that you understand their financial reality better than they do, and guide them toward control.";
+
+        var aiResponse = await aiService.FormatResponseAsync(userId, promptForSummary, summaryJson, isWhatsApp: false);
 
         if (string.IsNullOrWhiteSpace(aiResponse) || aiResponse.Contains("I'm sorry") || aiResponse.Contains("difficulties connecting"))
         {
-            aiResponse = "<i>analytical engine latency observed. Stats displayed above.</i>";
+            aiResponse = "<i>I'm currently observing some latency in my analytical engine. Your core metrics are displayed above for your review. The system remains operational and your data is secure.</i>";
         }
 
         var finalAnswer = statsBlock + aiResponse;
-        if (finalAnswer.Length > 4000) finalAnswer = finalAnswer.Substring(0, 3990) + "...";
 
-        await repo.InsertChatHistoryAsync(userId, messageText, true);
-        await repo.InsertChatHistoryAsync(userId, aiResponse, false);
+        await db.ExecuteAsync("INSERT INTO chat_history (user_id, message_text, is_user) VALUES (@UserId, @Text, TRUE)",
+            new { UserId = userId, Text = messageText });
+        await db.ExecuteAsync("INSERT INTO chat_history (user_id, message_text, is_user) VALUES (@UserId, @Text, FALSE)",
+            new { UserId = userId, Text = aiResponse });
 
-        ctsHeartbeat?.Cancel();
-        if (placeholderId > 0) await telegramService.EditMessageAsync(userId, placeholderId, finalAnswer, chatId);
-        else await telegramService.SendMessageAsync(userId, finalAnswer, chatId);
+        ctsHeartbeat.Cancel();
+
+        if (placeholderId > 0)
+            await telegramService.EditMessageAsync(userId, placeholderId, finalAnswer, chatId);
+        else
+            await telegramService.SendMessageAsync(userId, finalAnswer, chatId);
     }
 
     private record TelegramRequest(int UserId, string ChatId, string MessageText);

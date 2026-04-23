@@ -9,14 +9,12 @@ namespace GordonWorker.Services;
 
 public interface IInvestecClient
 {
-    void Configure(string clientId, string secret, string apiKey, string baseUrl = "https://openapi.investec.com/", string environment = "Production");
+    void Configure(string clientId, string secret, string apiKey, string baseUrl = "https://openapi.investec.com/");
     Task<string> AuthenticateAsync();
     Task<List<InvestecAccount>> GetAccountsAsync();
     Task<List<Transaction>> GetTransactionsAsync(string accountId, DateTimeOffset fromDate);
     Task<(bool Success, string Error)> TestConnectivityAsync();
     Task<decimal> GetAccountBalanceAsync(string accountId);
-    Task<List<InvestecCard>> GetCardsAsync(string accountId);
-    Task<(bool Success, string Error)> ExecuteTransferAsync(string fromAccountId, string toAccountId, decimal amount, string reference, bool isDryRun);
 }
 
 public class InvestecAccount
@@ -30,37 +28,18 @@ public class InvestecAccount
                                ProductPath.Contains("Loan", StringComparison.OrdinalIgnoreCase);
 }
 
-public class InvestecCard
-{
-    public string CardKey { get; set; } = string.Empty;
-    public string CardNumber { get; set; } = string.Empty;
-    public bool IsProgrammable { get; set; }
-    public string Status { get; set; } = string.Empty;
-}
-
 public class InvestecClient : IInvestecClient
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<InvestecClient> _logger;
-    private readonly SemaphoreSlim _authLock = new(1, 1);
-
-    // All per-tenant state lives in this immutable session record. Configure() atomically swaps
-    // the entire reference, so any method that captures it once at the top is guaranteed to see
-    // a self-consistent set of credentials + token + cache, even if Configure() is called again
-    // concurrently (e.g. by another scope sharing the same instance by accident). This eliminates
-    // an entire class of cross-tenant credential-leak bugs.
-    private sealed class Session
-    {
-        public string ClientId { get; init; } = string.Empty;
-        public string Secret { get; init; } = string.Empty;
-        public string ApiKey { get; init; } = string.Empty;
-        public string BaseUrl { get; init; } = "https://openapi.investec.com/";
-        public string? AccessToken;          // mutable but only mutated under _authLock
-        public DateTime TokenExpiry;         // ditto
-        public List<InvestecAccount> CachedAccounts = new();
-    }
-
-    private volatile Session? _session;
+    
+    private string? _clientId;
+    private string? _secret;
+    private string? _apiKey;
+    private string? _accessToken;
+    private string _baseUrl = "https://openapi.investec.com/";
+    private DateTime _tokenExpiry;
+    private List<InvestecAccount> _cachedAccounts = new();
 
     public InvestecClient(HttpClient httpClient, ILogger<InvestecClient> logger)
     {
@@ -68,47 +47,29 @@ public class InvestecClient : IInvestecClient
         _logger = logger;
     }
 
-    public void Configure(string clientId, string secret, string apiKey, string baseUrl = "https://openapi.investec.com/", string environment = "Production")
+    public void Configure(string clientId, string secret, string apiKey, string baseUrl = "https://openapi.investec.com/")
     {
+        _clientId = clientId;
+        _secret = secret;
+        _apiKey = apiKey;
         var effectiveUrl = string.IsNullOrWhiteSpace(baseUrl) ? "https://openapi.investec.com/" : baseUrl;
-        effectiveUrl = effectiveUrl.TrimEnd('/') + "/";
-        if (environment.Equals("Sandbox", StringComparison.OrdinalIgnoreCase) && !effectiveUrl.Contains("sandbox", StringComparison.OrdinalIgnoreCase))
-        {
-            effectiveUrl += "sandbox/";
-        }
-
-        // Atomic single-reference swap. Any in-flight call that already captured the previous
-        // session keeps using its own credentials to completion — which is the correct behaviour.
-        _session = new Session
-        {
-            ClientId = clientId ?? string.Empty,
-            Secret = secret ?? string.Empty,
-            ApiKey = apiKey ?? string.Empty,
-            BaseUrl = effectiveUrl
-        };
+        _baseUrl = effectiveUrl.EndsWith("/") ? effectiveUrl : effectiveUrl + "/";
+        _accessToken = null; // Reset token on reconfig
+        _cachedAccounts.Clear();
     }
 
-    private Session RequireSession()
-    {
-        var s = _session;
-        if (s == null)
-            throw new InvalidOperationException("InvestecClient.Configure() must be called before any API method.");
-        return s;
-    }
-
-    private static Uri GetUri(Session session, string path) => new Uri(new Uri(session.BaseUrl), path);
+    private Uri GetUri(string path) => new Uri(new Uri(_baseUrl), path);
 
     public async Task<decimal> GetAccountBalanceAsync(string accountId)
     {
-        var session = RequireSession();
-        if (string.IsNullOrEmpty(session.AccessToken) || DateTime.UtcNow > session.TokenExpiry) await AuthenticateAsync();
-
+        if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry) await AuthenticateAsync();
+        
         // Find account type from cache or fetch if missing
-        if (!session.CachedAccounts.Any()) await GetAccountsAsync();
-        var account = session.CachedAccounts.FirstOrDefault(a => a.AccountId == accountId);
+        if (!_cachedAccounts.Any()) await GetAccountsAsync();
+        var account = _cachedAccounts.FirstOrDefault(a => a.AccountId == accountId);
 
-        var request = new HttpRequestMessage(HttpMethod.Get, GetUri(session, $"za/pb/v1/accounts/{accountId}/balance"));
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.AccessToken);
+        var request = new HttpRequestMessage(HttpMethod.Get, GetUri($"za/pb/v1/accounts/{accountId}/balance"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
         var response = await _httpClient.SendAsync(request);
         if (!response.IsSuccessStatusCode) return 0;
         
@@ -136,62 +97,47 @@ public class InvestecClient : IInvestecClient
 
     public async Task<string> AuthenticateAsync()
     {
-        var session = RequireSession();
-        if (string.IsNullOrEmpty(session.ClientId) || string.IsNullOrEmpty(session.Secret)) return string.Empty;
-
-        await _authLock.WaitAsync();
-        try
-        {
-            // Double-check after acquiring lock — another thread may have refreshed this session.
-            if (!string.IsNullOrEmpty(session.AccessToken) && DateTime.UtcNow <= session.TokenExpiry)
-                return session.AccessToken;
-
-            var request = new HttpRequestMessage(HttpMethod.Post, GetUri(session, "identity/v2/oauth2/token"));
-            var authString = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{session.ClientId}:{session.Secret}"));
-            request.Headers.Authorization = new AuthenticationHeaderValue("Basic", authString);
-            request.Headers.Add("x-api-key", session.ApiKey);
-            request.Content = new FormUrlEncodedContent(new[] { new KeyValuePair<string, string>("grant_type", "client_credentials") });
-            var response = await _httpClient.SendAsync(request);
-            if (!response.IsSuccessStatusCode) return string.Empty;
-            var content = await response.Content.ReadAsStringAsync();
-            var tokenResponse = JsonSerializer.Deserialize<JsonElement>(content);
-            session.AccessToken = tokenResponse.GetProperty("access_token").GetString();
-            var expiresIn = tokenResponse.GetProperty("expires_in").GetInt32();
-            session.TokenExpiry = DateTime.UtcNow.AddSeconds(expiresIn - 60);
-            return session.AccessToken ?? string.Empty;
-        }
-        finally
-        {
-            _authLock.Release();
-        }
+        if (string.IsNullOrEmpty(_clientId) || string.IsNullOrEmpty(_secret)) return string.Empty;
+        
+        var request = new HttpRequestMessage(HttpMethod.Post, GetUri("identity/v2/oauth2/token"));
+        var authString = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_clientId}:{_secret}"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Basic", authString);
+        request.Headers.Add("x-api-key", _apiKey);
+        request.Content = new FormUrlEncodedContent(new[] { new KeyValuePair<string, string>("grant_type", "client_credentials") });
+        var response = await _httpClient.SendAsync(request);
+        if (!response.IsSuccessStatusCode) return string.Empty;
+        var content = await response.Content.ReadAsStringAsync();
+        var tokenResponse = JsonSerializer.Deserialize<JsonElement>(content);
+        _accessToken = tokenResponse.GetProperty("access_token").GetString();
+        var expiresIn = tokenResponse.GetProperty("expires_in").GetInt32();
+        _tokenExpiry = DateTime.UtcNow.AddSeconds(expiresIn - 60);
+        return _accessToken ?? string.Empty;
     }
 
     public async Task<List<InvestecAccount>> GetAccountsAsync()
     {
-        var session = RequireSession();
-        if (string.IsNullOrEmpty(session.AccessToken) || DateTime.UtcNow > session.TokenExpiry) await AuthenticateAsync();
-        var request = new HttpRequestMessage(HttpMethod.Get, GetUri(session, "za/pb/v1/accounts"));
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.AccessToken);
+        if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry) await AuthenticateAsync();
+        var request = new HttpRequestMessage(HttpMethod.Get, GetUri("za/pb/v1/accounts"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
         var response = await _httpClient.SendAsync(request);
         if (!response.IsSuccessStatusCode) return new List<InvestecAccount>();
         var content = await response.Content.ReadAsStringAsync();
         var root = JsonSerializer.Deserialize<InvestecAccountsResponse>(content, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-        session.CachedAccounts = root?.Data?.Accounts ?? new List<InvestecAccount>();
-        return session.CachedAccounts;
+        _cachedAccounts = root?.Data?.Accounts ?? new List<InvestecAccount>();
+        return _cachedAccounts;
     }
 
     public async Task<List<Transaction>> GetTransactionsAsync(string accountId, DateTimeOffset fromDate)
     {
-        var session = RequireSession();
-        if (string.IsNullOrEmpty(session.AccessToken) || DateTime.UtcNow > session.TokenExpiry) await AuthenticateAsync();
-
+        if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry) await AuthenticateAsync();
+        
         var transactions = new List<Transaction>();
         var url = $"za/pb/v1/accounts/{accountId}/transactions?fromDate={fromDate:yyyy-MM-dd}";
-
+        
         while (!string.IsNullOrEmpty(url))
         {
-            var request = new HttpRequestMessage(HttpMethod.Get, GetUri(session, url));
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.AccessToken);
+            var request = new HttpRequestMessage(HttpMethod.Get, GetUri(url));
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
             var response = await _httpClient.SendAsync(request);
             if (!response.IsSuccessStatusCode) break;
             
@@ -247,71 +193,6 @@ public class InvestecClient : IInvestecClient
         return transactions;
     }
 
-    public async Task<List<InvestecCard>> GetCardsAsync(string accountId)
-    {
-        var session = RequireSession();
-        if (string.IsNullOrEmpty(session.AccessToken) || DateTime.UtcNow > session.TokenExpiry) await AuthenticateAsync();
-        var request = new HttpRequestMessage(HttpMethod.Get, GetUri(session, $"za/pb/v1/accounts/{accountId}/cards"));
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.AccessToken);
-        var response = await _httpClient.SendAsync(request);
-        if (!response.IsSuccessStatusCode) return new List<InvestecCard>();
-        var content = await response.Content.ReadAsStringAsync();
-        var root = JsonSerializer.Deserialize<InvestecCardsResponse>(content, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-        return root?.Data?.Cards ?? new List<InvestecCard>();
-    }
-
-    public async Task<(bool Success, string Error)> ExecuteTransferAsync(string fromAccountId, string toAccountId, decimal amount, string reference, bool isDryRun)
-    {
-        if (isDryRun)
-        {
-            _logger.LogInformation("[DRY RUN] Would execute transfer of R{Amount:F2} from {From} to {To} with reference '{Ref}'", amount, fromAccountId, toAccountId, reference);
-            return (true, string.Empty);
-        }
-
-        var session = RequireSession();
-        if (string.IsNullOrEmpty(session.AccessToken) || DateTime.UtcNow > session.TokenExpiry) await AuthenticateAsync();
-
-        var transferPayload = new
-        {
-            transferList = new[]
-            {
-                new
-                {
-                    beneficiaryAccountId = toAccountId,
-                    amount = amount.ToString("F2", CultureInfo.InvariantCulture),
-                    myReference = reference,
-                    theirReference = reference
-                }
-            }
-        };
-
-        var request = new HttpRequestMessage(HttpMethod.Post, GetUri(session, $"za/pb/v1/accounts/{fromAccountId}/transfermultiple"));
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.AccessToken);
-        request.Content = new StringContent(JsonSerializer.Serialize(transferPayload), Encoding.UTF8, "application/json");
-
-        try
-        {
-            var response = await _httpClient.SendAsync(request);
-            var content = await response.Content.ReadAsStringAsync();
-            
-            if (response.IsSuccessStatusCode)
-            {
-                _logger.LogInformation("Successfully executed transfer of R{Amount:F2} from {From} to {To}", amount, fromAccountId, toAccountId);
-                return (true, string.Empty);
-            }
-            else
-            {
-                _logger.LogError("Failed to execute transfer. Status: {Status}, Content: {Content}", response.StatusCode, content);
-                return (false, $"Investec API Error: {response.StatusCode} - {content}");
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Exception while executing transfer.");
-            return (false, ex.Message);
-        }
-    }
-
     private Guid GenerateUuidFromString(string input) { using (var md5 = System.Security.Cryptography.MD5.Create()) { return new Guid(md5.ComputeHash(Encoding.UTF8.GetBytes(input))); } }
     private class InvestecAccountsResponse { public InvestecAccountsData? Data { get; set; } }
     private class InvestecAccountsData { public List<InvestecAccount>? Accounts { get; set; } }
@@ -319,6 +200,4 @@ public class InvestecClient : IInvestecClient
     private class InvestecLinks { public string? Next { get; set; } }
     private class InvestecData { public List<InvestecTransaction>? Transactions { get; set; } }
     private class InvestecTransaction { public string? Id { get; set; } public string? Description { get; set; } public decimal Amount { get; set; } public decimal AccountBalance { get; set; } public DateTimeOffset TransactionDate { get; set; } public string? Type { get; set; } }
-    private class InvestecCardsResponse { public InvestecCardsData? Data { get; set; } }
-    private class InvestecCardsData { public List<InvestecCard>? Cards { get; set; } }
 }

@@ -34,18 +34,10 @@ public class ChartDataController : ControllerBase
         if (!int.TryParse(userIdStr, out var userId)) return Unauthorized();
 
         using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-
-        // Read from the `transactions_daily_category` continuous aggregate instead of scanning
-        // raw rows. The aggregate is pre-bucketed by (user_id, day, category), so a 30-day chart
-        // touches ~ (30 * unique_categories) rows instead of every transaction in the window.
-        // The refresh policy keeps the last hour's worth of buckets fresh enough for a dashboard.
-        // Spending = negative amounts only, so we negate the sum to get a positive "spent" value.
         var sql = @"
-            SELECT category AS Label, SUM(-total_amount) AS Value
-            FROM transactions_daily_category
-            WHERE user_id = @userId
-              AND bucket >= NOW() - INTERVAL '1 day' * @days
-              AND total_amount < 0
+            SELECT COALESCE(category, 'Uncategorized') AS Label, SUM(ABS(amount)) AS Value 
+            FROM transactions 
+            WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '1 day' * @days
             GROUP BY category
             ORDER BY Value DESC";
 

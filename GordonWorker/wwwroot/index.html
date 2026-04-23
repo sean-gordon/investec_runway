@@ -7,12 +7,28 @@
     <title>Gordon Finance Engine</title>
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📈</text></svg>">
-    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js?v=3.5"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- CDN assets are version-pinned and SRI-verified to prevent a CDN
+         compromise (or a MITM on an unsecured network) from silently
+         swapping in a different script. The SRI digests must be updated if
+         the URLs ever change. -->
+    <script
+        src="https://unpkg.com/vue@3.4.21/dist/vue.global.prod.js"
+        integrity="sha384-B4agsrj2NKOYUYb1P5LQxOu/Oe9fplcT2jA2FTCj7eSHABhqp9osi63OGGgE+bHg"
+        crossorigin="anonymous"
+        referrerpolicy="no-referrer"></script>
+    <script
+        src="https://cdn.tailwindcss.com/3.4.3"
+        integrity="sha384-s6OGeD1z71LuJbSWhkdWyeWhkfZcI1bL28CqgZY2q+l2ZkjzaHb7yM+tyHpnveLw"
+        crossorigin="anonymous"
+        referrerpolicy="no-referrer"></script>
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script
+        src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"
+        integrity="sha384-NaWTHo/8YCBYJ59830LTz/P4aQZK1sS0SneOgAvhsIl3zBu8r9RevNg5lHCHAuQ/"
+        crossorigin="anonymous"
+        referrerpolicy="no-referrer"></script>
     <script>
         tailwind.config = {
             theme: {

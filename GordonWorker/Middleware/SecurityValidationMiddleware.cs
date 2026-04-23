@@ -49,12 +49,14 @@ public class SecurityValidationMiddleware
             return;
         }
 
-        // Check if host is in allowed domains list
-        // SECURITY FIX: Exact match, authorized subdomain, or explicit wildcard (*)
+        // SECURITY: exact-match or authorized subdomain only. The `*` wildcard
+        // is explicitly unsupported — deployments must list concrete hostnames
+        // so that Host/Origin headers can be validated.
         bool isAllowedDomain = _allowedDomains.Any(domain =>
-            domain == "*" ||
-            effectiveHost.Equals(domain, StringComparison.OrdinalIgnoreCase) ||
-            effectiveHost.EndsWith($".{domain}", StringComparison.OrdinalIgnoreCase));
+            !string.IsNullOrWhiteSpace(domain) &&
+            domain != "*" &&
+            (effectiveHost.Equals(domain, StringComparison.OrdinalIgnoreCase) ||
+             effectiveHost.EndsWith($".{domain}", StringComparison.OrdinalIgnoreCase)));
 
         if (!isAllowedDomain)
         {
@@ -80,8 +82,12 @@ public class SecurityValidationMiddleware
 
     private bool IsAllowedOrigin(string origin)
     {
-        var uri = new Uri(origin);
+        if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri)) return false;
         var host = uri.Host;
-        return _allowedDomains.Any(d => d == "*" || host.Equals(d, StringComparison.OrdinalIgnoreCase) || host.EndsWith($".{d}", StringComparison.OrdinalIgnoreCase));
+        return _allowedDomains.Any(d =>
+            !string.IsNullOrWhiteSpace(d) &&
+            d != "*" &&
+            (host.Equals(d, StringComparison.OrdinalIgnoreCase) ||
+             host.EndsWith($".{d}", StringComparison.OrdinalIgnoreCase)));
     }
 }

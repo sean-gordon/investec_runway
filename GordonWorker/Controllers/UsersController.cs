@@ -4,6 +4,7 @@ using GordonWorker.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
+using System.Text.RegularExpressions;
 
 namespace GordonWorker.Controllers;
 
@@ -35,6 +36,10 @@ public class UsersController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
             return BadRequest("Username and Password are required.");
 
+        if (!IsPasswordStrong(request.Password))
+            return BadRequest(
+                "Password must be at least 12 characters and include upper-case, lower-case, a digit, and a symbol.");
+
         try
         {
             using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
@@ -53,7 +58,7 @@ public class UsersController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Create user failed.");
-            return StatusCode(500, ex.Message);
+            return StatusCode(500, new { Error = "Internal server error." });
         }
     }
 
@@ -66,11 +71,14 @@ public class UsersController : ControllerBase
             var user = await connection.QuerySingleOrDefaultAsync<User>("SELECT * FROM users WHERE id = @Id", new { Id = id });
             if (user == null) return NotFound();
 
-            // Only allow changing password if provided
+            // Only allow changing password if provided, and require strength parity with /register.
             var passSql = "";
             object passParam = new { };
             if (!string.IsNullOrWhiteSpace(request.Password))
             {
+                if (!IsPasswordStrong(request.Password))
+                    return BadRequest("Password must be at least 12 characters and include upper-case, lower-case, a digit, and a symbol.");
+
                 passSql = ", password_hash = @Hash";
                 passParam = new { Hash = BCrypt.Net.BCrypt.HashPassword(request.Password) };
             }
@@ -98,7 +106,7 @@ public class UsersController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Update user failed.");
-            return StatusCode(500, ex.Message);
+            return StatusCode(500, new { Error = "Internal server error." });
         }
     }
 
@@ -126,8 +134,18 @@ public class UsersController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Delete user failed.");
-            return StatusCode(500, ex.Message);
+            return StatusCode(500, new { Error = "Internal server error." });
         }
+    }
+
+    private static bool IsPasswordStrong(string password)
+    {
+        if (password.Length < 12) return false;
+        if (!Regex.IsMatch(password, "[A-Z]")) return false;
+        if (!Regex.IsMatch(password, "[a-z]")) return false;
+        if (!Regex.IsMatch(password, "[0-9]")) return false;
+        if (!Regex.IsMatch(password, "[^A-Za-z0-9]")) return false;
+        return true;
     }
 
     public class CreateUserRequest

@@ -24,12 +24,16 @@ DefaultTypeMap.MatchNamesWithUnderscores = true;
 var jwtSettings = builder.Configuration.GetSection("Jwt");
 var jwtSecret = Environment.GetEnvironmentVariable("JWT_SECRET") ?? jwtSettings["Secret"];
 
-// SECURITY FIX: Validate JWT secret at startup
-if (string.IsNullOrWhiteSpace(jwtSecret) || jwtSecret == "PLEASE_CHANGE_THIS_TO_A_VERY_LONG_RANDOM_STRING_IN_PRODUCTION")
+// SECURITY FIX: Validate JWT secret at startup. Reject any secret that still
+// starts with the documented placeholder prefix — previous check compared to
+// the short prefix only and let the longer appsettings.json default slip past.
+const string jwtPlaceholderPrefix = "PLEASE_CHANGE_THIS";
+if (string.IsNullOrWhiteSpace(jwtSecret) ||
+    jwtSecret.StartsWith(jwtPlaceholderPrefix, StringComparison.OrdinalIgnoreCase))
 {
     throw new InvalidOperationException(
-        "CRITICAL SECURITY ERROR: JWT Secret is not configured or uses default value. " +
-        "Set a strong JWT secret in appsettings.json or environment variables before starting the application.");
+        "CRITICAL SECURITY ERROR: JWT Secret is not configured or still uses the shipped placeholder value. " +
+        "Set JWT_SECRET (env var) or Jwt:Secret (appsettings.json) to a strong, 32+ character random value before starting.");
 }
 
 if (jwtSecret.Length < 32)

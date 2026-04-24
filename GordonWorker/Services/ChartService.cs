@@ -10,10 +10,18 @@ public interface IChartService
 
 public class ChartService : IChartService
 {
+    private readonly ILogger<ChartService> _logger;
+
+    public ChartService(ILogger<ChartService> logger)
+    {
+        _logger = logger;
+    }
+
     public byte[] GenerateGenericChart(string title, string type, List<(string Label, double Value)> data)
     {
         var plt = new Plot();
-        try { ScottPlot.Fonts.Default = "DejaVu Sans"; } catch { }
+        try { ScottPlot.Fonts.Default = "DejaVu Sans"; }
+        catch (Exception ex) { _logger.LogDebug(ex, "ScottPlot default font fallback failed."); }
 
         plt.Title(title);
         plt.FigureBackground.Color = Colors.White;
@@ -63,7 +71,8 @@ public class ChartService : IChartService
         var plt = new Plot();
         
         // Setup font for Linux/Docker environments
-        try { ScottPlot.Fonts.Default = "DejaVu Sans"; } catch { }
+        try { ScottPlot.Fonts.Default = "DejaVu Sans"; }
+        catch (Exception ex) { _logger.LogDebug(ex, "ScottPlot default font fallback failed."); }
 
         // 1. Data Preparation
         var now = DateTime.UtcNow;

@@ -72,7 +72,8 @@ namespace GordonWorker.Services
                 }
                 catch (OperationCanceledException)
                 {
-                    try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
+                    try { if (!process.HasExited) process.Kill(entireProcessTree: true); }
+                    catch (Exception killEx) { _logger.LogDebug(killEx, "Failed to kill timed-out Claude CLI process."); }
                     if (cancellationToken.IsCancellationRequested) throw;
                     throw new TimeoutException("Claude CLI did not respond within 75 seconds.");
                 }

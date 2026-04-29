@@ -132,7 +132,9 @@ public class TelegramController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing Telegram webhook.");
-            _statusService.LastTelegramError = ex.Message;
+            // Keep a short, stable tag on the shared status service — the raw exception
+            // text can leak internals via /api/Settings/status to every authenticated user.
+            _statusService.LastTelegramError = "Telegram webhook processing error.";
         }
 
         return Ok();
@@ -180,7 +182,7 @@ public class TelegramController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to setup Telegram webhook.");
-            return StatusCode(500, new { Error = ex.Message });
+            return StatusCode(500, new { Error = "Failed to set up Telegram webhook." });
         }
     }
 }

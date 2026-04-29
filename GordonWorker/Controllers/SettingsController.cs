@@ -133,7 +133,7 @@ public class SettingsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to update settings for user {UserId}", UserId);
-            return StatusCode(500, new { Error = ex.Message });
+            return StatusCode(500, new { Error = "Failed to update settings." });
         }
     }
 
@@ -147,7 +147,8 @@ public class SettingsController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { Error = ex.Message });
+            _logger.LogError(ex, "Test email failed for user {UserId}", UserId);
+            return StatusCode(500, new { Error = "Failed to send test email." });
         }
     }
 
@@ -172,9 +173,12 @@ public class SettingsController : ControllerBase
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Primary AI connection test failed for user {UserId}", UserId);
             _statusService.IsAiPrimaryOnline = false;
-            _statusService.PrimaryAiError = ex.Message;
-            return StatusCode(500, new { Error = ex.Message });
+            // Keep a short, stable tag on the shared status service — the raw exception
+            // message can leak host names and driver detail via /api/Settings/status.
+            _statusService.PrimaryAiError = "Primary AI provider unreachable.";
+            return StatusCode(500, new { Error = "Failed to connect to primary AI provider." });
         }
     }
 
@@ -199,9 +203,10 @@ public class SettingsController : ControllerBase
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Fallback AI connection test failed for user {UserId}", UserId);
             _statusService.IsAiFallbackOnline = false;
-            _statusService.FallbackAiError = ex.Message;
-            return StatusCode(500, new { Error = ex.Message });
+            _statusService.FallbackAiError = "Fallback AI provider unreachable.";
+            return StatusCode(500, new { Error = "Failed to connect to fallback AI provider." });
         }
     }
 
@@ -222,7 +227,8 @@ public class SettingsController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { Error = ex.Message });
+            _logger.LogError(ex, "Thinking AI connection test failed for user {UserId}", UserId);
+            return StatusCode(500, new { Error = "Failed to connect to thinking AI provider." });
         }
     }
 
@@ -288,8 +294,8 @@ public class SettingsController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to get models.");
-            return Ok(new List<string> { $"SettingsController Error: {ex.Message}" });
+            _logger.LogError(ex, "Failed to get models for user {UserId}", UserId);
+            return Ok(new List<string> { "Error: failed to load models (see server logs)." });
         }
     }
 
@@ -375,7 +381,8 @@ public class SettingsController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, $"Failed to send report: {ex.Message}");
+            _logger.LogError(ex, "Failed to send report for user {UserId}", UserId);
+            return StatusCode(500, "Failed to send report.");
         }
     }
 
@@ -389,7 +396,8 @@ public class SettingsController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, $"Failed to repull data: {ex.Message}");
+            _logger.LogError(ex, "Failed to repull data for user {UserId}", UserId);
+            return StatusCode(500, "Failed to repull data.");
         }
     }
 
@@ -419,7 +427,8 @@ public class SettingsController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, $"Failed to categorize: {ex.Message}");
+            _logger.LogError(ex, "Failed to categorize transactions for user {UserId}", UserId);
+            return StatusCode(500, "Failed to categorize transactions.");
         }
     }
 
@@ -442,7 +451,8 @@ public class SettingsController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { Error = ex.Message });
+            _logger.LogError(ex, "Failed to get stats for user {UserId}", UserId);
+            return StatusCode(500, new { Error = "Failed to load stats." });
         }
     }
 }

@@ -24,12 +24,16 @@ DefaultTypeMap.MatchNamesWithUnderscores = true;
 var jwtSettings = builder.Configuration.GetSection("Jwt");
 var jwtSecret = Environment.GetEnvironmentVariable("JWT_SECRET") ?? jwtSettings["Secret"];
 
-// SECURITY FIX: Validate JWT secret at startup
-if (string.IsNullOrWhiteSpace(jwtSecret) || jwtSecret == "PLEASE_CHANGE_THIS_TO_A_VERY_LONG_RANDOM_STRING_IN_PRODUCTION")
+// SECURITY FIX: Validate JWT secret at startup. Reject any secret that still
+// starts with the documented placeholder prefix — previous check compared to
+// the short prefix only and let the longer appsettings.json default slip past.
+const string jwtPlaceholderPrefix = "PLEASE_CHANGE_THIS";
+if (string.IsNullOrWhiteSpace(jwtSecret) ||
+    jwtSecret.StartsWith(jwtPlaceholderPrefix, StringComparison.OrdinalIgnoreCase))
 {
     throw new InvalidOperationException(
-        "CRITICAL SECURITY ERROR: JWT Secret is not configured or uses default value. " +
-        "Set a strong JWT secret in appsettings.json or environment variables before starting the application.");
+        "CRITICAL SECURITY ERROR: JWT Secret is not configured or still uses the shipped placeholder value. " +
+        "Set JWT_SECRET (env var) or Jwt:Secret (appsettings.json) to a strong, 32+ character random value before starting.");
 }
 
 if (jwtSecret.Length < 32)
@@ -38,7 +42,7 @@ if (jwtSecret.Length < 32)
         "CRITICAL SECURITY ERROR: JWT Secret must be at least 32 characters long for adequate security.");
 }
 
-var key = Encoding.ASCII.GetBytes(jwtSecret);
+var key = Encoding.UTF8.GetBytes(jwtSecret);
 
 builder.Services.AddAuthentication(x =>
 {
@@ -84,6 +88,20 @@ builder.Services.AddRateLimiter(options =>
         {
             AutoReplenishment = true,
             PermitLimit = 100,
+            Window = TimeSpan.FromMinutes(1)
+        });
+    });
+
+    // Stricter policy for auth endpoints (login / register) to slow credential
+    // stuffing and mass-account creation. Keyed by remote IP so a single user
+    // retrying cannot be starved by another sharing the same account.
+    options.AddPolicy("auth", httpContext =>
+    {
+        var key = httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
+        return RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
+        {
+            AutoReplenishment = true,
+            PermitLimit = 10,
             Window = TimeSpan.FromMinutes(1)
         });
     });
@@ -154,8 +172,35 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+else
+{
+    // Tell browsers to stay on HTTPS for the next year.
+    app.UseHsts();
+}
 
 app.UseForwardedHeaders();
+
+// Baseline security response headers. CSP allows the three CDN origins the
+// SPA currently loads from (Vue/unpkg, Chart.js/jsdelivr, Tailwind runtime);
+// tighten further once those assets are vendored locally.
+app.Use(async (context, next) =>
+{
+    var headers = context.Response.Headers;
+    headers["X-Content-Type-Options"] = "nosniff";
+    headers["X-Frame-Options"] = "DENY";
+    headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()";
+    headers["Content-Security-Policy"] =
+        "default-src 'self'; " +
+        "script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://cdn.tailwindcss.com; " +
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; " +
+        "img-src 'self' data:; " +
+        "connect-src 'self'; " +
+        "font-src 'self' data: https://cdn.jsdelivr.net https://fonts.gstatic.com; " +
+        "frame-ancestors 'none'; " +
+        "base-uri 'self'";
+    await next();
+});
 
 // Global Request Logger
 app.Use(async (context, next) =>

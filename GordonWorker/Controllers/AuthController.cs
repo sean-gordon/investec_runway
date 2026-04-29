@@ -2,15 +2,18 @@ using BCrypt.Net;
 using Dapper;
 using GordonWorker.Models;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using Npgsql;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace GordonWorker.Controllers;
 
 [ApiController]
+[EnableRateLimiting("auth")]
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
@@ -29,6 +32,10 @@ public class AuthController : ControllerBase
         if (string.IsNullOrWhiteSpace(model.Username) || string.IsNullOrWhiteSpace(model.Password))
             return BadRequest("Username and Password are required.");
 
+        if (!IsPasswordStrong(model.Password))
+            return BadRequest(
+                "Password must be at least 12 characters and include upper-case, lower-case, a digit, and a symbol.");
+
         try
         {
             using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
@@ -37,16 +44,22 @@ public class AuthController : ControllerBase
             var existingUser = await connection.QuerySingleOrDefaultAsync<int?>(
                 "SELECT id FROM users WHERE username = @Username", new { model.Username });
 
+            // Return the same generic response whether or not the username exists so the
+            // endpoint can't be used to enumerate accounts. Log the duplicate for ops.
             if (existingUser != null)
-                return BadRequest("Username already exists.");
+            {
+                _logger.LogInformation("Registration attempt for existing username from {IP}.", HttpContext.Connection.RemoteIpAddress);
+                return Ok(new { Message = "Registration request received." });
+            }
 
             var passwordHash = BCrypt.Net.BCrypt.HashPassword(model.Password);
 
-            var userId = await connection.QuerySingleAsync<int>(
-                "INSERT INTO users (username, password_hash) VALUES (@Username, @PasswordHash) RETURNING id",
+            await connection.ExecuteAsync(
+                "INSERT INTO users (username, password_hash) VALUES (@Username, @PasswordHash)",
                 new { model.Username, PasswordHash = passwordHash });
 
-            return Ok(new { Message = "Registration successful." });
+            _logger.LogInformation("New user registered from {IP}.", HttpContext.Connection.RemoteIpAddress);
+            return Ok(new { Message = "Registration request received." });
         }
         catch (Exception ex)
         {
@@ -67,8 +80,12 @@ public class AuthController : ControllerBase
                 "SELECT * FROM users WHERE username = @Username", new { model.Username });
 
             if (user == null || !BCrypt.Net.BCrypt.Verify(model.Password, user.PasswordHash))
+            {
+                _logger.LogWarning("Failed login for username '{User}' from {IP}.", model.Username, HttpContext.Connection.RemoteIpAddress);
                 return Unauthorized("Invalid username or password.");
+            }
 
+            _logger.LogInformation("Successful login for user {UserId} from {IP}.", user.Id, HttpContext.Connection.RemoteIpAddress);
             var token = GenerateJwtToken(user);
             return Ok(new { Token = token, Username = user.Username });
         }
@@ -79,6 +96,16 @@ public class AuthController : ControllerBase
         }
     }
 
+    private static bool IsPasswordStrong(string password)
+    {
+        if (password.Length < 12) return false;
+        if (!Regex.IsMatch(password, "[A-Z]")) return false;
+        if (!Regex.IsMatch(password, "[a-z]")) return false;
+        if (!Regex.IsMatch(password, "[0-9]")) return false;
+        if (!Regex.IsMatch(password, "[^A-Za-z0-9]")) return false;
+        return true;
+    }
+
     private string GenerateJwtToken(User user)
     {
         var jwtSettings = _configuration.GetSection("Jwt");
@@ -86,7 +113,7 @@ public class AuthController : ControllerBase
                      ?? jwtSettings["Secret"] 
                      ?? throw new InvalidOperationException("CRITICAL: JWT Secret is not configured in Environment Variables.");
                      
-        var key = Encoding.ASCII.GetBytes(secret);
+        var key = Encoding.UTF8.GetBytes(secret);
 
         var tokenDescriptor = new SecurityTokenDescriptor
         {
@@ -96,7 +123,8 @@ public class AuthController : ControllerBase
                 new Claim(ClaimTypes.Name, user.Username),
                 new Claim(ClaimTypes.Role, user.Role)
             }),
-            Expires = DateTime.UtcNow.AddDays(7),
+            // Shorter session: an XSS-stolen token is now useful for hours, not a week.
+            Expires = DateTime.UtcNow.AddHours(12),
             SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature),
             Issuer = jwtSettings["Issuer"],
             Audience = jwtSettings["Audience"]

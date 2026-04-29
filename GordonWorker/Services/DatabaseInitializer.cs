@@ -7,11 +7,13 @@ public class DatabaseInitializer
 {
     private readonly IConfiguration _configuration;
     private readonly ILogger<DatabaseInitializer> _logger;
+    private readonly IHostEnvironment _environment;
 
-    public DatabaseInitializer(IConfiguration configuration, ILogger<DatabaseInitializer> logger)
+    public DatabaseInitializer(IConfiguration configuration, ILogger<DatabaseInitializer> logger, IHostEnvironment environment)
     {
         _configuration = configuration;
         _logger = logger;
+        _environment = environment;
     }
 
     public async Task InitializeAsync()
@@ -35,24 +37,34 @@ public class DatabaseInitializer
             await connection.ExecuteAsync(usersSql);
 
             // Ensure columns exist (migration for existing DB)
-            try { await connection.ExecuteAsync("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'User';"); } catch {}
-            try { await connection.ExecuteAsync("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_system BOOLEAN DEFAULT FALSE;"); } catch {}
-            try { await connection.ExecuteAsync("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_weekly_report_sent TIMESTAMPTZ;"); } catch {}
+            try { await connection.ExecuteAsync("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'User';"); }
+            catch (Exception ex) { _logger.LogDebug(ex, "users.role column migration skipped."); }
+            try { await connection.ExecuteAsync("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_system BOOLEAN DEFAULT FALSE;"); }
+            catch (Exception ex) { _logger.LogDebug(ex, "users.is_system column migration skipped."); }
+            try { await connection.ExecuteAsync("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_weekly_report_sent TIMESTAMPTZ;"); }
+            catch (Exception ex) { _logger.LogDebug(ex, "users.last_weekly_report_sent column migration skipped."); }
 
             // Seed System Admin
             var adminUser = _configuration["ADMIN_USERNAME"] ?? "admin";
             var adminPass = _configuration["ADMIN_PASSWORD"];
-            
+
             if (string.IsNullOrEmpty(adminPass))
             {
-                // SECURITY FIX: Do not use weak default "admin123".
-                // If not provided in ENV, we generate a random one and log it once.
-                _logger.LogWarning("ADMIN_PASSWORD not set in environment. Generating a secure one...");
-                adminPass = Guid.NewGuid().ToString("N").Substring(0, 12);
-                _logger.LogCritical("******************************************************************");
-                _logger.LogCritical($" INITIAL ADMIN PASSWORD: {adminPass} ");
-                _logger.LogCritical(" PLEASE RECORD THIS AND CHANGE IT IN THE UI IMMEDIATELY. ");
-                _logger.LogCritical("******************************************************************");
+                // Fail closed in production — an unknown admin password is an invitation.
+                if (_environment.IsProduction())
+                {
+                    throw new InvalidOperationException(
+                        "ADMIN_PASSWORD must be configured in production. Set the environment variable before starting the app.");
+                }
+
+                // Dev / non-production: generate a one-shot password and write it to stdout
+                // only — never through the logger (which persists to disk and is reachable
+                // from the /api/Logs endpoint).
+                adminPass = Guid.NewGuid().ToString("N").Substring(0, 16);
+                Console.WriteLine("******************************************************************");
+                Console.WriteLine($" BOOTSTRAP ADMIN PASSWORD (dev only): {adminPass}");
+                Console.WriteLine(" Record this now — it is not logged. Change it in the UI immediately.");
+                Console.WriteLine("******************************************************************");
             }
 
             var adminHash = BCrypt.Net.BCrypt.HashPassword(adminPass);
@@ -122,7 +134,8 @@ public class DatabaseInitializer
             }
 
             // Migration for notes
-            try { await connection.ExecuteAsync("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS notes TEXT;"); } catch {}
+            try { await connection.ExecuteAsync("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS notes TEXT;"); }
+            catch (Exception ex) { _logger.LogDebug(ex, "transactions.notes column migration skipped."); }
 
             // 4. Index Migration
             // TimescaleDB hypertables require unique indexes to include the partitioning column (transaction_date)
@@ -167,7 +180,8 @@ public class DatabaseInitializer
             }
 
             // Cleanup old config table
-            try { await connection.ExecuteAsync("DROP TABLE IF EXISTS system_config;"); } catch {}
+            try { await connection.ExecuteAsync("DROP TABLE IF EXISTS system_config;"); }
+            catch (Exception ex) { _logger.LogDebug(ex, "Legacy system_config cleanup skipped."); }
 
             // 5. Historic Data Migration: Fix Transaction Polarity
             try

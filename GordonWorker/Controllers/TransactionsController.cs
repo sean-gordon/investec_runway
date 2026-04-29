@@ -63,7 +63,7 @@ public class TransactionsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to categorize history for user {UserId}", userId);
-            return StatusCode(500, new { Error = ex.Message });
+            return StatusCode(500, new { Error = "Internal server error." });
         }
     }
 
@@ -84,7 +84,7 @@ public class TransactionsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get raw transactions for user {UserId}", userId);
-            return StatusCode(500, new { Error = ex.Message });
+            return StatusCode(500, new { Error = "Internal server error." });
         }
     }
 }

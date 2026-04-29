@@ -165,7 +165,10 @@ public class SettingsService : ISettingsService
                             return (int?)user.UserId;
                         }
                     }
-                    catch { /* Ignore parse errors */ }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug(ex, "Failed to parse settings for user {UserId} during WhatsApp lookup.", user.UserId);
+                    }
                 }
                 
                 return null;

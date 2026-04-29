@@ -193,7 +193,14 @@ public class InvestecClient : IInvestecClient
         return transactions;
     }
 
-    private Guid GenerateUuidFromString(string input) { using (var md5 = System.Security.Cryptography.MD5.Create()) { return new Guid(md5.ComputeHash(Encoding.UTF8.GetBytes(input))); } }
+    private Guid GenerateUuidFromString(string input)
+    {
+        using var sha256 = System.Security.Cryptography.SHA256.Create();
+        var hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(input));
+        var truncated = new byte[16];
+        Array.Copy(hash, truncated, 16);
+        return new Guid(truncated);
+    }
     private class InvestecAccountsResponse { public InvestecAccountsData? Data { get; set; } }
     private class InvestecAccountsData { public List<InvestecAccount>? Accounts { get; set; } }
     private class InvestecResponse { public InvestecData? Data { get; set; } public InvestecLinks? Links { get; set; } }

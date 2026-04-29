@@ -1,6 +1,6 @@
 # Gordon Finance Engine 🦓
 
-**Version 2.5.1** | *Your Personal, Actuarial-Grade Financial Platform*
+**Version 2.9.0** | Self-hosted personal finance with actuarial projections.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Status](https://img.shields.io/badge/status-production-green.svg)
@@ -9,130 +9,99 @@
 
 ---
 
-Gordon is a self-hosted, containerised financial analytics platform designed to provide "actuarial-grade" insights into your personal finances. Unlike simple trackers, Gordon helps you understand your "burn rate," project your "runway," and simulate future solvency using advanced Monte Carlo simulations.
+Gordon is a containerised personal finance app you run yourself. It pulls transactions from Investec Programmable Banking, stores them in TimescaleDB, and does the actuarial maths so you can see your real burn rate and how many days of runway you have.
 
-He connects directly to **Investec Programmable Banking**, stores history in a robust time-series database, and uses a Multi-Provider AI system (Ollama/Gemini) to offer a natural language interface for your money.
-
----
-
-## 🌟 Key Features
-
-### 🧠 Actuarial Intelligence
-*   **Runway Projections:** Calculates exactly how many days of solvency you have based on current spending and burn rate.
-*   **Burn Rate Analysis:** Distinguishes between fixed costs and discretionary spending to give you a true "cost of living."
-*   **Simulation Engine:** Runs "what-if" scenarios to see how big purchases impact your long-term financial health.
-*   **AI Auto-Categorisation:** Uses advanced machine learning to semantically classify transactions (e.g., "Groceries", "Bills") automatically.
-
-### 🤖 Robust AI Integration
-*   **Multi-Provider Support:** Seamlessly switches between local AI (Ollama) and cloud AI (Google Gemini) for maximum reliability.
-*   **Automatic Fallback:** If the primary AI is down, Gordon automatically retries and switches providers.
-*   **Natural Language Querying:** Ask "How much did I spend on coffee last month?" and get an instant, data-backed answer.
-
-### 🛡️ Enterprise-Grade Security
-*   **Self-Hosted:** Your data lives on *your* hardware. No third-party clouds.
-*   **Encryption at Rest:** Sensitive configuration (API keys, passwords) is encrypted using AES-256 via .NET Data Protection.
-*   **Private by Design:** Banking credentials never leave your secure container environment.
-
-### ⚡ Technical Excellence
-*   **TimescaleDB:** Uses a specialized time-series database for lightning-fast querying of years of transaction history.
-*   **Deterministic Sync:** Smart ingestion engine that never duplicates transactions, even if the bank API acts up.
-*   **Resilient Messaging:** Background queue-based Telegram bot ensures you never miss a notification or reply.
-*   **Live KPI Dashboard:** Real-time visibility into the health of your Bank API, Database, and AI providers.
+It also talks to AI providers (Ollama, Gemini, OpenAI, Anthropic) so you can ask questions about your money in plain English. If one provider is down it falls back to another.
 
 ---
 
-## 🏗️ Architecture
+## What it does
 
-Gordon is built as a set of micro-services orchestrated by Docker Compose:
+### Actuarial maths
 
-1.  **Gordon Worker (.NET 8):** The core brain. Handles API ingestion, AI orchestration, report generation, and the HTTP API.
-2.  **TimescaleDB (PostgreSQL):** Stores financial transactions in hypertables and encrypted user settings.
-3.  **Frontend (Vue.js 3):** A "no-build" global Vue dashboard served directly by the backend for simplicity.
+Calculates your runway in days from current balance, fixed costs, and discretionary spend. Fixed costs are detected by looking for actual South African banking syntax in the transaction description (`DEBIT ORDER`, `MAGTAPE`, `NAEDO`, `EFT`) rather than trusting Investec's loose category tag, which classifies a card swipe at Pizza Hut and a monthly bond payment under the same `DEBIT` label.
 
----
+There's a What-If tab where you can drop in hypothetical income or expenses and watch the runway shift in real time. Monte Carlo sits underneath the projections. Transactions auto-categorise with ML.
 
-## 🚀 Getting Started
+### AI, with proper fallback
 
-### Prerequisites
-*   **Docker & Docker Compose** installed.
-*   **Investec API Credentials** (Client ID & Secret).
-*   **(Optional) Google Gemini API Key** or a local **Ollama** instance.
+Four provider slots: Primary, Fallback, and a separate Thinking Model that reviews the primary's output before it goes back to you. You can mix Ollama, Gemini, OpenAI and Anthropic across the slots however you want.
 
-### Installation
+Model discovery is dynamic for Gemini and OpenAI (queries `/v1/models` live), curated for Anthropic since they don't expose a public list endpoint. The Thinking Model can bounce a bad answer back up to 3 times before giving up, and that loop is decoupled from network retries so a flaky connection doesn't kill the review.
 
-1.  **Clone the Repository**
-    ```bash
-    git clone https://github.com/sean-gordon/investec_runway.git
-    cd investec_runway
-    ```
+### Bots
 
-2.  **Environment Setup**
-    Copy the template to a new `.env` file:
-    ```bash
-    # Windows (PowerShell)
-    Copy-Item .env.template .env
-    
-    # Linux / Mac
-    cp .env.template .env
-    ```
-    *Edit `.env` and set a strong `DB_PASSWORD`.*
+Telegram and WhatsApp. Both went through a reliability pass: cached Telegram clients (was creating a new `HttpClient` on every message and exhausting sockets), cached Twilio clients, and an in-memory webhook-token-to-user lookup so latency stays low even with lots of users.
 
-3.  **Security Configuration**
-    Open `GordonWorker/appsettings.json` and set a unique, 32+ character string for `Jwt:Secret`.
-    ```bash
-    # Generate a key if needed:
-    openssl rand -base64 64
-    ```
+### Security
 
-4.  **Launch**
-    ```bash
-    docker compose up -d --build
-    ```
+JWT secrets come from the `JWT_SECRET` env var only — the old `appsettings.json` fallback is gone. Settings (API keys, bank credentials, bot tokens) are encrypted at rest with AES-256 via .NET Data Protection. OWASP Top 10 audit fixes were applied across middleware, auth, and deployment in April 2026 — see `audit/` for the reports.
 
-5.  **Access**
-    Visit [http://localhost:52944](http://localhost:52944) to open the dashboard.
+Your data stays on your hardware.
+
+### Operational
+
+Live KPI dashboard for Bank API, DB and AI provider health. Idempotent transaction sync with a 7-day buffer so duplicates and gaps don't creep in. TimescaleDB hypertables for fast queries over years of history.
 
 ---
 
-## ⚙️ Configuration
+## Architecture
 
-Once running, navigate to the **Settings** tab in the dashboard.
+Three services in Docker Compose:
 
-*   **Bank Connection:** Enter your Investec OAuth credentials.
-*   **AI Providers:** Configure your Primary (e.g., Ollama) and Fallback (e.g., Gemini) providers.
-*   **Telegram:** Add your Bot Token to enable chat functionality.
-*   **Actuarial Settings:** Define your "Payday" and "Fixed Cost" logic for accurate tuning.
-
-*Note: All settings entered here are encrypted before storage.*
+1. **GordonWorker (.NET 8)** — API ingestion, AI orchestration, actuarial engine, HTTP API
+2. **TimescaleDB (PostgreSQL)** — transaction hypertables and encrypted settings
+3. **Frontend (Vue.js 3)** — no-build Vue served directly by the backend
 
 ---
 
-## 🛠️ Management & Troubleshooting
+## Getting started
 
-| Command | Description |
-|---------|-------------|
-| `docker compose up -d` | Start services in background |
-| `docker compose logs -f` | View live logs |
-| `docker compose down` | Stop all services |
-| `git pull && docker compose up -d --build` | Update to latest version |
+You need Docker, Investec API credentials, and at least one AI provider (local Ollama or a key for Gemini, OpenAI, or Anthropic).
 
-**Common Issues:**
-*   **429 Too Many Requests:** You are being rate-limited. Wait a minute and try again.
-*   **AI Not Responding:** Check the "Health" tab in the dashboard. Verify `OLLAMA_HOST` is accessible if running locally.
+```bash
+git clone https://github.com/sean-gordon/investec_runway.git
+cd investec_runway
 
----
+cp .env.template .env
+# edit .env: set DB_PASSWORD and JWT_SECRET
 
-## 🤝 Contributing
+docker compose up -d --build
+```
 
-Contributions are welcome!
-1.  Fork the Project
-2.  Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3.  Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4.  Push to the Branch (`git push origin feature/AmazingFeature`)
-5.  Open a Pull Request
+Need a strong JWT secret?
+
+```bash
+openssl rand -base64 64
+```
+
+Visit [http://localhost:52944](http://localhost:52944) and configure your bank, AI providers, and bot tokens in Settings. Everything you put in there is encrypted before it hits the database.
 
 ---
 
-## 📄 License
+## Common operations
 
-Distributed under the MIT License. See `LICENSE` for more information.
+```bash
+docker compose up -d                          # start
+docker compose logs -f                        # tail logs
+docker compose down                           # stop
+git pull && docker compose up -d --build      # update
+```
+
+A few things that catch people out:
+
+- **429 from Investec.** You're being rate-limited; wait a minute. AI health checks poll every 4 hours now (used to be every 5 minutes) to keep this from compounding.
+- **AI not responding.** Check the Health tab first. If you're on Ollama, make sure `OLLAMA_HOST` is reachable from inside the container — `localhost` from your shell isn't `localhost` from inside Docker.
+- **Telegram silent.** The webhook double-path bug from 2.7.9 is fixed, but if you upgraded from before then, re-register the webhook from the Settings tab once.
+
+---
+
+## Contributing
+
+Fork, branch, commit, push, PR. Pretty standard.
+
+---
+
+## License
+
+MIT. See [LICENSE](LICENSE).

@@ -5,10 +5,10 @@ namespace GordonWorker.Services;
 
 public interface IOllamaService
 {
-    Task<string> GenerateSqlAsync(string userPrompt);
-    Task<string> FormatResponseAsync(string userPrompt, string dataContext);
-    Task<string> GenerateSimpleReportAsync(string statsJson);
-    Task<bool> TestConnectionAsync();
+    Task<string> GenerateSqlAsync(int userId, string userPrompt);
+    Task<string> FormatResponseAsync(int userId, string userPrompt, string dataContext);
+    Task<string> GenerateSimpleReportAsync(int userId, string statsJson);
+    Task<bool> TestConnectionAsync(int userId);
 }
 
 public class OllamaService : IOllamaService
@@ -24,17 +24,17 @@ public class OllamaService : IOllamaService
         _settingsService = settingsService;
     }
 
-    private async Task<(string Url, string Model)> GetConnectionDetailsAsync()
+    private async Task<(string Url, string Model)> GetConnectionDetailsAsync(int userId)
     {
-        var settings = await _settingsService.GetSettingsAsync();
+        var settings = await _settingsService.GetSettingsAsync(userId);
         return (settings.OllamaBaseUrl, settings.OllamaModelName);
     }
 
-    public async Task<bool> TestConnectionAsync()
+    public async Task<bool> TestConnectionAsync(int userId)
     {
         try
         {
-            var (baseUrl, _) = await GetConnectionDetailsAsync();
+            var (baseUrl, _) = await GetConnectionDetailsAsync(userId);
             var baseUri = baseUrl.EndsWith("/") ? baseUrl : baseUrl + "/";
             // /api/tags lists models, lightweight check
             var fullUrl = new Uri(new Uri(baseUri), "api/tags"); 
@@ -49,7 +49,7 @@ public class OllamaService : IOllamaService
         }
     }
 
-    public async Task<string> GenerateSqlAsync(string userPrompt)
+    public async Task<string> GenerateSqlAsync(int userId, string userPrompt)
     {
         var systemPrompt = @"You are a PostgreSQL expert. 
 The table schema is:
@@ -65,12 +65,12 @@ transactions (
 Generate a single valid PostgreSQL SELECT query to answer the user's question. 
 Return ONLY the SQL query. Do not include markdown formatting or explanations.";
 
-        return await GenerateCompletionAsync(systemPrompt, userPrompt);
+        return await GenerateCompletionAsync(userId, systemPrompt, userPrompt);
     }
 
-    public async Task<string> FormatResponseAsync(string userPrompt, string dataContext)
+    public async Task<string> FormatResponseAsync(int userId, string userPrompt, string dataContext)
     {
-        var settings = await _settingsService.GetSettingsAsync();
+        var settings = await _settingsService.GetSettingsAsync(userId);
         var persona = settings.SystemPersona;
 
         var systemPrompt = $@"You are a Senior Financial Analyst and Actuary named '{persona}'. 
@@ -92,12 +92,12 @@ Keep the tone professional, concise, and use English UK.
 Do not explicitly mention 'JSON' or 'fields', just speak naturally about the figures.";
 
         var fullPrompt = $"Question: {userPrompt}\nData Context: {dataContext}";
-        return await GenerateCompletionAsync(systemPrompt, fullPrompt);
+        return await GenerateCompletionAsync(userId, systemPrompt, fullPrompt);
     }
 
-    public async Task<string> GenerateSimpleReportAsync(string statsJson)
+    public async Task<string> GenerateSimpleReportAsync(int userId, string statsJson)
     {
-        var settings = await _settingsService.GetSettingsAsync();
+        var settings = await _settingsService.GetSettingsAsync(userId);
         var persona = settings.SystemPersona;
         var userName = settings.UserName;
 
@@ -125,12 +125,12 @@ Your client is '{userName}'.
 </ul>
 <p>Encouraging sign-off from {persona}.</p>";
 
-        return await GenerateCompletionAsync(systemPrompt, $"Data: {statsJson}");
+        return await GenerateCompletionAsync(userId, systemPrompt, $"Data: {statsJson}");
     }
 
-    private async Task<string> GenerateCompletionAsync(string system, string prompt)
+    private async Task<string> GenerateCompletionAsync(int userId, string system, string prompt)
     {
-        var (baseUrl, model) = await GetConnectionDetailsAsync();
+        var (baseUrl, model) = await GetConnectionDetailsAsync(userId);
         var request = new
         {
             model = model,

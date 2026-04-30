@@ -77,6 +77,15 @@ public class AppSettings
     public string InvestecApiKey { get; set; } = "";
     public double SyncBufferDays { get; set; } = 7; // 7 days buffer for regular syncs
 
+    // Top-Up & Account Settings
+    public bool AutoTopUpEnabled { get; set; } = false;
+    public string SavingsAccountId { get; set; } = "";
+    public string SpendingAccountId { get; set; } = "";
+    public int RunwayThresholdDays { get; set; } = 30;
+    public decimal TopUpAmount { get; set; } = 5000m;
+    public bool IsDryRunEnabled { get; set; } = true;
+    public string InvestecEnvironment { get; set; } = "production";
+
     // Data Settings
     public int HistoryDaysBack { get; set; } = 180;
     public string CurrencyCulture { get; set; } = "en-ZA"; // For formatting (e.g. en-ZA, en-US, en-GB)

@@ -9,12 +9,13 @@ namespace GordonWorker.Services;
 
 public interface IInvestecClient
 {
-    void Configure(string clientId, string secret, string apiKey, string baseUrl = "https://openapi.investec.com/");
+    void Configure(string clientId, string secret, string apiKey, string baseUrl = "https://openapi.investec.com/", string environment = "production");
     Task<string> AuthenticateAsync();
     Task<List<InvestecAccount>> GetAccountsAsync();
     Task<List<Transaction>> GetTransactionsAsync(string accountId, DateTimeOffset fromDate);
     Task<(bool Success, string Error)> TestConnectivityAsync();
     Task<decimal> GetAccountBalanceAsync(string accountId);
+    Task<(bool Success, string Error)> ExecuteTransferAsync(string fromAccountId, string toAccountId, decimal amount, string reference, bool isDryRun = false);
 }
 
 public class InvestecAccount
@@ -47,7 +48,7 @@ public class InvestecClient : IInvestecClient
         _logger = logger;
     }
 
-    public void Configure(string clientId, string secret, string apiKey, string baseUrl = "https://openapi.investec.com/")
+    public void Configure(string clientId, string secret, string apiKey, string baseUrl = "https://openapi.investec.com/", string environment = "production")
     {
         _clientId = clientId;
         _secret = secret;
@@ -56,6 +57,50 @@ public class InvestecClient : IInvestecClient
         _baseUrl = effectiveUrl.EndsWith("/") ? effectiveUrl : effectiveUrl + "/";
         _accessToken = null; // Reset token on reconfig
         _cachedAccounts.Clear();
+    }
+
+    public async Task<(bool Success, string Error)> ExecuteTransferAsync(string fromAccountId, string toAccountId, decimal amount, string reference, bool isDryRun = false)
+    {
+        if (isDryRun)
+        {
+            _logger.LogInformation("[Dry Run] Would have transferred R{Amount} from {From} to {To} with reference '{Ref}'", amount, fromAccountId, toAccountId, reference);
+            return (true, string.Empty);
+        }
+
+        if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow > _tokenExpiry) await AuthenticateAsync();
+
+        var body = new
+        {
+            transferList = new[]
+            {
+                new
+                {
+                    beneficiaryAccountId = toAccountId,
+                    amount = amount.ToString("F2", CultureInfo.InvariantCulture),
+                    myReference = reference,
+                    theirReference = reference
+                }
+            }
+        };
+
+        var request = new HttpRequestMessage(HttpMethod.Post, GetUri($"za/pb/v1/accounts/{fromAccountId}/transfer"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+        request.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+
+        try
+        {
+            var response = await _httpClient.SendAsync(request);
+            if (response.IsSuccessStatusCode) return (true, string.Empty);
+
+            var errorContent = await response.Content.ReadAsStringAsync();
+            _logger.LogError("Investec transfer failed: {Status} - {Body}", response.StatusCode, errorContent);
+            return (false, $"API Error: {response.StatusCode}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Investec transfer exception");
+            return (false, ex.Message);
+        }
     }
 
     private Uri GetUri(string path) => new Uri(new Uri(_baseUrl), path);

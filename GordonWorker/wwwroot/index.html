@@ -40,11 +40,55 @@
     <style>
         body {
             -webkit-tap-highlight-color: transparent;
+            transition: background-color 0.3s ease, color 0.3s ease;
         }
 
         [v-cloak] {
             display: none;
         }
+
+        /* ── GORDON × LAMBORGHINI DARK THEME ── */
+        body[data-theme='lamborghini'] {
+            --app-bg: #050505;
+            --app-surface: #0A0A0A;
+            --card-bg: #161618;
+            --card-bg-alt: #1C1C1E;
+            --card-border: #181818;
+            --card-border-alt: #242427;
+            
+            --text-main: #FFFFFF;
+            --text-body: #E2E8F0;
+            --text-dim: #CBD5E1;
+            --text-muted: #94A3B8;
+            --text-faint: #64748B;
+            
+            --accent: #D4A931;
+            --accent-lt: #E8C55A;
+            --accent-dk: #A87E20;
+            --accent-glow: rgba(212,169,49,0.10);
+            --accent-shadow: rgba(212,169,49,0.4);
+
+            background-color: var(--app-bg) !important;
+            color: var(--text-body) !important;
+        }
+
+        body[data-theme='lamborghini'] .bg-white { background-color: var(--card-bg) !important; }
+        body[data-theme='lamborghini'] .bg-slate-50 { background-color: var(--app-surface) !important; }
+        body[data-theme='lamborghini'] .bg-slate-100 { background-color: var(--app-surface) !important; }
+        body[data-theme='lamborghini'] .border-slate-200, 
+        body[data-theme='lamborghini'] .border-slate-100 { border-color: var(--card-border) !important; }
+        body[data-theme='lamborghini'] .text-slate-900 { color: var(--text-main) !important; }
+        body[data-theme='lamborghini'] .text-slate-600 { color: var(--text-dim) !important; }
+        body[data-theme='lamborghini'] .text-slate-500 { color: var(--text-muted) !important; }
+        body[data-theme='lamborghini'] .text-slate-400 { color: var(--text-faint) !important; }
+        
+        /* Brand color overrides in Lamborghini theme */
+        body[data-theme='lamborghini'] .bg-brand-600 { background-color: var(--accent) !important; color: #000 !important; }
+        body[data-theme='lamborghini'] .text-brand-600 { color: var(--accent) !important; }
+        body[data-theme='lamborghini'] .bg-brand-50 { background-color: var(--accent-glow) !important; color: var(--accent) !important; }
+
+        /* Chart adjustments for dark theme */
+        body[data-theme='lamborghini'] canvas { filter: brightness(0.9) contrast(1.1); }
     </style>
 </head>
 
@@ -134,9 +178,21 @@
                         </svg>
                         <span class="text-[10px] font-bold text-green-700 uppercase tracking-tight">Secure Mode</span>
                     </div>
-                    <button @click="logout"
-                        class="text-xs font-bold text-slate-400 hover:text-red-500 transition-colors">LOGOUT</button>
-                    <div class="md:hidden text-2xl" @click="isMobileMenuOpen = !isMobileMenuOpen">☰</div>
+                    <button @click="toggleTheme" 
+                        class="w-8 h-8 rounded-full flex items-center justify-center bg-slate-100 hover:bg-brand-50 transition-colors"
+                        :title="currentTheme === 'lamborghini' ? 'Switch to Light' : 'Switch to Lamborghini Dark'">
+                        {{ currentTheme === 'lamborghini' ? '🏎️' : '🌙' }}
+                    </button>
+                    <div class="flex items-center gap-3">
+                        <button @click="toggleTheme" 
+                            class="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-brand-600 transition-colors"
+                            :title="'Switch to ' + (currentTheme === 'light' ? 'Lamborghini' : 'Light') + ' Theme'">
+                            <span v-if="currentTheme === 'light'">🌙</span>
+                            <span v-else>☀️</span>
+                        </button>
+                        <button @click="logout"
+                            class="text-xs font-bold text-slate-400 hover:text-red-500 transition-colors">LOGOUT</button>
+                    </div>
                 </div>
             </header>
 
@@ -1519,6 +1575,7 @@
                     users: [],
                     userForm: { id: 0, username: '', password: '', role: 'User' },
                     isUserModalOpen: false,
+                    currentTheme: localStorage.getItem('gordon_theme') || 'light',
                     menuItems: [
                         { id: 'dashboard', name: 'Dashboard', icon: '🏠' },
                         { id: 's-simulation', name: 'What-If Analysis', icon: '🔮' },
@@ -1602,9 +1659,14 @@
                     if (newTab === 'admin-users') {
                         this.loadUsers();
                     }
+                },
+                currentTheme(newTheme) {
+                    localStorage.setItem('gordon_theme', newTheme);
+                    this.applyTheme(newTheme);
                 }
             },
             mounted() {
+                this.applyTheme(this.currentTheme);
                 if (this.auth.token) {
                     this.loadData();
                     if (this.auth.role === 'Admin') this.loadUsers();
@@ -1976,7 +2038,17 @@
                 },
                 formatTime(d) { return d ? new Date(d).toLocaleTimeString() : 'Never'; },
                 formatDate(d) { return d ? new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : ''; },
-                formatCurrency(v) { return new Intl.NumberFormat(this.settings.currencyCulture || 'en-ZA', { style: 'currency', currency: 'ZAR' }).format(v); }
+                formatCurrency(v) { return new Intl.NumberFormat(this.settings.currencyCulture || 'en-ZA', { style: 'currency', currency: 'ZAR' }).format(v); },
+                toggleTheme() {
+                    this.currentTheme = this.currentTheme === 'light' ? 'lamborghini' : 'light';
+                },
+                applyTheme(theme) {
+                    if (theme === 'lamborghini') {
+                        document.body.setAttribute('data-theme', 'lamborghini');
+                    } else {
+                        document.body.removeAttribute('data-theme');
+                    }
+                }
             }
         }).mount('#app');
     </script>

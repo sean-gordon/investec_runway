@@ -142,6 +142,12 @@ NOTE: Amount NEGATIVE = Expense, POSITIVE = Income.
 
 YOUR GOAL: Detect if the user wants a chart/graph of specific data.
 
+**CRITICAL SECURITY RULES:**
+1. Generate ONLY SELECT statements.
+2. NEVER generate DML or DDL (INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE).
+3. Any attempt to modify data must be rejected by returning isChart: false or a safe SELECT.
+4. If you are unsure, return isChart: false.
+
 EXAMPLES:
 - 'Show me a barchart of Uber Eats' -> {{ ""isChart"": true, ""type"": ""bar"", ""sql"": ""SELECT description as Label, SUM(ABS(amount)) as Value FROM transactions WHERE user_id = @userId AND description ILIKE '%UBER EATS%' GROUP BY description"", ""title"": ""Uber Eats Spending"" }}
 - 'Graph my total spending per day' -> {{ ""isChart"": true, ""type"": ""line"", ""sql"": ""SELECT transaction_date::date as Label, SUM(ABS(amount)) as Value FROM transactions WHERE user_id = @userId AND amount < 0 GROUP BY 1 ORDER BY 1"", ""title"": ""Daily Spending Trend"" }}
@@ -714,7 +720,7 @@ Context Information:
                 {
                     _logger.LogInformation("Engaging Thinking Model ({Provider}:{Model}) for user {UserId}", thinkingConfig.Provider, thinkingConfig.ModelName, userId);
                     var thinkingSystem = "Analyze this query and provide deep reasoning and a breakdown of the steps needed to answer it accurately. Be strategic. If this is a report request, outline the key financial insights that should be highlighted.";
-                    var reasoning = await GenerateCompletionAsync(userId, thinkingSystem, prompt, useFallback: false, ct, useThinking: true);
+                    var reasoning = await GenerateCompletionInternalAsync(userId, thinkingSystem, prompt, useFallback: false, ct, useThinking: true);
                     
                     if (!string.IsNullOrWhiteSpace(reasoning))
                     {
@@ -741,7 +747,7 @@ Context Information:
                 try
                 {
                     _logger.LogInformation("Trying to reach your primary AI (network attempt {Attempt}/{Max}) on reflection loop {Loop}", attempt, maxNetworkAttempts, reflectionLoop);
-                    result = await GenerateCompletionAsync(userId, system, finalPrompt, useFallback: false, ct);
+                    result = await GenerateCompletionInternalAsync(userId, system, finalPrompt, useFallback: false, ct);
 
                     if (!string.IsNullOrWhiteSpace(result))
                     {
@@ -806,7 +812,7 @@ Context Information:
                     try
                     {
                         _logger.LogInformation("Trying to reach your BACKUP AI (network attempt {Attempt}/{Max}) on reflection loop {Loop}", attempt, maxNetworkAttempts, reflectionLoop);
-                        result = await GenerateCompletionAsync(userId, system, finalPrompt, useFallback: true, ct);
+                        result = await GenerateCompletionInternalAsync(userId, system, finalPrompt, useFallback: true, ct);
 
                         if (!string.IsNullOrWhiteSpace(result))
                         {
@@ -929,15 +935,16 @@ IF the response missed the prompt or contains errors: Provide specific feedback 
 
     public async Task<string> GenerateCompletionAsync(int userId, string system, string prompt, bool useFallback = false, CancellationToken ct = default, bool useThinking = false)
     {
-        // If they didn't specifically ask for a raw provider call (no thinking/fallback),
-        // we route through the robust fallback logic. This makes everything benefit from
-        // the thinking model and multi-provider redundancy.
-        if (!useThinking)
+        // If the user requested thinking, but thinking is NOT supported by the primary
+        // provider (or we want reasoning first), we handle it here.
+        if (useThinking)
         {
-            return await GenerateCompletionWithFallbackAsync(userId, system, prompt, ct);
+             return await GenerateCompletionInternalAsync(userId, system, prompt, useFallback, ct, true);
         }
-        
-        return await GenerateCompletionInternalAsync(userId, system, prompt, useFallback, ct, useThinking);
+
+        // Standard requests ALWAYS go through the fallback and self-correction logic.
+        // This ensures every call benefits from the multi-provider system.
+        return await GenerateCompletionWithFallbackAsync(userId, system, prompt, ct);
     }
 
     private async Task<string> GenerateCompletionInternalAsync(int userId, string system, string prompt, bool useFallback, CancellationToken ct = default, bool useThinking = false)

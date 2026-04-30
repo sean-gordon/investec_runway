@@ -33,6 +33,7 @@ services:
       - Security__AllowedDomains__0=${ALLOWED_DOMAIN:-localhost}
     volumes:
       - gordon_keys:/app/keys
+      - gordon_logs:/app/logs
     networks:
       - finance-net
     depends_on:
@@ -47,3 +48,4 @@ networks:
 volumes:
   timescaledb_data:
   gordon_keys:
+  gordon_logs:

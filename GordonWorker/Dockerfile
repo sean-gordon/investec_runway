@@ -22,4 +22,10 @@ RUN dotnet publish "./GordonWorker.csproj" -c $BUILD_CONFIGURATION -o /app/publi
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
+
+# Create the keys directory and set ownership to the 'app' user
+USER root
+RUN mkdir -p /app/keys && chown -R app:app /app/keys
+USER app
+
 ENTRYPOINT ["dotnet", "GordonWorker.dll"]

@@ -92,7 +92,13 @@ public class InvestecClient : IInvestecClient
     public async Task<(bool Success, string Error)> TestConnectivityAsync()
     {
         try { var token = await AuthenticateAsync(); return (!string.IsNullOrEmpty(token), string.Empty); }
-        catch (Exception ex) { return (false, ex.Message); }
+        catch (Exception ex)
+        {
+            // Raw ex.Message can leak hostnames, ports, and JSON/HTTP driver detail
+            // via SettingsController.TestInvestec, which echoes the error verbatim.
+            _logger.LogWarning(ex, "Investec connectivity test failed.");
+            return (false, "Investec authentication failed.");
+        }
     }
 
     public async Task<string> AuthenticateAsync()

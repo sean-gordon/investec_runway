@@ -410,7 +410,7 @@ public class TelegramChatService : BackgroundService, ITelegramChatService
                 }
             }
             catch (TaskCanceledException) { break; }
-            catch (Exception ex) { _logger.LogWarning("Heartbeat error: {Msg}", ex.Message); }
+            catch (Exception ex) { _logger.LogWarning(ex, "Telegram heartbeat error."); }
         }
     }
 

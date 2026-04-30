@@ -3,6 +3,8 @@ using GordonWorker.Services;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Telegram.Bot.Types;
 
@@ -80,7 +82,7 @@ public class TelegramController : ControllerBase
             {
                 var s = await _settingsService.GetSettingsAsync(cachedUserId);
                 var expectedToken = GenerateSecretToken(s.TelegramBotToken ?? "");
-                if (token == expectedToken)
+                if (TokensEqual(token, expectedToken))
                 {
                     matchedUserId = cachedUserId;
                     matchedSettings = s;
@@ -104,7 +106,7 @@ public class TelegramController : ControllerBase
 
                     // Simple but effective token verification: SHA256 of BotToken
                     var expectedToken = GenerateSecretToken(s.TelegramBotToken);
-                    if (token != expectedToken) continue;
+                    if (!TokensEqual(token, expectedToken)) continue;
 
                     matchedUserId = uid;
                     matchedSettings = s;
@@ -142,9 +144,21 @@ public class TelegramController : ControllerBase
 
     private string GenerateSecretToken(string botToken)
     {
-        using var sha256 = System.Security.Cryptography.SHA256.Create();
-        var hash = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(botToken));
+        using var sha256 = SHA256.Create();
+        var hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(botToken));
         return Convert.ToHexString(hash).ToLower();
+    }
+
+    // Constant-time comparison so an attacker can't brute-force the webhook
+    // token byte-by-byte via response-time differences. Mirrors the helper
+    // used by WebhookController.ValidateSecret.
+    private static bool TokensEqual(string supplied, string expected)
+    {
+        if (string.IsNullOrEmpty(supplied) || string.IsNullOrEmpty(expected)) return false;
+        var suppliedBytes = Encoding.UTF8.GetBytes(supplied);
+        var expectedBytes = Encoding.UTF8.GetBytes(expected);
+        if (suppliedBytes.Length != expectedBytes.Length) return false;
+        return CryptographicOperations.FixedTimeEquals(suppliedBytes, expectedBytes);
     }
 
     [Microsoft.AspNetCore.Authorization.Authorize]

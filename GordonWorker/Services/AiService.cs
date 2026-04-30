@@ -399,7 +399,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to fetch Gemini models from Google API.");
-                return new List<string> { $"Gemini Fetch Error: {ex.Message}" };
+                return new List<string> { "Error: failed to fetch Gemini models. Check server logs." };
             }
         }
 
@@ -435,7 +435,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to fetch OpenAI models.");
-            return new List<string> { $"OpenAI Fetch Error: {ex.Message}" };
+            return new List<string> { "Error: failed to fetch OpenAI models. Check server logs." };
         }
     }
 
@@ -470,7 +470,7 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
             var tagsResponse = JsonSerializer.Deserialize<OllamaTagsResponse>(responseString);
             return tagsResponse?.Models?.Select(m => m.Name).Where(n => !string.IsNullOrEmpty(n)).Cast<string>().ToList() ?? new List<string> { "Error: Empty models array from Ollama" };
         }
-        catch (Exception ex) { _logger.LogError(ex, "Failed to fetch models from {Provider}.", useFallback ? "Fallback AI" : "Primary AI"); return new List<string> { $"Ollama Fetch Error: {ex.Message}" }; }
+        catch (Exception ex) { _logger.LogError(ex, "Failed to fetch models from {Provider}.", useFallback ? "Fallback AI" : "Primary AI"); return new List<string> { "Error: failed to fetch Ollama models. Check server logs." }; }
     }
 
     public async Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false, bool useThinking = false, bool forceRefresh = false)
@@ -554,11 +554,14 @@ Return ONLY a JSON object: { ""id"": ""GUID"", ""note"": ""..."" } or { ""id"": 
                 if (attempt < maxAttempts) continue;
                 return (false, $"Could not reach AI service at {config.OllamaUrl}.");
             }
-            catch (Exception ex) 
-            { 
+            catch (Exception ex)
+            {
                 if (attempt < maxAttempts) continue;
-                _logger.LogError(ex, "AI Connection test failed."); 
-                return (false, ex.Message); 
+                _logger.LogError(ex, "AI Connection test failed.");
+                // Return a generic, stable tag — the raw exception message can leak
+                // hostnames, ports, and driver detail via the cached error fields on
+                // ISystemStatusService that /api/Settings/status surfaces.
+                return (false, "AI provider connection failed.");
             }
         }
 

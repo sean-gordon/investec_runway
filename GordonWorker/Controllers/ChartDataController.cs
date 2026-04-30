@@ -37,7 +37,9 @@ public class ChartDataController : ControllerBase
         var sql = @"
             SELECT COALESCE(category, 'Uncategorized') AS Label, SUM(ABS(amount)) AS Value 
             FROM transactions 
-            WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '1 day' * @days
+            WHERE user_id = @userId 
+              AND is_excluded = FALSE
+              AND transaction_date >= NOW() - INTERVAL '1 day' * @days
             GROUP BY category
             ORDER BY Value DESC";
 
@@ -55,7 +57,7 @@ public class ChartDataController : ControllerBase
         using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
         
         var history = (await connection.QueryAsync<Transaction>(
-            "SELECT * FROM transactions WHERE user_id = @userId AND transaction_date >= NOW() - INTERVAL '1 day' * @days ORDER BY transaction_date DESC", 
+            "SELECT * FROM transactions WHERE user_id = @userId AND is_excluded = FALSE AND transaction_date >= NOW() - INTERVAL '1 day' * @days ORDER BY transaction_date DESC", 
             new { userId, days })).ToList();
 
         _investecClient.Configure(settings.InvestecClientId, settings.InvestecSecret, settings.InvestecApiKey);

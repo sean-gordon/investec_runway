@@ -551,10 +551,13 @@
                                         </th>
                                         <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
                                             AI?</th>
+                                        <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">
+                                            Excluded?</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-slate-100">
-                                    <tr v-for="tx in rawTransactions" :key="tx.id" class="hover:bg-slate-50">
+                                    <tr v-for="tx in rawTransactions" :key="tx.id" class="hover:bg-slate-50 transition-opacity"
+                                        :class="tx.isExcluded ? 'opacity-40 grayscale' : ''">
                                         <td class="px-4 py-3 text-[10px] text-slate-500">{{ tx.transactionDate }}</td>
                                         <td class="px-4 py-3 font-mono font-bold"
                                             :class="tx.amount < 0 ? 'text-red-600' : 'text-green-600'">{{ tx.amount }}
@@ -564,9 +567,16 @@
                                         <td class="px-4 py-3 text-slate-900 truncate max-w-xs">{{ tx.description }}</td>
                                         <td class="px-4 py-3 text-[10px]">{{ tx.accountId }}</td>
                                         <td class="px-4 py-3 text-xs">{{ tx.isAiProcessed ? '✅' : '❌' }}</td>
+                                        <td class="px-4 py-3 text-center">
+                                            <button @click="toggleExclusion(tx)" 
+                                                class="px-2 py-1 rounded text-[10px] font-bold border transition-colors"
+                                                :class="tx.isExcluded ? 'bg-red-50 border-red-200 text-red-600' : 'bg-slate-50 border-slate-200 text-slate-400 hover:border-red-300 hover:text-red-500'">
+                                                {{ tx.isExcluded ? 'INCLUDED' : 'EXCLUDE' }}
+                                            </button>
+                                        </td>
                                     </tr>
                                     <tr v-if="!rawTransactions || rawTransactions.length === 0">
-                                        <td colspan="7" class="px-4 py-8 text-center text-slate-500">No raw data to
+                                        <td colspan="8" class="px-4 py-8 text-center text-slate-500">No raw data to
                                             display.
                                             Pull data from Investec first.</td>
                                     </tr>
@@ -2047,6 +2057,24 @@
                         document.body.setAttribute('data-theme', 'lamborghini');
                     } else {
                         document.body.removeAttribute('data-theme');
+                    }
+                },
+                async toggleExclusion(tx) {
+                    const newValue = !tx.isExcluded;
+                    try {
+                        const res = await this.api(`/api/transactions/${tx.id}/toggle-exclusion?isExcluded=${newValue}`, 'POST');
+                        if (res.ok) {
+                            tx.isExcluded = newValue;
+                            this.showToast(newValue ? "Transaction Excluded" : "Transaction Included");
+                            // Reload stats and charts to reflect the change
+                            const resStats = await this.api('/api/settings/stats');
+                            if (resStats.ok) this.healthStats = await resStats.json();
+                            this.loadCharts();
+                        } else {
+                            this.showToast("Failed to update");
+                        }
+                    } catch (e) {
+                        this.showToast("Network Error");
                     }
                 }
             }

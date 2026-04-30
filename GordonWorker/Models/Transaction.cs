@@ -11,6 +11,7 @@ public class Transaction
     public string? Category { get; set; }
     public bool IsAiProcessed { get; set; }
     public string? Notes { get; set; }
+    public bool IsExcluded { get; set; }
 
     public bool IsInternalTransfer()
     {

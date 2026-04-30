@@ -137,6 +137,10 @@ public class DatabaseInitializer
             try { await connection.ExecuteAsync("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS notes TEXT;"); }
             catch (Exception ex) { _logger.LogDebug(ex, "transactions.notes column migration skipped."); }
 
+            // Migration for is_excluded
+            try { await connection.ExecuteAsync("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS is_excluded BOOLEAN DEFAULT FALSE;"); }
+            catch (Exception ex) { _logger.LogDebug(ex, "transactions.is_excluded column migration skipped."); }
+
             // 4. Index Migration
             // TimescaleDB hypertables require unique indexes to include the partitioning column (transaction_date)
             try 

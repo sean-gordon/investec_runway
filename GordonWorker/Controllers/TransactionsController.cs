@@ -87,4 +87,44 @@ public class TransactionsController : ControllerBase
             return StatusCode(500, new { Error = "Internal server error." });
         }
     }
+
+    [HttpPost("{id}/toggle-exclusion")]
+    public async Task<IActionResult> ToggleExclusion(Guid id, [FromQuery] bool isExcluded)
+    {
+        var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(userIdStr, out var userId)) return Unauthorized();
+
+        try
+        {
+            using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+            var sql = "UPDATE transactions SET is_excluded = @isExcluded WHERE id = @id AND user_id = @userId";
+            await connection.ExecuteAsync(sql, new { id, isExcluded, userId });
+            return Ok();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to toggle exclusion for transaction {Id}", id);
+            return StatusCode(500, new { Error = "Internal server error." });
+        }
+    }
+
+    [HttpPost("{id}/note")]
+    public async Task<IActionResult> UpdateNote(Guid id, [FromBody] string note)
+    {
+        var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(userIdStr, out var userId)) return Unauthorized();
+
+        try
+        {
+            using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+            var sql = "UPDATE transactions SET notes = @note WHERE id = @id AND user_id = @userId";
+            await connection.ExecuteAsync(sql, new { id, note, userId });
+            return Ok();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update note for transaction {Id}", id);
+            return StatusCode(500, new { Error = "Internal server error." });
+        }
+    }
 }

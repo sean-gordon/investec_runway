@@ -110,8 +110,8 @@ public class TransactionRepository : ITransactionRepository
     {
         await using var connection = new NpgsqlConnection(_connectionString);
         var insertSql = @"
-            INSERT INTO transactions (id, user_id, account_id, transaction_date, description, amount, balance, category, is_ai_processed, notes)
-            VALUES (@Id, @UserId, @AccountId, @TransactionDate, @Description, @Amount, @Balance, @Category, @IsAiProcessed, NULL)
+            INSERT INTO transactions (id, user_id, account_id, transaction_date, description, amount, balance, category, is_ai_processed, notes, is_excluded)
+            VALUES (@Id, @UserId, @AccountId, @TransactionDate, @Description, @Amount, @Balance, @Category, @IsAiProcessed, NULL, @IsExcluded)
             ON CONFLICT (id, transaction_date, user_id) DO NOTHING";
 
         return await connection.ExecuteAsync(insertSql, new {
@@ -123,7 +123,8 @@ public class TransactionRepository : ITransactionRepository
             tx.Amount,
             tx.Balance,
             tx.Category,
-            tx.IsAiProcessed
+            tx.IsAiProcessed,
+            tx.IsExcluded
         });
     }
 
@@ -144,12 +145,13 @@ public class TransactionRepository : ITransactionRepository
         var balances     = list.Select(t => t.Balance).ToArray();
         var categories   = list.Select(t => t.Category ?? "").ToArray();
         var processed    = list.Select(t => t.IsAiProcessed).ToArray();
+        var excluded     = list.Select(t => t.IsExcluded).ToArray();
 
         await using var connection = new NpgsqlConnection(_connectionString);
         return await connection.ExecuteAsync(@"
             INSERT INTO transactions
-                (id, user_id, account_id, transaction_date, description, amount, balance, category, is_ai_processed, notes)
-            SELECT u.id, @UserId, u.account_id, u.transaction_date, u.description, u.amount, u.balance, u.category, u.is_ai_processed, NULL
+                (id, user_id, account_id, transaction_date, description, amount, balance, category, is_ai_processed, notes, is_excluded)
+            SELECT u.id, @UserId, u.account_id, u.transaction_date, u.description, u.amount, u.balance, u.category, u.is_ai_processed, NULL, u.is_excluded
             FROM unnest(
                 @Ids::uuid[],
                 @AccountIds::text[],
@@ -158,8 +160,9 @@ public class TransactionRepository : ITransactionRepository
                 @Amounts::numeric[],
                 @Balances::numeric[],
                 @Categories::text[],
-                @Processed::boolean[]
-            ) AS u(id, account_id, transaction_date, description, amount, balance, category, is_ai_processed)
+                @Processed::boolean[],
+                @Excluded::boolean[]
+            ) AS u(id, account_id, transaction_date, description, amount, balance, category, is_ai_processed, is_excluded)
             ON CONFLICT (id, transaction_date, user_id) DO NOTHING;",
             new
             {
@@ -171,7 +174,8 @@ public class TransactionRepository : ITransactionRepository
                 Amounts = amounts,
                 Balances = balances,
                 Categories = categories,
-                Processed = processed
+                Processed = processed,
+                Excluded = excluded
             });
     }
 
@@ -318,5 +322,13 @@ public class TransactionRepository : ITransactionRepository
         await connection.ExecuteAsync(
             "UPDATE transactions SET notes = @Note WHERE id = @Id AND user_id = @UserId",
             new { Note = note, Id = transactionId, UserId = userId });
+    }
+
+    public async Task UpdateTransactionExclusionAsync(Guid transactionId, int userId, bool isExcluded)
+    {
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.ExecuteAsync(
+            "UPDATE transactions SET is_excluded = @IsExcluded WHERE id = @Id AND user_id = @UserId",
+            new { IsExcluded = isExcluded, Id = transactionId, UserId = userId });
     }
 }

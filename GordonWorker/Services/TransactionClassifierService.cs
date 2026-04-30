@@ -28,12 +28,9 @@ public class TransactionClassifierService : ITransactionClassifierService
     {
         if (transactions == null || !transactions.Any()) return new List<Transaction>();
 
-        // Step 1: group by normalised merchant key. "WOOLWORTHS #123", "WOOLWORTHS #456" and
-        // "Woolworths JHB" all collapse to one key → we only ask the AI ONCE per merchant, then
-        // fan the answer out to every matching transaction. Slashes token cost dramatically on
-        // normal spending patterns (people visit the same merchants repeatedly).
+        // Step 1: group by normalised merchant key. Skip excluded transactions.
         var groups = transactions
-            .Where(t => !string.IsNullOrWhiteSpace(t.Description))
+            .Where(t => !t.IsExcluded && !string.IsNullOrWhiteSpace(t.Description))
             .GroupBy(t => NormaliseMerchant(t.Description!))
             .ToList();
 

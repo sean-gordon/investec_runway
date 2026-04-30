@@ -76,6 +76,10 @@ public class ActuarialService : IActuarialService
     public async Task<FinancialHealthReport> AnalyzeHealthAsync(List<Transaction> history, decimal currentBalance, AppSettings settings)
     {
         var today = DateTime.Today;
+
+        // Filter out blacklisted/excluded transactions before any analysis
+        history = history.Where(t => !t.IsExcluded).ToList();
+
         _logger.LogInformation("[Actuarial] Starting analysis. History: {Count} transactions, Balance: {Balance:F2}", history.Count, currentBalance);
 
         // SALARY DETECTION (Sign-Agnostic)

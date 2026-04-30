@@ -17,6 +17,7 @@ public interface IAiService
     Task<(bool Success, string Error)> TestConnectionAsync(int userId, bool useFallback = false, bool useThinking = false, bool forceRefresh = false);
     Task<List<string>> GetAvailableModelsAsync(int userId, bool useFallback = false, bool useThinking = false, AppSettings? overriddenSettings = null);
     Task<List<Transaction>> CategorizeTransactionsAsync(int userId, List<Transaction> transactions);
+    Task<string> GenerateCompletionAsync(int userId, string system, string prompt, bool useFallback = false, CancellationToken ct = default, bool useThinking = false);
 }
 
 /// <summary>
@@ -923,7 +924,20 @@ IF the response missed the prompt or contains errors: Provide specific feedback 
         return (true, "");
     }
 
-    private async Task<string> GenerateCompletionAsync(int userId, string system, string prompt, bool useFallback, CancellationToken ct = default, bool useThinking = false)
+    public async Task<string> GenerateCompletionAsync(int userId, string system, string prompt, bool useFallback = false, CancellationToken ct = default, bool useThinking = false)
+    {
+        // If they didn't specifically ask for a raw provider call (no thinking/fallback),
+        // we route through the robust fallback logic. This makes everything benefit from
+        // the thinking model and multi-provider redundancy.
+        if (!useThinking)
+        {
+            return await GenerateCompletionWithFallbackAsync(userId, system, prompt, ct);
+        }
+        
+        return await GenerateCompletionInternalAsync(userId, system, prompt, useFallback, ct, useThinking);
+    }
+
+    private async Task<string> GenerateCompletionInternalAsync(int userId, string system, string prompt, bool useFallback, CancellationToken ct = default, bool useThinking = false)
     {
         var config = useThinking 
             ? await GetThinkingProviderConfigAsync(userId)

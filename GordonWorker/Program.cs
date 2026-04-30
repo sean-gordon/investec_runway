@@ -201,10 +201,10 @@ app.Use(async (context, next) =>
     headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()";
     headers["Content-Security-Policy"] =
         "default-src 'self'; " +
-        "script-src 'self' 'unsafe-inline' blob: https://unpkg.com https://cdn.jsdelivr.net https://cdn.tailwindcss.com https://static.cloudflareinsights.com; " +
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://unpkg.com https://cdn.jsdelivr.net https://cdn.tailwindcss.com https://static.cloudflareinsights.com; " +
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; " +
         "img-src 'self' data:; " +
-        "connect-src 'self' https://cloudflareinsights.com; " +
+        "connect-src 'self' https://cloudflareinsights.com https://cdn.jsdelivr.net; " +
         "font-src 'self' data: https://cdn.jsdelivr.net https://fonts.gstatic.com; " +
         "frame-ancestors 'none'; " +
         "base-uri 'self'";

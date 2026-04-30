@@ -147,14 +147,21 @@ public class ActuarialService : IActuarialService
         var compareDateInPrevPeriod = prevPeriodStart.AddDays(daysIntoPeriod);
         if (compareDateInPrevPeriod > prevPeriodEnd) compareDateInPrevPeriod = prevPeriodEnd;
 
-        // Debits are NEGATIVE (< 0), Credits are POSITIVE (> 0). 
+        // Debits are NEGATIVE (< 0), Credits are POSITIVE (> 0).
         var internalTransfers = history.Where(t => t.IsInternalTransfer()).ToList();
-        var expenses = history.Where(t => t.Amount < 0 && !t.IsInternalTransfer())
+
+        // Income filtering logic:
+        // If ExcludeIncomeFromAnalytics is true, we ONLY look at negative amounts (expenses).
+        // If false, we ABS all amounts (treating income as 'negative expense' which reduces burn).
+        var expenses = history.Where(t => !t.IsInternalTransfer())
+                              .Where(t => !settings.ExcludeIncomeFromAnalytics || t.Amount < 0)
                               .Select(t => new Transaction {
-                                  Id = t.Id, AccountId = t.AccountId, TransactionDate = t.TransactionDate,
-                                  Description = t.Description, Amount = Math.Abs(t.Amount), Balance = t.Balance,
-                                  Category = t.Category, IsAiProcessed = t.IsAiProcessed, Notes = t.Notes
-                              }).ToList();
+                                  Id = t.Id, AccountId = t.AccountId, TransactionDate = t.TransactionDate,        
+                                  Description = t.Description, Amount = Math.Abs(t.Amount) * (t.Amount > 0 ? -1 : 1), Balance = t.Balance,  
+                                  Category = t.Category, IsAiProcessed = t.IsAiProcessed, Notes = t.Notes, IsExcluded = t.IsExcluded
+                              })
+                              .Select(t => { t.Amount = Math.Abs(t.Amount); return t; }) // Ensure final set is absolute for math
+                              .ToList();
                               
         _logger.LogInformation("[Actuarial] Expense filter: {Total} total txns → {ExpenseCount} expenses, {CreditCount} credits/income, {TransferCount} internal transfers excluded",
             history.Count, expenses.Count,

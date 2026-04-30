@@ -33,12 +33,18 @@ public class ChartDataController : ControllerBase
         var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (!int.TryParse(userIdStr, out var userId)) return Unauthorized();
 
+        var settings = await _settingsService.GetSettingsAsync(userId);
         using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-        var sql = @"
+        
+        // If ExcludeIncomeFromAnalytics is true, we only show negative amounts (expenses)
+        var incomeFilter = settings.ExcludeIncomeFromAnalytics ? "AND amount < 0" : "";
+        
+        var sql = $@"
             SELECT COALESCE(category, 'Uncategorized') AS Label, SUM(ABS(amount)) AS Value 
             FROM transactions 
             WHERE user_id = @userId 
               AND is_excluded = FALSE
+              {incomeFilter}
               AND transaction_date >= NOW() - INTERVAL '1 day' * @days
             GROUP BY category
             ORDER BY Value DESC";

@@ -178,11 +178,6 @@
                         </svg>
                         <span class="text-[10px] font-bold text-green-700 uppercase tracking-tight">Secure Mode</span>
                     </div>
-                    <button @click="toggleTheme" 
-                        class="w-8 h-8 rounded-full flex items-center justify-center bg-slate-100 hover:bg-brand-50 transition-colors"
-                        :title="currentTheme === 'lamborghini' ? 'Switch to Light' : 'Switch to Lamborghini Dark'">
-                        {{ currentTheme === 'lamborghini' ? '🏎️' : '🌙' }}
-                    </button>
                     <div class="flex items-center gap-3">
                         <button @click="toggleTheme" 
                             class="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-brand-600 transition-colors"
@@ -451,37 +446,42 @@
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
-                                <p class="text-xs font-medium text-slate-400 uppercase">Telegram Hits</p>
-                                <div class="mt-1">
-                                    <span class="text-lg font-bold text-slate-900">{{
-                                        formatTime(systemStatus.lastTelegramHit) }}</span>
-                                    <span v-if="systemStatus.lastTelegramError"
-                                        class="block text-[10px] text-red-500 font-bold mt-1 truncate"
-                                        :title="systemStatus.lastTelegramError">⚠ {{ systemStatus.lastTelegramError
-                                        }}</span>
-                                    <span v-else-if="systemStatus.lastTelegramHit"
-                                        class="block text-[10px] text-green-500 font-bold mt-1">✔ Active</span>
-                                </div>
+                        <!-- Recent Activity -->
+                        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                            <div class="px-6 py-4 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
+                                <h3 class="font-bold text-slate-800 text-sm">Recent Activity</h3>
+                                <button @click="activeTab = 's-rawdata'" class="text-[10px] font-bold text-brand-600 hover:underline">VIEW ALL</button>
                             </div>
-                            <div
-                                class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
-                                <div>
-                                    <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Last Health
-                                        Sync</p>
-                                    <div class="mt-1">
-                                        <span class="text-lg font-bold text-slate-900">{{
-                                            formatTime(systemStatus.lastCheck) }}</span>
-                                    </div>
-                                </div>
-                                <div
-                                    class="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-lg">
-                                    🕒</div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left text-sm">
+                                    <tbody class="divide-y divide-slate-50">
+                                        <tr v-for="tx in recentTransactions" :key="tx.id" class="hover:bg-slate-50/80 transition-colors">
+                                            <td class="px-6 py-4">
+                                                <div class="flex items-center gap-3">
+                                                    <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
+                                                        :class="tx.amount < 0 ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'">
+                                                        {{ tx.amount < 0 ? '−' : '+' }}
+                                                    </div>
+                                                    <div>
+                                                        <p class="font-bold text-slate-900 truncate max-w-[150px] md:max-w-xs">{{ tx.description }}</p>
+                                                        <p class="text-[10px] text-slate-400 font-medium">{{ formatDate(tx.transactionDate) }} • {{ tx.category || 'Uncategorized' }}</p>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td class="px-6 py-4 text-right">
+                                                <p class="font-mono font-bold" :class="tx.amount < 0 ? 'text-slate-900' : 'text-green-600'">
+                                                    {{ formatCurrency(tx.amount) }}
+                                                </p>
+                                                <p class="text-[9px] text-slate-400 tabular-nums">Bal: {{ formatCurrency(tx.balance) }}</p>
+                                            </td>
+                                        </tr>
+                                        <tr v-if="recentTransactions.length === 0">
+                                            <td colspan="2" class="px-6 py-12 text-center text-slate-400 italic">No recent transactions found.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
-
-                        <!-- RECENT ACTIVITY REMOVED AS REQUESTED -->
                     </div>
 
                     <!-- ADMIN: USERS -->
@@ -522,66 +522,80 @@
 
                     <!-- RAW DATA (for debugging ledger exact values) -->
                     <div v-if="activeTab === 's-rawdata'" class="space-y-6">
-                        <div class="flex justify-between items-center">
+                        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                             <h2 class="text-xl font-bold">Raw Database Ledger</h2>
-                            <button @click="loadRawData"
-                                class="bg-slate-200 text-slate-800 px-4 py-2 rounded-lg font-bold text-sm hover:bg-slate-300">Refresh</button>
+                            <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                                <div class="relative flex-1 md:flex-none md:w-64">
+                                    <input v-model="ledgerSearch" type="text" placeholder="Search description..."
+                                        class="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all">
+                                    <span class="absolute left-3 top-2.5 opacity-40">🔍</span>
+                                </div>
+                                <select v-model="ledgerDateRange" 
+                                    class="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 outline-none">
+                                    <option :value="7">Last 7 Days</option>
+                                    <option :value="30">Last 30 Days</option>
+                                    <option :value="90">Last 90 Days</option>
+                                    <option :value="180">Last 180 Days</option>
+                                    <option :value="0">All Time</option>
+                                </select>
+                                <button @click="loadRawData"
+                                    class="bg-slate-200 text-slate-800 px-4 py-2 rounded-xl font-bold text-sm hover:bg-slate-300 transition-all active:scale-95">Refresh</button>
+                            </div>
                         </div>
-                        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-auto max-h-[70vh]">
-                            <table class="w-full text-left text-sm whitespace-nowrap">
-                                <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
-                                    <tr>
-                                        <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                            Date
-                                        </th>
-                                        <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                            Amount
-                                        </th>
-                                        <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                            Balance
-                                        </th>
-                                        <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                            Category
-                                        </th>
-                                        <th
-                                            class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider max-w-xs break-all">
-                                            Description</th>
-                                        <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                            Acct ID
-                                        </th>
-                                        <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                            AI?</th>
-                                        <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">
-                                            Excluded?</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-slate-100">
-                                    <tr v-for="tx in rawTransactions" :key="tx.id" class="hover:bg-slate-50 transition-opacity"
-                                        :class="tx.isExcluded ? 'opacity-40 grayscale' : ''">
-                                        <td class="px-4 py-3 text-[10px] text-slate-500">{{ tx.transactionDate }}</td>
-                                        <td class="px-4 py-3 font-mono font-bold"
-                                            :class="tx.amount < 0 ? 'text-red-600' : 'text-green-600'">{{ tx.amount }}
-                                        </td>
-                                        <td class="px-4 py-3 font-mono text-slate-500">{{ tx.balance }}</td>
-                                        <td class="px-4 py-3 text-xs">{{ tx.category }}</td>
-                                        <td class="px-4 py-3 text-slate-900 truncate max-w-xs">{{ tx.description }}</td>
-                                        <td class="px-4 py-3 text-[10px]">{{ tx.accountId }}</td>
-                                        <td class="px-4 py-3 text-xs">{{ tx.isAiProcessed ? '✅' : '❌' }}</td>
-                                        <td class="px-4 py-3 text-center">
-                                            <button @click="toggleExclusion(tx)" 
-                                                class="px-2 py-1 rounded text-[10px] font-bold border transition-colors"
-                                                :class="tx.isExcluded ? 'bg-red-50 border-red-200 text-red-600' : 'bg-slate-50 border-slate-200 text-slate-400 hover:border-red-300 hover:text-red-500'">
-                                                {{ tx.isExcluded ? 'INCLUDED' : 'EXCLUDE' }}
-                                            </button>
-                                        </td>
-                                    </tr>
-                                    <tr v-if="!rawTransactions || rawTransactions.length === 0">
-                                        <td colspan="8" class="px-4 py-8 text-center text-slate-500">No raw data to
-                                            display.
-                                            Pull data from Investec first.</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col max-h-[70vh]">
+                            <div class="overflow-auto flex-1">
+                                <table class="w-full text-left text-sm whitespace-nowrap">
+                                    <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+                                        <tr>
+                                            <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Date</th>
+                                            <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Amount</th>
+                                            <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Category</th>
+                                            <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Description</th>
+                                            <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Notes</th>
+                                            <th class="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Excluded?</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100">
+                                        <tr v-for="tx in filteredRawTransactions" :key="tx.id" class="hover:bg-slate-50 transition-colors group"
+                                            :class="tx.isExcluded ? 'opacity-40 grayscale bg-slate-50/50' : ''">
+                                            <td class="px-4 py-3 text-[10px] font-medium text-slate-500">{{ formatDate(tx.transactionDate) }}</td>
+                                            <td class="px-4 py-3 font-mono font-bold"
+                                                :class="tx.amount < 0 ? 'text-red-600' : 'text-green-600'">{{ formatCurrency(tx.amount) }}
+                                            </td>
+                                            <td class="px-4 py-3">
+                                                <select @change="updateCategory(tx, $event.target.value)"
+                                                    class="bg-transparent border-none text-xs font-medium focus:ring-0 cursor-pointer hover:bg-slate-100 rounded px-1 -ml-1 transition-colors">
+                                                    <option :value="tx.category">{{ tx.category || 'Uncategorized' }}</option>
+                                                    <option disabled>──────────</option>
+                                                    <option v-for="c in knownCategories" :key="c" :value="c">{{ c }}</option>
+                                                </select>
+                                            </td>
+                                            <td class="px-4 py-3 text-slate-900 truncate max-w-xs font-medium" :title="tx.description">{{ tx.description }}</td>
+                                            <td class="px-4 py-3">
+                                                <input v-model="tx.notes" @blur="updateNote(tx)" placeholder="Add note..."
+                                                    class="bg-transparent border-none text-[10px] focus:ring-0 w-full placeholder:opacity-30 hover:bg-slate-100 rounded px-1 -ml-1 transition-colors italic">
+                                            </td>
+                                            <td class="px-4 py-3 text-center">
+                                                <button @click="toggleExclusion(tx)" 
+                                                    class="px-2 py-1 rounded text-[9px] font-black tracking-tighter border transition-all"
+                                                    :class="tx.isExcluded ? 'bg-red-500 border-red-600 text-white' : 'bg-white border-slate-200 text-slate-400 opacity-0 group-hover:opacity-100 hover:border-red-400 hover:text-red-600'">
+                                                    {{ tx.isExcluded ? 'EXCLUDED' : 'EXCLUDE' }}
+                                                </button>
+                                            </td>
+                                        </tr>
+                                        <tr v-if="filteredRawTransactions.length === 0">
+                                            <td colspan="6" class="px-4 py-12 text-center text-slate-400 italic">
+                                                No transactions found matching your criteria.
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="px-4 py-2 bg-slate-50 border-t border-slate-200 text-[10px] text-slate-400 flex justify-between items-center">
+                                <span>Showing {{ filteredRawTransactions.length }} transactions</span>
+                                <span v-if="ledgerSearch" class="font-bold text-brand-600">Filter Active: "{{ ledgerSearch }}"</span>
+                            </div>
                         </div>
                     </div>
 
@@ -1613,7 +1627,11 @@
                     availableModels: [],
                     availableFallbackModels: [],
                     availableThinkingModels: [],
+                    knownCategories: ['Groceries', 'Utilities', 'Rent', 'Transport', 'Entertainment', 'Health', 'Insurance', 'Savings', 'Investment', 'Dining Out', 'Salary', 'Bonus'],
                     days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+                    ledgerSearch: '',
+                    ledgerDateRange: 30,
+                    rawTransactions: [],
                     systemStatus: {
                         investecOnline: false,
                         databaseOnline: true,
@@ -1652,6 +1670,18 @@
                             l.category.toLowerCase().includes(this.logSearch.toLowerCase());
                         return matchLevel && matchSearch;
                     });
+                },
+                filteredRawTransactions() {
+                    let txs = this.rawTransactions || [];
+                    if (this.ledgerSearch) {
+                        const s = this.ledgerSearch.toLowerCase();
+                        txs = txs.filter(t => 
+                            (t.description || '').toLowerCase().includes(s) || 
+                            (t.category || '').toLowerCase().includes(s) ||
+                            (t.notes || '').toLowerCase().includes(s)
+                        );
+                    }
+                    return txs;
                 }
             },
             watch: {
@@ -2076,6 +2106,22 @@
                     } catch (e) {
                         this.showToast("Network Error");
                     }
+                },
+                async updateNote(tx) {
+                    try {
+                        const res = await this.api(`/api/transactions/${tx.id}/note`, 'POST', tx.notes || "");
+                        if (res.ok) this.showToast("Note Saved");
+                    } catch (e) { this.showToast("Note Error"); }
+                },
+                async updateCategory(tx, newCat) {
+                    try {
+                        const res = await this.api(`/api/transactions/${tx.id}/category`, 'POST', newCat);
+                        if (res.ok) {
+                            tx.category = newCat;
+                            this.showToast("Category Updated");
+                            this.loadCharts();
+                        }
+                    } catch (e) { this.showToast("Update Error"); }
                 }
             }
         }).mount('#app');

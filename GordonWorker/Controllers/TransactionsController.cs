@@ -108,6 +108,26 @@ public class TransactionsController : ControllerBase
         }
     }
 
+    [HttpPost("{id}/category")]
+    public async Task<IActionResult> UpdateCategory(Guid id, [FromBody] string category)
+    {
+        var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(userIdStr, out var userId)) return Unauthorized();
+
+        try
+        {
+            using var connection = new NpgsqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+            var sql = "UPDATE transactions SET category = @category, is_ai_processed = FALSE WHERE id = @id AND user_id = @userId";
+            await connection.ExecuteAsync(sql, new { id, category, userId });
+            return Ok();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update category for transaction {Id}", id);
+            return StatusCode(500, new { Error = "Internal server error." });
+        }
+    }
+
     [HttpPost("{id}/note")]
     public async Task<IActionResult> UpdateNote(Guid id, [FromBody] string note)
     {

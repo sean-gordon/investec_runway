@@ -1,7 +1,6 @@
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
 USER root
-RUN apt-get update && apt-get install -y libfontconfig1 fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
-USER app
+RUN apt-get update && apt-get install -y libfontconfig1 fonts-dejavu-core gosu && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 EXPOSE 8080
 EXPOSE 8081
@@ -22,10 +21,8 @@ RUN dotnet publish "./GordonWorker.csproj" -c $BUILD_CONFIGURATION -o /app/publi
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
+COPY entrypoint.sh .
+RUN chmod +x entrypoint.sh
 
-# Create the keys directory and set ownership to the 'app' user
-USER root
-RUN mkdir -p /app/keys && chown -R app:app /app/keys
-USER app
-
-ENTRYPOINT ["dotnet", "GordonWorker.dll"]
+# Use the entrypoint script to handle permissions and startup
+ENTRYPOINT ["./entrypoint.sh"]

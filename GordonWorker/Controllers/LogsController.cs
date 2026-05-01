@@ -4,7 +4,11 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace GordonWorker.Controllers;
 
-[Authorize]
+// Logs are a single global ring buffer plus per-day files that contain every
+// user's request paths, auth events with source IP, AI prompts, and exception
+// stack traces. Restrict to admins so a low-privilege tenant can't read other
+// tenants' operational data.
+[Authorize(Roles = "Admin")]
 [ApiController]
 [Route("api/[controller]")]
 public class LogsController : ControllerBase

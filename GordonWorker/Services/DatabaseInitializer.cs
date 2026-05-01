@@ -59,8 +59,12 @@ public class DatabaseInitializer
 
                 // Dev / non-production: generate a one-shot password and write it to stdout
                 // only — never through the logger (which persists to disk and is reachable
-                // from the /api/Logs endpoint).
-                adminPass = Guid.NewGuid().ToString("N").Substring(0, 16);
+                // from the /api/Logs endpoint). Use the cryptographic RNG so the bootstrap
+                // password actually has full entropy (Guid.NewGuid is not a CSPRNG contract,
+                // and truncating it to 16 hex chars further halves the keyspace).
+                var randomBytes = new byte[18]; // 144 bits → 24-char base64
+                System.Security.Cryptography.RandomNumberGenerator.Fill(randomBytes);
+                adminPass = Convert.ToBase64String(randomBytes);
                 Console.WriteLine("******************************************************************");
                 Console.WriteLine($" BOOTSTRAP ADMIN PASSWORD (dev only): {adminPass}");
                 Console.WriteLine(" Record this now — it is not logged. Change it in the UI immediately.");

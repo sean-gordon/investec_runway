@@ -68,6 +68,12 @@ public class AuthController : ControllerBase
         }
     }
 
+    // BCrypt hash of a fixed dummy string, generated once at startup using the same
+    // work factor as registration. Used to keep response time roughly constant when
+    // the supplied username does not exist — without this, an attacker can enumerate
+    // valid usernames by measuring whether BCrypt.Verify ran or was short-circuited.
+    private static readonly string DummyPasswordHash = BCrypt.Net.BCrypt.HashPassword("not-a-real-password");
+
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginModel model)
     {
@@ -79,7 +85,20 @@ public class AuthController : ControllerBase
             var user = await connection.QuerySingleOrDefaultAsync<User>(
                 "SELECT * FROM users WHERE username = @Username", new { model.Username });
 
-            if (user == null || !BCrypt.Net.BCrypt.Verify(model.Password, user.PasswordHash))
+            // Always run BCrypt.Verify, even when the user lookup misses, so the
+            // response time does not depend on whether the username exists.
+            bool passwordOk;
+            if (user != null)
+            {
+                passwordOk = BCrypt.Net.BCrypt.Verify(model.Password, user.PasswordHash);
+            }
+            else
+            {
+                _ = BCrypt.Net.BCrypt.Verify(model.Password, DummyPasswordHash);
+                passwordOk = false;
+            }
+
+            if (!passwordOk)
             {
                 _logger.LogWarning("Failed login for username '{User}' from {IP}.", model.Username, HttpContext.Connection.RemoteIpAddress);
                 return Unauthorized("Invalid username or password.");

@@ -17,12 +17,12 @@ public class AppSettings
     public decimal IncomeAlertThreshold { get; set; } = 5000m; // Alert when income > this
     public string OllamaBaseUrl { get; set; } = "http://host.docker.internal:11434";
     public string OllamaModelName { get; set; } = "deepseek-coder";
-    public string GeminiModelName { get; set; } = "gemini-3-flash-preview";
+    public string GeminiModelName { get; set; } = "gemini-2.5-flash";
     public string GeminiApiKey { get; set; } = "";
     public string OpenAiApiKey { get; set; } = "";
     public string OpenAiModelName { get; set; } = "gpt-4.1-mini";
     public string AnthropicApiKey { get; set; } = "";
-    public string AnthropicModelName { get; set; } = "claude-3-5-sonnet-latest";
+    public string AnthropicModelName { get; set; } = "claude-sonnet-4-6";
     public string AiProvider { get; set; } = "Ollama"; // "Ollama", "Gemini", "OpenAI", or "Anthropic"
     public string SystemPersona { get; set; } = "Gordon";
 
@@ -31,12 +31,12 @@ public class AppSettings
     public string FallbackAiProvider { get; set; } = "Gemini"; // Fallback if primary fails
     public string FallbackOllamaBaseUrl { get; set; } = "http://host.docker.internal:11434";
     public string FallbackOllamaModelName { get; set; } = "llama3";
-    public string FallbackGeminiModelName { get; set; } = "gemini-3-flash-preview";
+    public string FallbackGeminiModelName { get; set; } = "gemini-2.5-flash";
     public string FallbackGeminiApiKey { get; set; } = "";
     public string FallbackOpenAiApiKey { get; set; } = "";
     public string FallbackOpenAiModelName { get; set; } = "gpt-4o-mini";
     public string FallbackAnthropicApiKey { get; set; } = "";
-    public string FallbackAnthropicModelName { get; set; } = "claude-3-5-haiku-latest";
+    public string FallbackAnthropicModelName { get; set; } = "claude-haiku-4-5";
     public int AiTimeoutSeconds { get; set; } = 90;
     public int AiRetryAttempts { get; set; } = 2;
 
@@ -45,12 +45,12 @@ public class AppSettings
     public string ThinkingAiProvider { get; set; } = "Ollama";
     public string ThinkingOllamaBaseUrl { get; set; } = "http://host.docker.internal:11434";
     public string ThinkingOllamaModelName { get; set; } = "deepseek-r1";
-    public string ThinkingGeminiModelName { get; set; } = "gemini-2.0-flash-thinking-exp";
+    public string ThinkingGeminiModelName { get; set; } = "gemini-2.5-flash";
     public string ThinkingGeminiApiKey { get; set; } = "";
     public string ThinkingOpenAiApiKey { get; set; } = "";
     public string ThinkingOpenAiModelName { get; set; } = "o3-mini";
     public string ThinkingAnthropicApiKey { get; set; } = "";
-    public string ThinkingAnthropicModelName { get; set; } = "claude-3-7-sonnet-latest";
+    public string ThinkingAnthropicModelName { get; set; } = "claude-sonnet-4-6";
     public string ThinkingModelInstructions { get; set; } = ""; // If empty, loads from Resources/thinking_model_instructions.md
     
     // Actuarial Keywords & Thresholds
@@ -250,8 +250,38 @@ public class SettingsService : ISettingsService
 
     public async Task UpdateSettingsAsync(int userId, AppSettings newSettings)
     {
+        SanitizeModelNames(newSettings);
         await SaveToDbAsync(userId, newSettings);
         InvalidateCache(userId);
+    }
+
+    private static string CleanModel(string? value, string fallback)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return fallback;
+        var v = value.Trim();
+        if (v.StartsWith("Error", StringComparison.OrdinalIgnoreCase)
+            || v.StartsWith("Ollama Error", StringComparison.OrdinalIgnoreCase)
+            || v.Contains("HTTP", StringComparison.OrdinalIgnoreCase) && v.Contains("Error", StringComparison.OrdinalIgnoreCase))
+        {
+            return fallback;
+        }
+        return v;
+    }
+
+    private static void SanitizeModelNames(AppSettings s)
+    {
+        s.OllamaModelName = CleanModel(s.OllamaModelName, "llama3");
+        s.GeminiModelName = CleanModel(s.GeminiModelName, "gemini-2.5-flash");
+        s.OpenAiModelName = CleanModel(s.OpenAiModelName, "gpt-4o-mini");
+        s.AnthropicModelName = CleanModel(s.AnthropicModelName, "claude-haiku-4-5");
+        s.FallbackOllamaModelName = CleanModel(s.FallbackOllamaModelName, "llama3");
+        s.FallbackGeminiModelName = CleanModel(s.FallbackGeminiModelName, "gemini-2.5-flash");
+        s.FallbackOpenAiModelName = CleanModel(s.FallbackOpenAiModelName, "gpt-4o-mini");
+        s.FallbackAnthropicModelName = CleanModel(s.FallbackAnthropicModelName, "claude-haiku-4-5");
+        s.ThinkingOllamaModelName = CleanModel(s.ThinkingOllamaModelName, "deepseek-r1");
+        s.ThinkingGeminiModelName = CleanModel(s.ThinkingGeminiModelName, "gemini-2.5-flash");
+        s.ThinkingOpenAiModelName = CleanModel(s.ThinkingOpenAiModelName, "o3-mini");
+        s.ThinkingAnthropicModelName = CleanModel(s.ThinkingAnthropicModelName, "claude-sonnet-4-6");
     }
 
     private async Task SaveToDbAsync(int userId, AppSettings settings)

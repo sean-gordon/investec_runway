@@ -148,7 +148,7 @@ namespace GordonWorker.Services
 
                 if (!models.Any())
                 {
-                    models = new List<string> { "sonnet", "haiku", "opus", "claude-3-5-sonnet-latest", "claude-3-5-haiku-latest" };
+                    models = new List<string> { "sonnet", "haiku", "opus", "claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5" };
                 }
 
                 _cachedModels = models;
@@ -158,7 +158,7 @@ namespace GordonWorker.Services
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to fetch models from Claude CLI. Using safe aliases.");
-                return new List<string> { "sonnet", "haiku", "opus", "claude-3-5-sonnet-latest", "claude-3-5-haiku-latest" };
+                return new List<string> { "sonnet", "haiku", "opus", "claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5" };
             }
             finally
             {

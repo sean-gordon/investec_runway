@@ -31,6 +31,12 @@ services:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       - TZ=${TZ}
       - Security__AllowedDomains__0=${ALLOWED_DOMAIN:-localhost}
+      # Shared secret for the Investec real-time card-push webhook. WebhookController
+      # reads this via _configuration["Webhooks:InvestecSecret"] (the .NET config
+      # provider maps double-underscore env vars onto colon-separated keys). Empty
+      # default keeps the existing fail-closed posture: every webhook returns 401
+      # until the operator sets WEBHOOK_INVESTEC_SECRET in their .env.
+      - Webhooks__InvestecSecret=${WEBHOOK_INVESTEC_SECRET:-}
     volumes:
       - gordon_keys:/app/keys
       - gordon_logs:/app/logs

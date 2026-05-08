@@ -16,7 +16,12 @@
         integrity="sha384-6pS1WSZJY7wOk6qQTa9C9U2W1/qzqL7iYoMil7qn9KFeN5fZDAwIExgCd7U5AH+X"
         crossorigin="anonymous"
         referrerpolicy="no-referrer"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tailwind play CDN: pinned to v3.4.17 so the CDN cannot auto-upgrade us
+         onto a future malicious release. The play CDN ships a JIT compiler
+         rather than a fixed bundle, so a stable SRI hash isn't published — the
+         versioned URL is the strongest assertion the CDN supports. CSP further
+         constrains script-src to this exact origin. -->
+    <script src="https://cdn.tailwindcss.com/3.4.17" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">

@@ -5,27 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gordon Finance — Investec API Side Hustle 2026</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>G</text></svg>">
-    <!-- Tailwind play CDN pinned to v3.4.17; see index.html for rationale. -->
-    <script src="https://cdn.tailwindcss.com/3.4.17" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <!-- Tailwind is precompiled and vendored same-origin under /vendor/ so the
+         page never trusts a third-party CDN at runtime; see index.html for the
+         broader rationale. -->
+    <link rel="stylesheet"
+          href="/vendor/tailwind-marketing.min.css"
+          integrity="sha384-bh6O++UR5hswXfV6RohbVzy7PfMseYovhguhLxdYLB/vRXgycXtdsKLuhcLKnwNr"
+          crossorigin="anonymous">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                        outfit: ['Outfit', 'sans-serif']
-                    },
-                    colors: {
-                        brand: {
-                            50: '#1A1400', 100: '#251B00', 200: '#3A2C00',
-                            500: '#D4A931', 600: '#D4A931', 700: '#A87E20', 900: '#000000'
-                        }
-                    }
-                }
-            }
-        }
-    </script>
     <style>
         /* ── GORDON × LAMBORGHINI DARK THEME ── */
         :root {

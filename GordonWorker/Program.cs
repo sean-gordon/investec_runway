@@ -140,7 +140,6 @@ builder.Services.AddScoped<ITransactionClassifierService, TransactionClassifierS
 builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
-builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 builder.Services.AddTransient<DatabaseInitializer>();
 
 // MediatR registration
@@ -189,9 +188,13 @@ else
 
 app.UseForwardedHeaders();
 
-// Baseline security response headers. CSP allows the three CDN origins the
-// SPA currently loads from (Vue/unpkg, Chart.js/jsdelivr, Tailwind runtime);
-// tighten further once those assets are vendored locally.
+// Baseline security response headers. Tailwind is now precompiled and served
+// same-origin from /vendor/, so the CSP no longer grants script-src to the
+// Tailwind play CDN. Vue and Chart.js remain on their pinned + SRI-verified
+// CDN origins. 'unsafe-eval' is retained because the bundled Vue build
+// (`vue.global.prod.js`) includes the runtime template compiler which uses
+// `new Function()`; switching to `vue.runtime.global.prod.js` plus
+// pre-compiled templates would let us drop it.
 app.Use(async (context, next) =>
 {
     var headers = context.Response.Headers;
@@ -199,9 +202,11 @@ app.Use(async (context, next) =>
     headers["X-Frame-Options"] = "DENY";
     headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
     headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()";
+    headers["Cross-Origin-Opener-Policy"] = "same-origin";
+    headers["Cross-Origin-Resource-Policy"] = "same-origin";
     headers["Content-Security-Policy"] =
         "default-src 'self'; " +
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://unpkg.com https://cdn.jsdelivr.net https://cdn.tailwindcss.com https://static.cloudflareinsights.com; " +
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://unpkg.com https://cdn.jsdelivr.net https://static.cloudflareinsights.com; " +
         "style-src 'self' 'unsafe-inline' blob: https://cdn.jsdelivr.net https://fonts.googleapis.com; " +
         "img-src 'self' data:; " +
         "connect-src 'self' https://cloudflareinsights.com https://cdn.jsdelivr.net; " +

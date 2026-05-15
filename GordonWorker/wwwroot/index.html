@@ -16,12 +16,16 @@
         integrity="sha384-6pS1WSZJY7wOk6qQTa9C9U2W1/qzqL7iYoMil7qn9KFeN5fZDAwIExgCd7U5AH+X"
         crossorigin="anonymous"
         referrerpolicy="no-referrer"></script>
-    <!-- Tailwind play CDN: pinned to v3.4.17 so the CDN cannot auto-upgrade us
-         onto a future malicious release. The play CDN ships a JIT compiler
-         rather than a fixed bundle, so a stable SRI hash isn't published — the
-         versioned URL is the strongest assertion the CDN supports. CSP further
-         constrains script-src to this exact origin. -->
-    <script src="https://cdn.tailwindcss.com/3.4.17" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <!-- Tailwind is precompiled and vendored same-origin under /vendor/ so the
+         authenticated dashboard never trusts a third-party CDN at runtime — a
+         CDN compromise (or a transparent proxy on a hostile network) can no
+         longer inject script into a page that holds a JWT in localStorage.
+         The integrity attribute pins the bundle against accidental tampering
+         on disk. -->
+    <link rel="stylesheet"
+          href="/vendor/tailwind-app.min.css"
+          integrity="sha384-TdeEtqpdc1wESlsVmNprYEvppSEZNH5DlQoCsxnfYeQrCgh08CBXzBOylfiIkq00"
+          crossorigin="anonymous">
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
@@ -30,18 +34,6 @@
         integrity="sha384-e6cc9LaIG7xZ3XD5B+jtr1NhTWPQGQdRCh6xiZ+ZFUtWCpg4ycv3Sh+SkZoopvUY"
         crossorigin="anonymous"
         referrerpolicy="no-referrer"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: { sans: ['Inter', 'sans-serif'] },
-                    colors: {
-                        brand: { 50: '#f0f9ff', 100: '#e0f2fe', 500: '#0ea5e9', 600: '#0284c7', 900: '#0c4a6e' }
-                    }
-                }
-            }
-        }
-    </script>
     <style>
         body {
             -webkit-tap-highlight-color: transparent;
